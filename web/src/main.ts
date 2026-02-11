@@ -801,6 +801,19 @@ async function main() {
       e.preventDefault();
       searchBar.show();
     }
+    // Export PNG: Ctrl+E
+    if ((e.ctrlKey || e.metaKey) && e.key === "e" && !e.shiftKey && profileLoaded) {
+      e.preventDefault();
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "flame-cat-export.png";
+        a.click();
+        URL.revokeObjectURL(url);
+      }, "image/png");
+    }
     if (e.key === "Escape" && detailPanel.isVisible) detailPanel.hide();
     if (e.key === "Escape" && laneSidebar.isVisible) laneSidebar.hide();
     if (!e.ctrlKey && !e.metaKey && !e.altKey && profileLoaded) {
