@@ -66,10 +66,11 @@ async function main() {
   let profileLoaded = false;
   let profileDuration = 0;
 
-  // Hidden file input for mobile file picking
+  // Hidden file input for file picking (supports multiple)
   const fileInput = document.createElement("input");
   fileInput.type = "file";
   fileInput.accept = ".json,.cpuprofile,.txt,.collapsed,.folded,.speedscope,.prof,.out";
+  fileInput.multiple = true;
   fileInput.style.display = "none";
   document.body.appendChild(fileInput);
 
@@ -125,7 +126,7 @@ async function main() {
     text-align: center;
     line-height: 1.8;
   `;
-  dropText.textContent = "Drop a profile here or click 📂 to open\nSupports Chrome, Firefox, speedscope, pprof, collapsed, and more";
+  dropText.textContent = "Drop a profile here or click 📂 to open\nDrop multiple files or Shift+drop to align profiles\nSupports Chrome, Firefox, speedscope, pprof, collapsed, React DevTools, and more";
   const shortcutsText = document.createElement("div");
   shortcutsText.style.cssText = `
     font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
@@ -508,11 +509,16 @@ async function main() {
   );
 
   // Shared file-loading logic
-  const loadFile = async (file: File) => {
+  const loadFile = async (file: File, additive = false) => {
     const buffer = await file.arrayBuffer();
     const data = new Uint8Array(buffer);
     try {
-      const handle = wasm.parse_profile(data);
+      const handle = additive
+        ? wasm.add_profile_with_label(data, file.name)
+        : (() => {
+            wasm.clear_session();
+            return wasm.parse_profile(data);
+          })();
       const meta = JSON.parse(wasm.get_profile_metadata(handle)) as {
         name: string | null;
         start_time: number;
@@ -526,11 +532,13 @@ async function main() {
       const centerEl = toolbar.querySelector("#toolbar-center");
       if (centerEl) centerEl.textContent = meta.name ?? file.name;
 
-      // Clear existing lanes
-      laneManager.lanes.length = 0;
-      laneManager.globalScrollY = 0;
+      if (!additive) {
+        // Clear existing lanes for a fresh load
+        laneManager.lanes.length = 0;
+        laneManager.globalScrollY = 0;
+      }
 
-      // Create one lane per thread group
+      // Create one lane per thread group in the new profile
       const threads = JSON.parse(wasm.get_thread_list(handle)) as {
         id: number;
         name: string;
@@ -558,19 +566,33 @@ async function main() {
 
       laneSidebar.update(laneManager.lanes);
 
-      // Zoom-to-fit: center viewport on actual content bounds
-      try {
-        const bounds = JSON.parse(wasm.get_content_bounds(handle)) as { start: number; end: number };
-        const contentDuration = bounds.end - bounds.start;
-        if (contentDuration > 0 && profileDuration > 0 && contentDuration < profileDuration * 0.95) {
-          const padding = contentDuration * 0.05;
-          const fitStart = Math.max(0, (bounds.start - padding - meta.start_time) / profileDuration);
-          const fitEnd = Math.min(1, (bounds.end + padding - meta.start_time) / profileDuration);
-          laneManager.viewStart = fitStart;
-          laneManager.viewEnd = fitEnd;
+      // Update profileDuration from session info for multi-profile
+      if (additive) {
+        try {
+          const sessionInfo = JSON.parse(wasm.get_session_info()) as {
+            duration: number;
+          };
+          profileDuration = sessionInfo.duration;
+        } catch {
+          // keep single-profile duration
         }
-      } catch {
-        // fall through — keep full view
+      }
+
+      // Zoom-to-fit: center viewport on actual content bounds
+      if (!additive) {
+        try {
+          const bounds = JSON.parse(wasm.get_content_bounds(handle)) as { start: number; end: number };
+          const contentDuration = bounds.end - bounds.start;
+          if (contentDuration > 0 && profileDuration > 0 && contentDuration < profileDuration * 0.95) {
+            const padding = contentDuration * 0.05;
+            const fitStart = Math.max(0, (bounds.start - padding - meta.start_time) / profileDuration);
+            const fitEnd = Math.min(1, (bounds.end + padding - meta.start_time) / profileDuration);
+            laneManager.viewStart = fitStart;
+            laneManager.viewEnd = fitEnd;
+          }
+        } catch {
+          // fall through — keep full view
+        }
       }
 
       renderAll();
@@ -579,7 +601,7 @@ async function main() {
     }
   };
 
-  // File drop (desktop)
+  // File drop (desktop) — drop replaces, Shift+drop adds
   canvas.addEventListener("dragover", (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -595,14 +617,27 @@ async function main() {
     e.stopPropagation();
     canvasContainer.style.outline = "";
     canvasContainer.style.outlineOffset = "";
-    const file = e.dataTransfer?.files[0];
-    if (file) await loadFile(file);
+    const files = e.dataTransfer?.files;
+    if (!files || files.length === 0) return;
+    // First file: replace unless shift held, rest always additive
+    const firstFile = files[0];
+    if (firstFile) await loadFile(firstFile, e.shiftKey);
+    for (let i = 1; i < files.length; i++) {
+      const file = files[i];
+      if (file) await loadFile(file, true);
+    }
   });
 
-  // File input (mobile + desktop fallback)
+  // File input — first file replaces, additional files are additive
   fileInput.addEventListener("change", async () => {
-    const file = fileInput.files?.[0];
-    if (file) await loadFile(file);
+    const files = fileInput.files;
+    if (!files || files.length === 0) return;
+    const firstFile = files[0];
+    if (firstFile) await loadFile(firstFile, false);
+    for (let i = 1; i < files.length; i++) {
+      const file = files[i];
+      if (file) await loadFile(file, true);
+    }
     fileInput.value = "";
   });
 
