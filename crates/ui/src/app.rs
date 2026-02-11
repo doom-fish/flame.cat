@@ -53,10 +53,24 @@ struct SelectedSpan {
     lane_index: usize,
 }
 
+enum LaneKind {
+    /// Flame chart for a thread (uses render_time_order).
+    Thread(u32),
+    /// Counter track (memory, CPU, etc.).
+    Counter(usize),
+    /// Async spans track.
+    AsyncSpans,
+    /// Markers track.
+    Markers,
+    /// Minimap overview.
+    Minimap,
+}
+
 struct LaneState {
-    thread_id: Option<u32>,
-    thread_name: String,
+    kind: LaneKind,
+    name: String,
     height: f32,
+    #[allow(dead_code)]
     scroll_y: f32,
     visible: bool,
 }
@@ -184,20 +198,61 @@ impl FlameApp {
         thread_info.sort_by(|a, b| b.1.cmp(&a.1));
 
         for (thread, span_count, max_depth) in thread_info {
-            // Height based on actual content depth, compact for shallow lanes
             let content_height = if max_depth == 0 {
                 24.0_f32
             } else {
                 ((max_depth + 1) as f32 * 20.0 + 4.0).min(300.0)
             };
             self.lanes.push(LaneState {
-                thread_id: Some(thread.id),
-                thread_name: format!("{} ({span_count} spans)", thread.name),
+                kind: LaneKind::Thread(thread.id),
+                name: format!("{} ({span_count} spans)", thread.name),
                 height: content_height,
                 scroll_y: 0.0,
                 visible: span_count >= 3,
             });
         }
+
+        // Async spans lane
+        if !profile.async_spans.is_empty() {
+            self.lanes.push(LaneState {
+                kind: LaneKind::AsyncSpans,
+                name: format!("Async ({} spans)", profile.async_spans.len()),
+                height: 60.0,
+                scroll_y: 0.0,
+                visible: true,
+            });
+        }
+
+        // Counter tracks
+        for (i, counter) in profile.counters.iter().enumerate() {
+            self.lanes.push(LaneState {
+                kind: LaneKind::Counter(i),
+                name: format!("📊 {}", counter.name),
+                height: 80.0,
+                scroll_y: 0.0,
+                visible: true,
+            });
+        }
+
+        // Markers lane
+        if !profile.markers.is_empty() {
+            self.lanes.push(LaneState {
+                kind: LaneKind::Markers,
+                name: format!("Markers ({})", profile.markers.len()),
+                height: 24.0,
+                scroll_y: 0.0,
+                visible: true,
+            });
+        }
+
+        // Minimap (always last, always visible)
+        self.lanes.push(LaneState {
+            kind: LaneKind::Minimap,
+            name: "Overview".to_string(),
+            height: 40.0,
+            scroll_y: 0.0,
+            visible: true,
+        });
     }
 
     fn invalidate_commands(&mut self) {
@@ -239,13 +294,50 @@ impl FlameApp {
                 height: lane.height as f64,
                 dpr: 1.0,
             };
-            let cmds = flame_cat_core::views::time_order::render_time_order(
-                &entry.profile,
-                &viewport,
-                abs_start,
-                abs_end,
-                lane.thread_id,
-            );
+            let cmds = match &lane.kind {
+                LaneKind::Thread(tid) => {
+                    flame_cat_core::views::time_order::render_time_order(
+                        &entry.profile,
+                        &viewport,
+                        abs_start,
+                        abs_end,
+                        Some(*tid),
+                    )
+                }
+                LaneKind::Counter(idx) => {
+                    if let Some(counter) = entry.profile.counters.get(*idx) {
+                        flame_cat_core::views::counter::render_counter_track(
+                            counter, &viewport, abs_start, abs_end,
+                        )
+                    } else {
+                        Vec::new()
+                    }
+                }
+                LaneKind::AsyncSpans => {
+                    flame_cat_core::views::async_track::render_async_track(
+                        &entry.profile.async_spans,
+                        &viewport,
+                        abs_start,
+                        abs_end,
+                    )
+                }
+                LaneKind::Markers => {
+                    flame_cat_core::views::markers::render_markers(
+                        &entry.profile.markers,
+                        &viewport,
+                        abs_start,
+                        abs_end,
+                    )
+                }
+                LaneKind::Minimap => {
+                    flame_cat_core::views::minimap::render_minimap(
+                        &entry.profile,
+                        &viewport,
+                        self.view_start,
+                        self.view_end,
+                    )
+                }
+            };
             self.lane_commands.push(cmds);
         }
     }
@@ -479,9 +571,9 @@ impl eframe::App for FlameApp {
                     if let Some(session) = &self.session {
                         if let Some(entry) = session.profiles().first() {
                             let lane = &self.lanes[selected_clone.lane_index];
-                            if let Some(tid) = lane.thread_id {
+                            if let LaneKind::Thread(tid) = &lane.kind {
                                 if let Some(thread) =
-                                    entry.profile.threads.iter().find(|t| t.id == tid)
+                                    entry.profile.threads.iter().find(|t| t.id == *tid)
                                 {
                                     if let Some(span) = thread
                                         .spans
@@ -501,7 +593,7 @@ impl eframe::App for FlameApp {
                                                 format_duration(span.duration()),
                                                 format_duration(span.self_value),
                                                 span.depth,
-                                                lane.thread_name,
+                                                lane.name,
                                             ));
                                         });
                                         if let Some(cat) = &span.category {
@@ -509,6 +601,13 @@ impl eframe::App for FlameApp {
                                         }
                                     }
                                 }
+                            } else {
+                                // Non-thread lanes: just show the name
+                                ui.label(
+                                    egui::RichText::new(&selected_clone.name)
+                                        .strong()
+                                        .size(13.0),
+                                );
                             }
                         }
                     }
@@ -534,10 +633,10 @@ impl eframe::App for FlameApp {
                                     changed = true;
                                 }
                                 // Truncate long names
-                                let name = if lane.thread_name.len() > 24 {
-                                    format!("{}…", &lane.thread_name[..23])
+                                let name = if lane.name.len() > 24 {
+                                    format!("{}…", &lane.name[..23])
                                 } else {
-                                    lane.thread_name.clone()
+                                    lane.name.clone()
                                 };
                                 ui.label(
                                     egui::RichText::new(name).size(11.0),
@@ -727,7 +826,7 @@ impl eframe::App for FlameApp {
                 painter.text(
                     egui::pos2(available.left() + 6.0, lane_top + header_height / 2.0),
                     egui::Align2::LEFT_CENTER,
-                    &lane.thread_name,
+                    &lane.name,
                     egui::FontId::proportional(11.0),
                     header_text_color,
                 );
