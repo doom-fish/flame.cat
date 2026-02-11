@@ -110,13 +110,13 @@ impl FlameApp {
             let window = web_sys::window();
             if let Some(w) = window {
                 let hash = w.location().hash().unwrap_or_default();
-                if hash == "#demo" || hash == "#react-demo" {
+                if hash == "#demo" || hash == "#react-demo" || hash == "#react-devtools" {
                     let pd = pending_data.clone();
                     let ctx = cc.egui_ctx.clone();
-                    let asset = if hash == "#react-demo" {
-                        "/assets/react-demo.json"
-                    } else {
-                        "/assets/demo.json"
+                    let asset = match hash.as_str() {
+                        "#react-demo" => "/assets/react-demo.json",
+                        "#react-devtools" => "/assets/react-devtools-demo.json",
+                        _ => "/assets/demo.json",
                     };
                     web_sys::console::log_1(&format!("flame.cat: loading {asset}...").into());
                     wasm_bindgen_futures::spawn_local(async move {

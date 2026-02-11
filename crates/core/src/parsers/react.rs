@@ -1070,4 +1070,35 @@ mod tests {
             "Root should not contain child 2"
         );
     }
+
+    #[test]
+    fn parse_react_devtools_demo() {
+        let data = include_bytes!("../../../ui/assets/react-devtools-demo.json");
+        let profile = parse_react_profile(data).unwrap();
+
+        assert_eq!(profile.metadata.format, "react");
+        assert_eq!(profile.metadata.name.as_deref(), Some("App"));
+
+        // 12 commits × multiple fibers each = 200+ frames
+        assert!(
+            profile.frames.len() > 100,
+            "Expected 100+ frames across 12 commits, got {}",
+            profile.frames.len()
+        );
+
+        // Verify we have realistic component names
+        let names: std::collections::HashSet<&str> =
+            profile.frames.iter().map(|f| f.name.as_str()).collect();
+        assert!(names.contains("ProductGrid"), "Should have ProductGrid");
+        assert!(names.contains("Header"), "Should have Header");
+        assert!(names.contains("SearchBar"), "Should have SearchBar");
+        assert!(names.contains("CartDrawer"), "Should have CartDrawer");
+
+        eprintln!(
+            "React DevTools demo: {} frames, {:.0}µs → {:.0}µs",
+            profile.frames.len(),
+            profile.metadata.start_time,
+            profile.metadata.end_time
+        );
+    }
 }
