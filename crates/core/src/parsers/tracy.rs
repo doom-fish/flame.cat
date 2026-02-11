@@ -87,7 +87,8 @@ pub fn parse_tracy(data: &[u8]) -> Result<Profile, TracyParseError> {
         .map(|f| f.end)
         .fold(f64::NEG_INFINITY, f64::max);
 
-    Ok(Profile::new(ProfileMetadata {
+    Ok(Profile::new(
+        ProfileMetadata {
             name: export.info.and_then(|i| i.app_name),
             start_time: if start_time.is_finite() {
                 start_time

@@ -124,10 +124,7 @@ pub fn render_counter_track(
     // Max value label
     let max_label = format_counter_value(max_val, &counter.unit);
     commands.push(RenderCommand::DrawText {
-        position: Point::new(
-            viewport.width - LABEL_PADDING,
-            FONT_SIZE + LABEL_PADDING,
-        ),
+        position: Point::new(viewport.width - LABEL_PADDING, FONT_SIZE + LABEL_PADDING),
         text: SharedStr::from(max_label.as_str()),
         color: ThemeToken::TextMuted,
         font_size: FONT_SIZE,

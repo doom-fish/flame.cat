@@ -103,13 +103,10 @@ impl FlameApp {
                     web_sys::console::log_1(&"flame.cat: loading demo profile...".into());
                     wasm_bindgen_futures::spawn_local(async move {
                         // Try preloaded data from JS (fetched in parallel with WASM)
-                        let result = Self::get_preloaded_demo().await
-                            .or_else(|| {
-                                web_sys::console::log_1(
-                                    &"flame.cat: preload miss, fetching...".into(),
-                                );
-                                None
-                            });
+                        let result = Self::get_preloaded_demo().await.or_else(|| {
+                            web_sys::console::log_1(&"flame.cat: preload miss, fetching...".into());
+                            None
+                        });
                         let result = match result {
                             Some(data) => Ok(data),
                             None => Self::fetch_bytes("/assets/demo.json").await,
@@ -155,18 +152,12 @@ impl FlameApp {
 
     fn load_profile(&mut self, data: &[u8]) {
         #[cfg(target_arch = "wasm32")]
-        web_sys::console::log_1(
-            &format!("flame.cat: parsing {} bytes...", data.len()).into(),
-        );
+        web_sys::console::log_1(&format!("flame.cat: parsing {} bytes...", data.len()).into());
         match parsers::parse_auto_visual(data) {
             Ok(mut profile) => {
                 #[cfg(target_arch = "wasm32")]
                 web_sys::console::log_1(
-                    &format!(
-                        "flame.cat: loaded {} threads",
-                        profile.threads.len()
-                    )
-                    .into(),
+                    &format!("flame.cat: loaded {} threads", profile.threads.len()).into(),
                 );
 
                 // Crop profile time bounds to actual span data range
@@ -194,10 +185,8 @@ impl FlameApp {
                 if duration > 0.0 {
                     if let Some((lo, hi)) = zoom_bounds {
                         let pad = (hi - lo) * 0.15;
-                        self.view_start =
-                            ((lo - pad - session_start) / duration).clamp(0.0, 1.0);
-                        self.view_end =
-                            ((hi + pad - session_start) / duration).clamp(0.0, 1.0);
+                        self.view_start = ((lo - pad - session_start) / duration).clamp(0.0, 1.0);
+                        self.view_end = ((hi + pad - session_start) / duration).clamp(0.0, 1.0);
                     }
                 } else {
                     self.view_start = 0.0;
@@ -364,15 +353,13 @@ impl FlameApp {
                 dpr: 1.0,
             };
             let cmds = match &lane.kind {
-                LaneKind::Thread(tid) => {
-                    flame_cat_core::views::time_order::render_time_order(
-                        &entry.profile,
-                        &viewport,
-                        abs_start,
-                        abs_end,
-                        Some(*tid),
-                    )
-                }
+                LaneKind::Thread(tid) => flame_cat_core::views::time_order::render_time_order(
+                    &entry.profile,
+                    &viewport,
+                    abs_start,
+                    abs_end,
+                    Some(*tid),
+                ),
                 LaneKind::Counter(idx) => {
                     if let Some(counter) = entry.profile.counters.get(*idx) {
                         flame_cat_core::views::counter::render_counter_track(
@@ -382,22 +369,18 @@ impl FlameApp {
                         Vec::new()
                     }
                 }
-                LaneKind::AsyncSpans => {
-                    flame_cat_core::views::async_track::render_async_track(
-                        &entry.profile.async_spans,
-                        &viewport,
-                        abs_start,
-                        abs_end,
-                    )
-                }
-                LaneKind::Markers => {
-                    flame_cat_core::views::markers::render_markers(
-                        &entry.profile.markers,
-                        &viewport,
-                        abs_start,
-                        abs_end,
-                    )
-                }
+                LaneKind::AsyncSpans => flame_cat_core::views::async_track::render_async_track(
+                    &entry.profile.async_spans,
+                    &viewport,
+                    abs_start,
+                    abs_end,
+                ),
+                LaneKind::Markers => flame_cat_core::views::markers::render_markers(
+                    &entry.profile.markers,
+                    &viewport,
+                    abs_start,
+                    abs_end,
+                ),
                 LaneKind::CpuSamples => {
                     if let Some(ref samples) = entry.profile.cpu_samples {
                         flame_cat_core::views::cpu_samples::render_cpu_samples(
@@ -407,22 +390,18 @@ impl FlameApp {
                         Vec::new()
                     }
                 }
-                LaneKind::FrameTrack => {
-                    flame_cat_core::views::frame_track::render_frame_track(
-                        &entry.profile.frames,
-                        &viewport,
-                        abs_start,
-                        abs_end,
-                    )
-                }
-                LaneKind::ObjectTrack => {
-                    flame_cat_core::views::object_track::render_object_track(
-                        &entry.profile.object_events,
-                        &viewport,
-                        abs_start,
-                        abs_end,
-                    )
-                }
+                LaneKind::FrameTrack => flame_cat_core::views::frame_track::render_frame_track(
+                    &entry.profile.frames,
+                    &viewport,
+                    abs_start,
+                    abs_end,
+                ),
+                LaneKind::ObjectTrack => flame_cat_core::views::object_track::render_object_track(
+                    &entry.profile.object_events,
+                    &viewport,
+                    abs_start,
+                    abs_end,
+                ),
                 LaneKind::Minimap => {
                     // Minimap is rendered separately as a fixed strip
                     Vec::new()
@@ -461,17 +440,13 @@ impl FlameApp {
         let resp_value = JsFuture::from(window.fetch_with_str(url))
             .await
             .map_err(|e| format!("{e:?}"))?;
-        let resp: web_sys::Response = resp_value
-            .dyn_into()
-            .map_err(|_| "not a Response")?;
+        let resp: web_sys::Response = resp_value.dyn_into().map_err(|_| "not a Response")?;
         if !resp.ok() {
             return Err(format!("HTTP {}", resp.status()));
         }
-        let buf = JsFuture::from(
-            resp.array_buffer().map_err(|e| format!("{e:?}"))?
-        )
-        .await
-        .map_err(|e| format!("{e:?}"))?;
+        let buf = JsFuture::from(resp.array_buffer().map_err(|e| format!("{e:?}"))?)
+            .await
+            .map_err(|e| format!("{e:?}"))?;
         let uint8 = js_sys::Uint8Array::new(&buf);
         Ok(uint8.to_vec())
     }
@@ -513,10 +488,8 @@ impl FlameApp {
             flame_cat_protocol::ThemeToken::TextSecondary,
             self.theme_mode,
         );
-        let tick_color = crate::theme::resolve(
-            flame_cat_protocol::ThemeToken::LaneBorder,
-            self.theme_mode,
-        );
+        let tick_color =
+            crate::theme::resolve(flame_cat_protocol::ThemeToken::LaneBorder, self.theme_mode);
 
         // First tick aligned to interval (relative to session start)
         let rel_start = vis_start_us - session_start;
@@ -585,10 +558,8 @@ impl FlameApp {
         painter.rect_filled(rect, egui::CornerRadius::ZERO, bg);
 
         // Top border
-        let border_color = crate::theme::resolve(
-            flame_cat_protocol::ThemeToken::LaneBorder,
-            self.theme_mode,
-        );
+        let border_color =
+            crate::theme::resolve(flame_cat_protocol::ThemeToken::LaneBorder, self.theme_mode);
         painter.line_segment(
             [rect.left_top(), egui::pos2(rect.right(), rect.top())],
             egui::Stroke::new(1.0, border_color),
@@ -643,10 +614,8 @@ impl FlameApp {
             let h = (frac * rect.height()).max(2.0);
             let x = rect.left() + run_start as f32;
             let w = (c - run_start) as f32;
-            let bar_rect = egui::Rect::from_min_size(
-                egui::pos2(x, rect.bottom() - h),
-                egui::vec2(w, h),
-            );
+            let bar_rect =
+                egui::Rect::from_min_size(egui::pos2(x, rect.bottom() - h), egui::vec2(w, h));
             painter.rect_filled(
                 bar_rect,
                 egui::CornerRadius::ZERO,
@@ -665,11 +634,7 @@ impl FlameApp {
             flame_cat_protocol::ThemeToken::MinimapViewport,
             self.theme_mode,
         );
-        painter.rect_filled(
-            viewport_rect,
-            egui::CornerRadius::ZERO,
-            vp_color,
-        );
+        painter.rect_filled(viewport_rect, egui::CornerRadius::ZERO, vp_color);
 
         // Viewport border lines
         let handle_color = crate::theme::resolve(
@@ -677,26 +642,41 @@ impl FlameApp {
             self.theme_mode,
         );
         painter.line_segment(
-            [egui::pos2(vp_left, rect.top()), egui::pos2(vp_left, rect.bottom())],
+            [
+                egui::pos2(vp_left, rect.top()),
+                egui::pos2(vp_left, rect.bottom()),
+            ],
             egui::Stroke::new(2.0, handle_color),
         );
         painter.line_segment(
-            [egui::pos2(vp_right, rect.top()), egui::pos2(vp_right, rect.bottom())],
+            [
+                egui::pos2(vp_right, rect.top()),
+                egui::pos2(vp_right, rect.bottom()),
+            ],
             egui::Stroke::new(2.0, handle_color),
         );
         // Top/bottom edges of viewport
         painter.line_segment(
-            [egui::pos2(vp_left, rect.top()), egui::pos2(vp_right, rect.top())],
+            [
+                egui::pos2(vp_left, rect.top()),
+                egui::pos2(vp_right, rect.top()),
+            ],
             egui::Stroke::new(1.0, handle_color.gamma_multiply(0.5)),
         );
         painter.line_segment(
-            [egui::pos2(vp_left, rect.bottom()), egui::pos2(vp_right, rect.bottom())],
+            [
+                egui::pos2(vp_left, rect.bottom()),
+                egui::pos2(vp_right, rect.bottom()),
+            ],
             egui::Stroke::new(1.0, handle_color.gamma_multiply(0.5)),
         );
 
         // Bottom border of minimap strip
         painter.line_segment(
-            [egui::pos2(rect.left(), rect.bottom()), egui::pos2(rect.right(), rect.bottom())],
+            [
+                egui::pos2(rect.left(), rect.bottom()),
+                egui::pos2(rect.right(), rect.bottom()),
+            ],
             egui::Stroke::new(1.0, border_color),
         );
 
@@ -836,7 +816,11 @@ impl FlameApp {
                     ui.label(format!("{zoom_pct:.0}%"));
                     ui.separator();
 
-                    if ui.button("❓").on_hover_text("Keyboard shortcuts (?)").clicked() {
+                    if ui
+                        .button("❓")
+                        .on_hover_text("Keyboard shortcuts (?)")
+                        .clicked()
+                    {
                         self.show_help = !self.show_help;
                     }
                     ui.separator();
@@ -864,8 +848,7 @@ impl FlameApp {
                 } else if let Some(session) = &self.session {
                     let duration_us = session.duration();
                     let view_span = self.view_end - self.view_start;
-                    let vis_duration_us =
-                        view_span * (session.end_time() - session.start_time());
+                    let vis_duration_us = view_span * (session.end_time() - session.start_time());
                     ui.label(format!(
                         "Duration: {} | Viewing: {} | Zoom: {:.0}% | Lanes: {}",
                         format_duration(duration_us),
@@ -891,14 +874,11 @@ impl FlameApp {
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
                         ui.heading("📋 Detail");
-                        ui.with_layout(
-                            egui::Layout::right_to_left(egui::Align::Center),
-                            |ui| {
-                                if ui.button("✕").clicked() {
-                                    self.selected_span = None;
-                                }
-                            },
-                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.button("✕").clicked() {
+                                self.selected_span = None;
+                            }
+                        });
                     });
                     ui.separator();
 
@@ -971,16 +951,16 @@ impl FlameApp {
                                 }
                                 // Truncate long names (safe for multi-byte chars)
                                 let name = if lane.name.chars().count() > 24 {
-                                    let end = lane.name.char_indices()
+                                    let end = lane
+                                        .name
+                                        .char_indices()
                                         .nth(23)
                                         .map_or(lane.name.len(), |(i, _)| i);
                                     format!("{}…", &lane.name[..end])
                                 } else {
                                     lane.name.clone()
                                 };
-                                ui.label(
-                                    egui::RichText::new(name).size(11.0),
-                                );
+                                ui.label(egui::RichText::new(name).size(11.0));
                             });
                         }
                         if changed {
@@ -1389,9 +1369,8 @@ impl FlameApp {
         });
 
         // Process pending file drop
-        let pending: Option<Vec<u8>> = ctx.memory_mut(|mem| {
-            mem.data.get_temp::<Vec<u8>>(egui::Id::new("pending_file"))
-        });
+        let pending: Option<Vec<u8>> =
+            ctx.memory_mut(|mem| mem.data.get_temp::<Vec<u8>>(egui::Id::new("pending_file")));
         if let Some(data) = pending {
             ctx.memory_mut(|mem| {
                 mem.data.remove::<Vec<u8>>(egui::Id::new("pending_file"));
@@ -1476,7 +1455,6 @@ impl eframe::App for FlameApp {
     }
 }
 
-
 /// Find the label for a span by its frame_id in the render commands.
 fn find_span_label(cmds: &[RenderCommand], frame_id: u64) -> Option<String> {
     for cmd in cmds {
@@ -1533,8 +1511,16 @@ fn compute_auto_zoom(profile: &VisualProfile) -> Option<(f64, f64)> {
     }
 
     if thread.spans.len() < 10 {
-        let cmin = thread.spans.iter().map(|s| s.start).fold(f64::INFINITY, f64::min);
-        let cmax = thread.spans.iter().map(|s| s.end).fold(f64::NEG_INFINITY, f64::max);
+        let cmin = thread
+            .spans
+            .iter()
+            .map(|s| s.start)
+            .fold(f64::INFINITY, f64::min);
+        let cmax = thread
+            .spans
+            .iter()
+            .map(|s| s.end)
+            .fold(f64::NEG_INFINITY, f64::max);
         return if cmin.is_finite() && cmax.is_finite() {
             Some((cmin, cmax))
         } else {

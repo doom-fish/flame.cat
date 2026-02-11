@@ -244,7 +244,8 @@ pub fn parse_firefox(data: &[u8]) -> Result<Profile, FirefoxParseError> {
         .map(|f| f.end)
         .fold(f64::NEG_INFINITY, f64::max);
 
-    Ok(Profile::new(ProfileMetadata {
+    Ok(Profile::new(
+        ProfileMetadata {
             name: gecko.meta.as_ref().and_then(|m| m.product.clone()),
             start_time: if start_time.is_finite() {
                 start_time

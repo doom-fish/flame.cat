@@ -544,7 +544,8 @@ pub fn parse_react_profile(data: &[u8]) -> Result<Profile, ReactParseError> {
         }
     }
 
-    Ok(Profile::new(ProfileMetadata {
+    Ok(Profile::new(
+        ProfileMetadata {
             name: export
                 .data_for_roots
                 .first()

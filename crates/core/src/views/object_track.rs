@@ -1,6 +1,5 @@
 use flame_cat_protocol::{
-    ObjectEvent, ObjectPhase, Rect, RenderCommand, SharedStr, ThemeToken,
-    Viewport,
+    ObjectEvent, ObjectPhase, Rect, RenderCommand, SharedStr, ThemeToken, Viewport,
 };
 use std::collections::HashMap;
 

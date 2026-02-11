@@ -303,7 +303,8 @@ fn build_profile(frames: Vec<Frame>, format: &str) -> Result<Profile, EbpfParseE
         .map(|f| f.end)
         .fold(f64::NEG_INFINITY, f64::max);
 
-    Ok(Profile::new(ProfileMetadata {
+    Ok(Profile::new(
+        ProfileMetadata {
             name: None,
             start_time: if start_time.is_finite() {
                 start_time

@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: Check & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy, rustfmt
+
+      - name: Format check
+        run: cargo fmt --check
+
+      - name: Clippy (core + protocol)
+        run: cargo clippy -p flame-cat-core -p flame-cat-protocol -- -D warnings
+
+      - name: Tests
+        run: cargo test -p flame-cat-core -p flame-cat-protocol
+
+      - name: WASM build
+        run: cargo build --target wasm32-unknown-unknown -p flame-cat-ui --release
+
+      - name: Check WASM size
+        run: |
+          SIZE=$(stat -c%s target/wasm32-unknown-unknown/release/flame_cat_ui.wasm)
+          echo "WASM size: $((SIZE / 1024 / 1024))MB ($SIZE bytes)"
+          if [ "$SIZE" -gt 10485760 ]; then
+            echo "::warning::WASM binary exceeds 10MB budget"
+          fi

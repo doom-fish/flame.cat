@@ -1,7 +1,7 @@
 use flame_cat_protocol::{
-    AsyncSpan, ClockKind, CounterSample, CounterTrack, CounterUnit, CpuNode, CpuSamples,
-    FlowArrow, InstantEvent, Marker, MarkerScope, NetworkRequest, ObjectEvent, ObjectPhase,
-    Screenshot, SharedStr, TimeDomain,
+    AsyncSpan, ClockKind, CounterSample, CounterTrack, CounterUnit, CpuNode, CpuSamples, FlowArrow,
+    InstantEvent, Marker, MarkerScope, NetworkRequest, ObjectEvent, ObjectPhase, Screenshot,
+    SharedStr, TimeDomain,
 };
 use serde::Deserialize;
 use thiserror::Error;
@@ -215,11 +215,7 @@ fn extract_update_counters(
         ("jsHeapSizeUsed", "JS Heap Size", CounterUnit::Bytes),
         ("documents", "Documents", CounterUnit::Count),
         ("nodes", "DOM Nodes", CounterUnit::Count),
-        (
-            "jsEventListeners",
-            "JS Event Listeners",
-            CounterUnit::Count,
-        ),
+        ("jsEventListeners", "JS Event Listeners", CounterUnit::Count),
     ];
     for (key, name, unit) in &fields {
         if let Some(v) = data.get(key).and_then(serde_json::Value::as_f64) {
@@ -533,10 +529,7 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
                     match event.name.as_str() {
                         "ResourceSendRequest" => {
                             if let Some(rid) = data.get("requestId").and_then(|v| v.as_str()) {
-                                let url = data
-                                    .get("url")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("");
+                                let url = data.get("url").and_then(|v| v.as_str()).unwrap_or("");
                                 net_sends.insert(
                                     rid.to_string(),
                                     NetworkRequest {
@@ -552,14 +545,20 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
                             }
                         }
                         "ResourceReceiveResponse" => {
-                            if let Some(rid) = data.get("requestId").and_then(serde_json::Value::as_str)
+                            if let Some(rid) =
+                                data.get("requestId").and_then(serde_json::Value::as_str)
                                 && let Some(req) = net_sends.get_mut(rid)
                             {
                                 req.response_ts = Some(event.ts);
-                                if let Some(mime) = data.get("mimeType").and_then(serde_json::Value::as_str) {
+                                if let Some(mime) =
+                                    data.get("mimeType").and_then(serde_json::Value::as_str)
+                                {
                                     req.mime_type = Some(SharedStr::from(mime));
                                 }
-                                req.from_cache = data.get("fromCache").and_then(serde_json::Value::as_bool).unwrap_or(false);
+                                req.from_cache = data
+                                    .get("fromCache")
+                                    .and_then(serde_json::Value::as_bool)
+                                    .unwrap_or(false);
                             }
                         }
                         "ResourceFinish" => {
@@ -578,7 +577,11 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
 
                 // Screenshot extraction
                 if event.name == "Screenshot"
-                    && let Some(snap) = event.args.as_ref().and_then(|a| a.get("snapshot")).and_then(|v| v.as_str())
+                    && let Some(snap) = event
+                        .args
+                        .as_ref()
+                        .and_then(|a| a.get("snapshot"))
+                        .and_then(|v| v.as_str())
                 {
                     screenshots.push(Screenshot {
                         ts: event.ts,
@@ -603,13 +606,21 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
             // === Mark events (ph:"R") — Web Vitals and navigation timing ===
             "R" => {
                 let category = match event.name.as_str() {
-                    "firstPaint" | "firstContentfulPaint" | "firstMeaningfulPaint"
+                    "firstPaint"
+                    | "firstContentfulPaint"
+                    | "firstMeaningfulPaint"
                     | "largestContentfulPaint::Candidate" => Some("web-vital"),
                     "InteractiveTime" => Some("web-vital"),
                     "LayoutShift" => Some("web-vital"),
-                    "navigationStart" | "fetchStart" | "responseEnd" | "domLoading"
-                    | "domInteractive" | "domContentLoadedEventStart"
-                    | "domContentLoadedEventEnd" | "domComplete" | "loadEventStart"
+                    "navigationStart"
+                    | "fetchStart"
+                    | "responseEnd"
+                    | "domLoading"
+                    | "domInteractive"
+                    | "domContentLoadedEventStart"
+                    | "domContentLoadedEventEnd"
+                    | "domComplete"
+                    | "loadEventStart"
                     | "loadEventEnd" => Some("navigation"),
                     _ => None,
                 };
@@ -638,8 +649,7 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
                                 format!("{} — {}", event.name, counter_name)
                             };
                             let unit = guess_counter_unit(&full_name);
-                            let entry =
-                                counter_map.entry(full_name).or_insert((unit, Vec::new()));
+                            let entry = counter_map.entry(full_name).or_insert((unit, Vec::new()));
                             entry.1.push(CounterSample {
                                 ts: event.ts,
                                 value: v,
@@ -700,10 +710,7 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
             // === Flow events (ph:"s"/"f"/"t") ===
             "s" => {
                 if let Some(id) = event.effective_id() {
-                    flow_starts.insert(
-                        id.clone(),
-                        (event.ts, event.tid, event.name.clone()),
-                    );
+                    flow_starts.insert(id.clone(), (event.ts, event.tid, event.name.clone()));
                 }
             }
             "f" => {
@@ -733,10 +740,7 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
                             to_tid: event.tid,
                         });
                     }
-                    flow_starts.insert(
-                        id.clone(),
-                        (event.ts, event.tid, event.name.clone()),
-                    );
+                    flow_starts.insert(id.clone(), (event.ts, event.tid, event.name.clone()));
                 }
             }
 
@@ -760,9 +764,7 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
                     "O" => ObjectPhase::Snapshot,
                     _ => ObjectPhase::Destroy,
                 };
-                let obj_id = event
-                    .effective_id()
-                    .unwrap_or_default();
+                let obj_id = event.effective_id().unwrap_or_default();
                 object_events.push(ObjectEvent {
                     id: SharedStr::from(obj_id.as_str()),
                     name: SharedStr::from(event.name.as_str()),
@@ -1249,17 +1251,15 @@ mod tests {
             .iter()
             .find(|m| m.name.as_ref() == "firstContentfulPaint")
             .unwrap();
-        assert_eq!(
-            fcp.category.as_ref().map(|s| s.as_ref()),
-            Some("web-vital")
-        );
+        assert_eq!(fcp.category.as_ref().map(|s| s.as_ref()), Some("web-vital"));
 
         // LCP should be normalized to "LCP"
-        let lcp = profile.markers.iter().find(|m| m.name.as_ref() == "LCP").unwrap();
-        assert_eq!(
-            lcp.category.as_ref().map(|s| s.as_ref()),
-            Some("web-vital")
-        );
+        let lcp = profile
+            .markers
+            .iter()
+            .find(|m| m.name.as_ref() == "LCP")
+            .unwrap();
+        assert_eq!(lcp.category.as_ref().map(|s| s.as_ref()), Some("web-vital"));
         assert!((lcp.ts - 300.0).abs() < f64::EPSILON);
 
         // TTI
@@ -1268,10 +1268,7 @@ mod tests {
             .iter()
             .find(|m| m.name.as_ref() == "InteractiveTime")
             .unwrap();
-        assert_eq!(
-            tti.category.as_ref().map(|s| s.as_ref()),
-            Some("web-vital")
-        );
+        assert_eq!(tti.category.as_ref().map(|s| s.as_ref()), Some("web-vital"));
 
         // Navigation markers
         let nav = profile
@@ -1302,7 +1299,10 @@ mod tests {
         ]}"#;
 
         let profile = parse_chrome_trace(json.as_bytes()).unwrap();
-        let cpu = profile.cpu_samples.as_ref().expect("should have CPU samples");
+        let cpu = profile
+            .cpu_samples
+            .as_ref()
+            .expect("should have CPU samples");
         assert_eq!(cpu.nodes.len(), 2);
         assert_eq!(cpu.nodes[0].function_name.as_ref(), "(root)");
         assert_eq!(cpu.nodes[1].function_name.as_ref(), "main");
@@ -1329,58 +1329,42 @@ mod tests {
         let profile = parse_chrome_trace(data).unwrap();
 
         // Verify we got all event types from the real fixture
-        assert!(
-            !profile.frames.is_empty(),
-            "should have duration spans"
-        );
+        assert!(!profile.frames.is_empty(), "should have duration spans");
         assert!(
             !profile.instant_events.is_empty(),
             "should have instant events"
         );
-        assert!(
-            !profile.markers.is_empty(),
-            "should have markers"
-        );
-        assert!(
-            !profile.async_spans.is_empty(),
-            "should have async spans"
-        );
-        assert!(
-            !profile.flow_arrows.is_empty(),
-            "should have flow arrows"
-        );
+        assert!(!profile.markers.is_empty(), "should have markers");
+        assert!(!profile.async_spans.is_empty(), "should have async spans");
+        assert!(!profile.flow_arrows.is_empty(), "should have flow arrows");
         assert!(
             !profile.object_events.is_empty(),
             "should have object events"
         );
-        assert!(
-            !profile.counters.is_empty(),
-            "should have counter tracks"
-        );
-        assert!(
-            profile.cpu_samples.is_some(),
-            "should have CPU samples"
-        );
+        assert!(!profile.counters.is_empty(), "should have counter tracks");
+        assert!(profile.cpu_samples.is_some(), "should have CPU samples");
 
         // Verify Web Vital markers have categories
         let web_vitals: Vec<_> = profile
             .markers
             .iter()
-            .filter(|m| m.category.as_ref().is_some_and(|c| c.as_ref() == "web-vital"))
+            .filter(|m| {
+                m.category
+                    .as_ref()
+                    .is_some_and(|c| c.as_ref() == "web-vital")
+            })
             .collect();
-        assert!(
-            !web_vitals.is_empty(),
-            "should have web vital markers"
-        );
+        assert!(!web_vitals.is_empty(), "should have web vital markers");
 
         let nav_markers: Vec<_> = profile
             .markers
             .iter()
-            .filter(|m| m.category.as_ref().is_some_and(|c| c.as_ref() == "navigation"))
+            .filter(|m| {
+                m.category
+                    .as_ref()
+                    .is_some_and(|c| c.as_ref() == "navigation")
+            })
             .collect();
-        assert!(
-            !nav_markers.is_empty(),
-            "should have navigation markers"
-        );
+        assert!(!nav_markers.is_empty(), "should have navigation markers");
     }
 }

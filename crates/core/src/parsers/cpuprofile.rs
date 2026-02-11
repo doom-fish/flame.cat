@@ -189,7 +189,8 @@ pub fn parse_cpuprofile(data: &[u8]) -> Result<Profile, CpuProfileParseError> {
 
     compute_self_times(&mut frames);
 
-    Ok(Profile::new(ProfileMetadata {
+    Ok(Profile::new(
+        ProfileMetadata {
             name: None,
             start_time: cpu_profile.start_time,
             end_time: cpu_profile.end_time,
@@ -317,7 +318,8 @@ fn parse_from_samples(
 
     compute_self_times(&mut frames);
 
-    Ok(Profile::new(ProfileMetadata {
+    Ok(Profile::new(
+        ProfileMetadata {
             name: None,
             start_time: cpu_profile.start_time,
             end_time: cpu_profile.end_time,

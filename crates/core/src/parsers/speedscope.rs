@@ -214,7 +214,8 @@ pub fn parse_speedscope(data: &[u8]) -> Result<Profile, SpeedscopeParseError> {
         f.self_time = (f.duration() - children_total).max(0.0);
     }
 
-    Ok(Profile::new(ProfileMetadata {
+    Ok(Profile::new(
+        ProfileMetadata {
             name: file.name,
             start_time: if global_start.is_finite() {
                 global_start

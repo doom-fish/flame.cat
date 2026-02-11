@@ -1,6 +1,4 @@
-use flame_cat_protocol::{
-    CpuSamples, Rect, RenderCommand, SharedStr, ThemeToken, Viewport,
-};
+use flame_cat_protocol::{CpuSamples, Rect, RenderCommand, SharedStr, ThemeToken, Viewport};
 use std::collections::HashMap;
 
 const ROW_HEIGHT: f64 = 18.0;

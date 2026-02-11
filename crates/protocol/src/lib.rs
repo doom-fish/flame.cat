@@ -10,8 +10,9 @@ pub use theme::ThemeToken;
 pub use types::{ClockKind, Color, Point, Rect, TimeDomain};
 pub use visual_profile::{
     AsyncSpan, CounterSample, CounterTrack, CounterUnit, CpuNode, CpuSamples, FlowArrow,
-    FrameTiming, InstantEvent, Marker, MarkerScope, NetworkRequest, ObjectEvent, ObjectPhase, Screenshot,
-    ProfileMeta, SourceFormat, Span, SpanCategory, SpanKind, ThreadGroup, ValueUnit, VisualProfile,
+    FrameTiming, InstantEvent, Marker, MarkerScope, NetworkRequest, ObjectEvent, ObjectPhase,
+    ProfileMeta, Screenshot, SourceFormat, Span, SpanCategory, SpanKind, ThreadGroup, ValueUnit,
+    VisualProfile,
 };
 
 /// Viewport describing the visible region — passed to view transforms so

@@ -152,22 +152,22 @@ fn nice_interval(duration_us: f64, width_px: f64) -> (f64, u32) {
         (100.0, 2),
         (200.0, 2),
         (500.0, 5),
-        (1_000.0, 2),       // 1ms
+        (1_000.0, 2), // 1ms
         (2_000.0, 2),
         (5_000.0, 5),
-        (10_000.0, 2),      // 10ms
+        (10_000.0, 2), // 10ms
         (20_000.0, 2),
         (50_000.0, 5),
-        (100_000.0, 2),     // 100ms
+        (100_000.0, 2), // 100ms
         (200_000.0, 2),
         (500_000.0, 5),
-        (1_000_000.0, 2),   // 1s
+        (1_000_000.0, 2), // 1s
         (2_000_000.0, 2),
         (5_000_000.0, 5),
-        (10_000_000.0, 2),  // 10s
+        (10_000_000.0, 2), // 10s
         (20_000_000.0, 2),
-        (30_000_000.0, 3),  // 30s
-        (60_000_000.0, 2),  // 1min
+        (30_000_000.0, 3), // 30s
+        (60_000_000.0, 2), // 1min
     ];
 
     for &(interval, subs) in nice_values {
@@ -207,7 +207,10 @@ mod tests {
     fn nice_interval_selects_reasonable_value() {
         // 1 second visible in 800px → ~10 major ticks → 100ms intervals
         let (interval, _subs) = nice_interval(1_000_000.0, 800.0);
-        assert!(interval >= 50_000.0 && interval <= 200_000.0, "interval={interval}");
+        assert!(
+            interval >= 50_000.0 && interval <= 200_000.0,
+            "interval={interval}"
+        );
     }
 
     #[test]

@@ -67,7 +67,10 @@ pub fn render_commands(
     let mut hit_regions: Vec<HitRegion> = Vec::new();
 
     for cmd in commands {
-        let tf = transform_stack.last().copied().unwrap_or(Transform::identity());
+        let tf = transform_stack
+            .last()
+            .copied()
+            .unwrap_or(Transform::identity());
         match cmd {
             RenderCommand::DrawRect {
                 rect,
@@ -96,9 +99,9 @@ pub fn render_commands(
 
                 // Dim non-matching spans when search is active
                 let search_match = search.is_empty()
-                    || label
-                        .as_ref()
-                        .is_some_and(|l| l.as_ref().to_lowercase().contains(&search.to_lowercase()));
+                    || label.as_ref().is_some_and(|l| {
+                        l.as_ref().to_lowercase().contains(&search.to_lowercase())
+                    });
                 let fill = if search_match {
                     fill
                 } else {
@@ -109,7 +112,12 @@ pub fn render_commands(
 
                 if let Some(bc) = border_color {
                     let stroke_color = theme::resolve(*bc, mode);
-                    painter.rect_stroke(egui_rect, CornerRadius::ZERO, Stroke::new(1.0, stroke_color), StrokeKind::Outside);
+                    painter.rect_stroke(
+                        egui_rect,
+                        CornerRadius::ZERO,
+                        Stroke::new(1.0, stroke_color),
+                        StrokeKind::Outside,
+                    );
                 }
 
                 // Draw label text inside the rect

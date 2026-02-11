@@ -1,7 +1,7 @@
 use flame_cat_protocol::{
     AsyncSpan, CounterTrack, CpuSamples, FlowArrow, InstantEvent, Marker, NetworkRequest,
-    ObjectEvent, ProfileMeta, Screenshot, SharedStr, SourceFormat, Span, SpanCategory, SpanKind, ThreadGroup,
-    TimeDomain, ValueUnit, VisualProfile,
+    ObjectEvent, ProfileMeta, Screenshot, SharedStr, SourceFormat, Span, SpanCategory, SpanKind,
+    ThreadGroup, TimeDomain, ValueUnit, VisualProfile,
 };
 use serde::{Deserialize, Serialize};
 
@@ -250,7 +250,8 @@ mod tests {
     use super::*;
 
     fn sample_profile(format: &str) -> Profile {
-        Profile::new(ProfileMetadata {
+        Profile::new(
+            ProfileMetadata {
                 name: Some("test.json".into()),
                 start_time: 0.0,
                 end_time: 200.0,
