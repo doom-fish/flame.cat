@@ -2,29 +2,75 @@ import { darkTheme, lightTheme } from "./themes";
 import type { Theme } from "./themes";
 import type { RenderCommand } from "./protocol";
 import { WebGPURenderer } from "./renderers/webgpu";
+import { LaneManager } from "./app";
+import { bindInteraction } from "./app/interaction";
 
 async function main() {
   const canvas = document.getElementById("canvas") as HTMLCanvasElement;
   if (!canvas) throw new Error("No canvas element found");
 
-  // Fill viewport
   canvas.style.width = "100vw";
   canvas.style.height = "100vh";
   canvas.style.display = "block";
   document.body.style.margin = "0";
   document.body.style.overflow = "hidden";
 
-  // Theme selection
   const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
   const theme: Theme = prefersDark ? darkTheme : lightTheme;
 
-  // Init WebGPU renderer
   const renderer = new WebGPURenderer(canvas, theme);
   await renderer.init();
 
-  // Load WASM — path resolved at build time via Vite
   const wasm = await import("../crates/wasm/pkg/flame_cat_wasm.js");
   await wasm.default();
+
+  const laneManager = new LaneManager();
+
+  const renderAll = () => {
+    const allCommands: RenderCommand[] = [];
+
+    // Render lane headers
+    allCommands.push(...laneManager.renderHeaders(canvas.clientWidth));
+
+    // Render each lane's content
+    for (let i = 0; i < laneManager.lanes.length; i++) {
+      const lane = laneManager.lanes[i];
+      if (!lane) continue;
+      const laneY = laneManager.laneY(i) + laneManager.headerHeight;
+      try {
+        const commandsJson = wasm.render_view(
+          lane.profileIndex,
+          lane.viewType,
+          0,
+          0,
+          canvas.clientWidth,
+          lane.height,
+          window.devicePixelRatio,
+          lane.selectedFrameId,
+        );
+        const laneCmds: RenderCommand[] = JSON.parse(commandsJson) as RenderCommand[];
+
+        // Offset lane content by its Y position
+        allCommands.push({
+          PushTransform: { translate: { x: 0, y: laneY }, scale: { x: 1, y: 1 } },
+        });
+        allCommands.push({
+          SetClip: { rect: { x: 0, y: laneY, w: canvas.clientWidth, h: lane.height } },
+        });
+        allCommands.push(...laneCmds);
+        allCommands.push("ClearClip");
+        allCommands.push("PopTransform");
+      } catch (err) {
+        console.error(`Failed to render lane ${lane.id}:`, err);
+      }
+    }
+
+    const { scrollX } = laneManager.getTransform();
+    renderer.render(allCommands, scrollX, 0);
+  };
+
+  // Bind interaction handlers
+  bindInteraction(canvas, laneManager, renderAll);
 
   // File drop handling
   canvas.addEventListener("dragover", (e) => {
@@ -50,18 +96,14 @@ async function main() {
       const frameCount = wasm.get_frame_count(handle);
       console.log(`Loaded profile: ${frameCount} frames, ${meta.end_time - meta.start_time}µs`);
 
-      const commandsJson = wasm.render_view(
-        handle,
-        "time-order",
-        0,
-        0,
-        canvas.clientWidth,
-        canvas.clientHeight,
-        window.devicePixelRatio,
-        undefined,
-      );
-      const commands: RenderCommand[] = JSON.parse(commandsJson) as RenderCommand[];
-      renderer.render(commands, 0, 0);
+      laneManager.addLane({
+        id: `lane-${laneManager.lanes.length}`,
+        viewType: "time-order",
+        profileIndex: handle,
+        height: Math.max(200, canvas.clientHeight / 2),
+      });
+
+      renderAll();
     } catch (err) {
       console.error("Failed to load profile:", err);
     }
@@ -69,7 +111,6 @@ async function main() {
 
   // Render empty state
   renderer.render([], 0, 0);
-
   console.log("flame.cat ready — drop a Chrome trace JSON file to visualize");
 }
 
