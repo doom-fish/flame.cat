@@ -62,6 +62,10 @@ enum LaneKind {
     AsyncSpans,
     /// Markers track.
     Markers,
+    /// CPU samples track.
+    CpuSamples,
+    /// Frame timing track.
+    FrameTrack,
     /// Minimap overview.
     Minimap,
 }
@@ -245,6 +249,28 @@ impl FlameApp {
             });
         }
 
+        // CPU samples lane
+        if profile.cpu_samples.is_some() {
+            self.lanes.push(LaneState {
+                kind: LaneKind::CpuSamples,
+                name: "CPU Samples".to_string(),
+                height: 80.0,
+                scroll_y: 0.0,
+                visible: true,
+            });
+        }
+
+        // Frame track (if frames data exists)
+        if !profile.frames.is_empty() {
+            self.lanes.push(LaneState {
+                kind: LaneKind::FrameTrack,
+                name: format!("Frames ({})", profile.frames.len()),
+                height: 40.0,
+                scroll_y: 0.0,
+                visible: true,
+            });
+        }
+
         // Minimap (always last, always visible)
         self.lanes.push(LaneState {
             kind: LaneKind::Minimap,
@@ -324,6 +350,23 @@ impl FlameApp {
                 LaneKind::Markers => {
                     flame_cat_core::views::markers::render_markers(
                         &entry.profile.markers,
+                        &viewport,
+                        abs_start,
+                        abs_end,
+                    )
+                }
+                LaneKind::CpuSamples => {
+                    if let Some(ref samples) = entry.profile.cpu_samples {
+                        flame_cat_core::views::cpu_samples::render_cpu_samples(
+                            samples, &viewport, abs_start, abs_end,
+                        )
+                    } else {
+                        Vec::new()
+                    }
+                }
+                LaneKind::FrameTrack => {
+                    flame_cat_core::views::frame_track::render_frame_track(
+                        &entry.profile.frames,
                         &viewport,
                         abs_start,
                         abs_end,
