@@ -43,6 +43,16 @@ export const darkTheme: Theme = {
     TableBorder: { r: 0.2, g: 0.2, b: 0.22, a: 1.0 },
     BarFill: { r: 0.3, g: 0.69, b: 0.31, a: 0.6 },
     SearchHighlight: { r: 0.95, g: 0.85, b: 0.2, a: 0.4 },
+    CounterFill: { r: 0.24, g: 0.47, b: 0.78, a: 0.35 },
+    CounterLine: { r: 0.31, g: 0.63, b: 0.94, a: 0.9 },
+    CounterText: { r: 0.45, g: 0.72, b: 0.95, a: 1.0 },
+    MarkerLine: { r: 0.78, g: 0.39, b: 0.39, a: 0.6 },
+    MarkerText: { r: 0.9, g: 0.55, b: 0.55, a: 1.0 },
+    AsyncSpanFill: { r: 0.39, g: 0.59, b: 0.78, a: 0.7 },
+    AsyncSpanBorder: { r: 0.31, g: 0.47, b: 0.63, a: 1.0 },
+    FrameGood: { r: 0.3, g: 0.69, b: 0.31, a: 0.8 },
+    FrameWarning: { r: 0.95, g: 0.77, b: 0.06, a: 0.8 },
+    FrameDropped: { r: 0.91, g: 0.3, b: 0.24, a: 0.9 },
   },
 };
 
@@ -77,6 +87,16 @@ export const lightTheme: Theme = {
     TableBorder: { r: 0.85, g: 0.85, b: 0.87, a: 1.0 },
     BarFill: { r: 0.26, g: 0.63, b: 0.28, a: 0.5 },
     SearchHighlight: { r: 0.95, g: 0.85, b: 0.2, a: 0.35 },
+    CounterFill: { r: 0.2, g: 0.4, b: 0.7, a: 0.25 },
+    CounterLine: { r: 0.25, g: 0.53, b: 0.84, a: 0.8 },
+    CounterText: { r: 0.16, g: 0.5, b: 0.73, a: 1.0 },
+    MarkerLine: { r: 0.7, g: 0.3, b: 0.3, a: 0.5 },
+    MarkerText: { r: 0.6, g: 0.2, b: 0.2, a: 1.0 },
+    AsyncSpanFill: { r: 0.3, g: 0.5, b: 0.7, a: 0.5 },
+    AsyncSpanBorder: { r: 0.25, g: 0.4, b: 0.55, a: 1.0 },
+    FrameGood: { r: 0.26, g: 0.63, b: 0.28, a: 0.7 },
+    FrameWarning: { r: 0.9, g: 0.7, b: 0.04, a: 0.7 },
+    FrameDropped: { r: 0.89, g: 0.26, b: 0.2, a: 0.8 },
   },
 };
 

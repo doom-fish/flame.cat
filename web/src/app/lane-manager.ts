@@ -1,6 +1,7 @@
 import type { RenderCommand } from "../protocol";
 
 export type ViewType = "time-order" | "left-heavy" | "sandwich" | "ranked";
+export type TrackType = "thread" | "counter" | "marker" | "frame";
 
 export interface LaneConfig {
   id: string;
@@ -15,6 +16,10 @@ export interface LaneConfig {
   threadName?: string;
   /** Whether this lane is visible. Hidden lanes are skipped during rendering. */
   visible: boolean;
+  /** Track type — defaults to "thread" for normal flame lanes. */
+  trackType?: TrackType;
+  /** Counter name — only used when trackType is "counter". */
+  counterName?: string;
 }
 
 const HEADER_HEIGHT = 28;

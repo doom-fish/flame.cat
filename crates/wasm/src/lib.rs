@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 
 use flame_cat_core::model::Session;
-use flame_cat_core::views::{left_heavy, minimap, ranked, sandwich, time_order};
+use flame_cat_core::views::{counter, frame_track, left_heavy, markers, minimap, ranked, sandwich, time_order};
 use flame_cat_protocol::{Viewport, VisualProfile};
 use wasm_bindgen::prelude::*;
 
@@ -367,5 +367,182 @@ pub fn get_ranked_entries(
 
         let entries = ranked::get_ranked_entries(profile, sort, ascending);
         serde_json::to_string(&entries).map_err(|e| JsError::new(&e.to_string()))
+    })
+}
+
+/// Render counter tracks for a profile, returning render commands as JSON.
+///
+/// Each counter gets its own area chart. Returns commands for all counters.
+#[wasm_bindgen]
+pub fn render_counters(
+    profile_index: usize,
+    width: f64,
+    height: f64,
+    dpr: f64,
+    view_start: Option<f64>,
+    view_end: Option<f64>,
+) -> Result<String, JsError> {
+    with_profile(profile_index, |profile| {
+        let vs = view_start.unwrap_or(profile.meta.start_time);
+        let ve = view_end.unwrap_or(profile.meta.end_time);
+        let viewport = Viewport {
+            x: 0.0,
+            y: 0.0,
+            width,
+            height,
+            dpr,
+        };
+
+        let mut all_commands = Vec::new();
+        for c in &profile.counters {
+            all_commands.extend(counter::render_counter_track(c, &viewport, vs, ve));
+        }
+
+        serde_json::to_string(&all_commands).map_err(|e| JsError::new(&e.to_string()))
+    })
+}
+
+/// Render a single counter track by name.
+#[wasm_bindgen]
+pub fn render_counter(
+    profile_index: usize,
+    counter_name: &str,
+    width: f64,
+    height: f64,
+    dpr: f64,
+    view_start: Option<f64>,
+    view_end: Option<f64>,
+) -> Result<String, JsError> {
+    with_profile(profile_index, |profile| {
+        let vs = view_start.unwrap_or(profile.meta.start_time);
+        let ve = view_end.unwrap_or(profile.meta.end_time);
+        let viewport = Viewport {
+            x: 0.0,
+            y: 0.0,
+            width,
+            height,
+            dpr,
+        };
+
+        let commands = if let Some(c) = profile.counters.iter().find(|c| c.name.as_ref() == counter_name) {
+            counter::render_counter_track(c, &viewport, vs, ve)
+        } else {
+            Vec::new()
+        };
+
+        serde_json::to_string(&commands).map_err(|e| JsError::new(&e.to_string()))
+    })
+}
+
+/// Render markers (navigation timing / user timing) as vertical lines.
+#[wasm_bindgen]
+pub fn render_markers(
+    profile_index: usize,
+    width: f64,
+    height: f64,
+    dpr: f64,
+    view_start: Option<f64>,
+    view_end: Option<f64>,
+) -> Result<String, JsError> {
+    with_profile(profile_index, |profile| {
+        let vs = view_start.unwrap_or(profile.meta.start_time);
+        let ve = view_end.unwrap_or(profile.meta.end_time);
+        let viewport = Viewport {
+            x: 0.0,
+            y: 0.0,
+            width,
+            height,
+            dpr,
+        };
+
+        let commands = markers::render_markers(&profile.markers, &viewport, vs, ve);
+        serde_json::to_string(&commands).map_err(|e| JsError::new(&e.to_string()))
+    })
+}
+
+/// Render the frame cost track (per-frame bars colored by cost).
+#[wasm_bindgen]
+pub fn render_frame_track(
+    profile_index: usize,
+    width: f64,
+    height: f64,
+    dpr: f64,
+    view_start: Option<f64>,
+    view_end: Option<f64>,
+) -> Result<String, JsError> {
+    with_profile(profile_index, |profile| {
+        let vs = view_start.unwrap_or(profile.meta.start_time);
+        let ve = view_end.unwrap_or(profile.meta.end_time);
+        let viewport = Viewport {
+            x: 0.0,
+            y: 0.0,
+            width,
+            height,
+            dpr,
+        };
+
+        let commands = frame_track::render_frame_track(&profile.frames, &viewport, vs, ve);
+        serde_json::to_string(&commands).map_err(|e| JsError::new(&e.to_string()))
+    })
+}
+
+/// Get counter track names for a profile as JSON array.
+#[wasm_bindgen]
+pub fn get_counter_names(profile_index: usize) -> Result<String, JsError> {
+    with_profile(profile_index, |profile| {
+        let names: Vec<&str> = profile.counters.iter().map(|c| c.name.as_ref()).collect();
+        serde_json::to_string(&names).map_err(|e| JsError::new(&e.to_string()))
+    })
+}
+
+/// Get marker names for a profile as JSON array.
+#[wasm_bindgen]
+pub fn get_marker_names(profile_index: usize) -> Result<String, JsError> {
+    with_profile(profile_index, |profile| {
+        let names: Vec<&str> = profile.markers.iter().map(|m| m.name.as_ref()).collect();
+        serde_json::to_string(&names).map_err(|e| JsError::new(&e.to_string()))
+    })
+}
+
+/// Get a summary of extra data tracks available in a profile.
+#[wasm_bindgen]
+pub fn get_extra_tracks(profile_index: usize) -> Result<String, JsError> {
+    with_profile(profile_index, |profile| {
+        #[derive(serde::Serialize)]
+        struct ExtraTracks {
+            counter_count: usize,
+            marker_count: usize,
+            async_span_count: usize,
+            flow_arrow_count: usize,
+            instant_event_count: usize,
+            object_event_count: usize,
+            has_cpu_samples: bool,
+            has_frames: bool,
+            counter_names: Vec<String>,
+            marker_names: Vec<String>,
+        }
+
+        let info = ExtraTracks {
+            counter_count: profile.counters.len(),
+            marker_count: profile.markers.len(),
+            async_span_count: profile.async_spans.len(),
+            flow_arrow_count: profile.flow_arrows.len(),
+            instant_event_count: profile.instant_events.len(),
+            object_event_count: profile.object_events.len(),
+            has_cpu_samples: profile.cpu_samples.is_some(),
+            has_frames: !profile.frames.is_empty(),
+            counter_names: profile
+                .counters
+                .iter()
+                .map(|c| c.name.to_string())
+                .collect(),
+            marker_names: profile
+                .markers
+                .iter()
+                .map(|m| m.name.to_string())
+                .collect(),
+        };
+
+        serde_json::to_string(&info).map_err(|e| JsError::new(&e.to_string()))
     })
 }

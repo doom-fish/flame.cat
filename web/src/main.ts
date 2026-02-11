@@ -257,19 +257,53 @@ async function main() {
         const absViewStart = meta.start_time + viewStart * duration;
         const absViewEnd = meta.start_time + viewEnd * duration;
 
-        const commandsJson = wasm.render_view(
-          lane.profileIndex,
-          lane.viewType,
-          0,
-          lane.scrollY,
-          canvas.clientWidth,
-          lane.height,
-          window.devicePixelRatio,
-          lane.selectedFrameId != null ? BigInt(lane.selectedFrameId) : undefined,
-          absViewStart,
-          absViewEnd,
-          lane.threadId,
-        );
+        let commandsJson: string;
+        const trackType = lane.trackType ?? "thread";
+
+        if (trackType === "counter" && lane.counterName) {
+          commandsJson = wasm.render_counter(
+            lane.profileIndex,
+            lane.counterName,
+            canvas.clientWidth,
+            lane.height,
+            window.devicePixelRatio,
+            absViewStart,
+            absViewEnd,
+          );
+        } else if (trackType === "marker") {
+          commandsJson = wasm.render_markers(
+            lane.profileIndex,
+            canvas.clientWidth,
+            lane.height,
+            window.devicePixelRatio,
+            absViewStart,
+            absViewEnd,
+          );
+        } else if (trackType === "frame") {
+          commandsJson = wasm.render_frame_track(
+            lane.profileIndex,
+            canvas.clientWidth,
+            lane.height,
+            window.devicePixelRatio,
+            absViewStart,
+            absViewEnd,
+          );
+        } else {
+          commandsJson = wasm.render_view(
+            lane.profileIndex,
+            lane.viewType,
+            0,
+            lane.scrollY,
+            canvas.clientWidth,
+            lane.height,
+            window.devicePixelRatio,
+            lane.selectedFrameId != null ? BigInt(lane.selectedFrameId) : undefined,
+            absViewStart,
+            absViewEnd,
+            lane.threadId,
+          );
+        }
+
         const laneCmds: RenderCommand[] = JSON.parse(commandsJson) as RenderCommand[];
 
         allCommands.push({
@@ -587,6 +621,61 @@ async function main() {
 
       laneSidebar.update(laneManager.lanes);
       updateSidebarProfiles();
+
+      // Add special tracks (counters, markers, frame cost)
+      try {
+        const extraJson = wasm.get_extra_tracks(handle);
+        const extra = JSON.parse(extraJson) as {
+          counter_count: number;
+          marker_count: number;
+          has_frames: boolean;
+          counter_names: string[];
+          marker_names: string[];
+        };
+
+        // Frame cost track (inserted at top)
+        if (extra.has_frames) {
+          laneManager.addLane({
+            id: `frame-${handle}`,
+            viewType: activeView,
+            profileIndex: handle,
+            height: 60,
+            trackType: "frame",
+            threadName: "⏱ Frame Cost",
+          });
+        }
+
+        // Counter tracks
+        for (const name of extra.counter_names) {
+          laneManager.addLane({
+            id: `counter-${handle}-${name}`,
+            viewType: activeView,
+            profileIndex: handle,
+            height: 60,
+            trackType: "counter",
+            counterName: name,
+            threadName: `📊 ${name}`,
+          });
+        }
+
+        // Marker track (if any marks exist)
+        if (extra.marker_count > 0) {
+          laneManager.addLane({
+            id: `markers-${handle}`,
+            viewType: activeView,
+            profileIndex: handle,
+            height: 40,
+            trackType: "marker",
+            threadName: `🔖 Markers (${extra.marker_count})`,
+          });
+        }
+
+        if (extra.counter_count > 0 || extra.marker_count > 0 || extra.has_frames) {
+          laneSidebar.update(laneManager.lanes);
+        }
+      } catch {
+        // extra tracks are optional
+      }
 
       // Update profileDuration from session info for multi-profile
       if (additive) {

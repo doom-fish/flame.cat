@@ -41,4 +41,22 @@ pub enum ThemeToken {
     TableBorder,
     BarFill,
     SearchHighlight,
+
+    // Counter tracks
+    CounterFill,
+    CounterLine,
+    CounterText,
+
+    // Markers / navigation timing
+    MarkerLine,
+    MarkerText,
+
+    // Async spans
+    AsyncSpanFill,
+    AsyncSpanBorder,
+
+    // Frame cost track
+    FrameGood,
+    FrameWarning,
+    FrameDropped,
 }

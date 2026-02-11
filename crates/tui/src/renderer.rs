@@ -47,6 +47,16 @@ fn theme_to_color(token: &ThemeToken) -> Color {
         ThemeToken::TableBorder => Color::DarkGray,
         ThemeToken::BarFill => Color::Green,
         ThemeToken::SearchHighlight => Color::LightYellow,
+        ThemeToken::CounterFill => Color::Rgb(60, 120, 200),
+        ThemeToken::CounterLine => Color::Rgb(80, 160, 240),
+        ThemeToken::CounterText => Color::Cyan,
+        ThemeToken::MarkerLine => Color::Rgb(200, 100, 100),
+        ThemeToken::MarkerText => Color::LightRed,
+        ThemeToken::AsyncSpanFill => Color::Rgb(100, 150, 200),
+        ThemeToken::AsyncSpanBorder => Color::Rgb(80, 120, 160),
+        ThemeToken::FrameGood => Color::Green,
+        ThemeToken::FrameWarning => Color::Yellow,
+        ThemeToken::FrameDropped => Color::Red,
     }
 }
 

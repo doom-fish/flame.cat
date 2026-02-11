@@ -28,7 +28,17 @@ export type ThemeToken =
   | "TableHeaderBackground"
   | "TableBorder"
   | "BarFill"
-  | "SearchHighlight";
+  | "SearchHighlight"
+  | "CounterFill"
+  | "CounterLine"
+  | "CounterText"
+  | "MarkerLine"
+  | "MarkerText"
+  | "AsyncSpanFill"
+  | "AsyncSpanBorder"
+  | "FrameGood"
+  | "FrameWarning"
+  | "FrameDropped";
 
 export interface Point {
   x: number;
