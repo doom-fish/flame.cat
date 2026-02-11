@@ -8,6 +8,10 @@ declare module "*.wgsl?raw" {
 declare module "*/flame_cat_wasm.js" {
   export default function init(): Promise<void>;
   export function parse_profile(data: Uint8Array): number;
+  export function add_profile_with_label(data: Uint8Array, label: string): number;
+  export function clear_session(): void;
+  export function get_session_info(): string;
+  export function set_profile_offset(profile_index: number, offset_us: number): void;
   export function render_view(
     profile_index: number,
     view_type: string,
@@ -17,9 +21,14 @@ declare module "*/flame_cat_wasm.js" {
     height: number,
     dpr: number,
     selected_frame_id?: bigint | null,
+    view_start?: number | null,
+    view_end?: number | null,
+    thread_id?: number | null,
   ): string;
   export function get_profile_metadata(profile_index: number): string;
   export function get_frame_count(profile_index: number): number;
+  export function get_span_info(profile_index: number, frame_id: bigint): string;
+  export function get_content_bounds(profile_index: number): string;
   export function render_minimap(
     profile_index: number,
     width: number,
@@ -28,6 +37,7 @@ declare module "*/flame_cat_wasm.js" {
     visible_start_frac: number,
     visible_end_frac: number,
   ): string;
+  export function get_thread_list(profile_index: number): string;
   export function get_ranked_entries(
     profile_index: number,
     sort_field: string,

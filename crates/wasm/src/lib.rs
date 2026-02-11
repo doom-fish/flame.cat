@@ -1,26 +1,156 @@
 use std::sync::Mutex;
 
+use flame_cat_core::model::Session;
 use flame_cat_core::views::{left_heavy, minimap, ranked, sandwich, time_order};
 use flame_cat_protocol::{Viewport, VisualProfile};
 use wasm_bindgen::prelude::*;
 
-static PROFILES: Mutex<Vec<VisualProfile>> = Mutex::new(Vec::new());
+static SESSION: Mutex<Option<Session>> = Mutex::new(None);
 
-fn lock_profiles() -> Result<std::sync::MutexGuard<'static, Vec<VisualProfile>>, JsError> {
-    PROFILES
+fn lock_session() -> Result<std::sync::MutexGuard<'static, Option<Session>>, JsError> {
+    SESSION
         .lock()
-        .map_err(|_| JsError::new("internal error: profile store lock poisoned"))
+        .map_err(|_| JsError::new("internal error: session lock poisoned"))
+}
+
+fn with_session<T>(f: impl FnOnce(&Session) -> Result<T, JsError>) -> Result<T, JsError> {
+    let guard = lock_session()?;
+    let session = guard.as_ref().ok_or_else(|| JsError::new("no session"))?;
+    f(session)
+}
+
+fn with_profile<T>(
+    profile_index: usize,
+    f: impl FnOnce(&VisualProfile) -> Result<T, JsError>,
+) -> Result<T, JsError> {
+    with_session(|session| {
+        let entry = session
+            .profiles()
+            .get(profile_index)
+            .ok_or_else(|| JsError::new("invalid profile index"))?;
+        f(&entry.profile)
+    })
 }
 
 /// Parse a profile from bytes (auto-detects format). Returns a handle (index) for later use.
+///
+/// The first profile creates a new session. Subsequent calls add profiles
+/// to the existing session with automatic clock alignment when possible.
 #[wasm_bindgen]
 pub fn parse_profile(data: &[u8]) -> Result<usize, JsError> {
     let profile = flame_cat_core::parsers::parse_auto_visual(data)
         .map_err(|e| JsError::new(&e.to_string()))?;
-    let mut profiles = lock_profiles()?;
-    let idx = profiles.len();
-    profiles.push(profile);
+    let guard = lock_session()?;
+    let next_idx = guard.as_ref().map_or(0, Session::len);
+    drop(guard);
+    let label = profile
+        .meta
+        .name
+        .as_ref()
+        .map(ToString::to_string)
+        .unwrap_or_else(|| format!("profile-{next_idx}"));
+    add_profile_to_session(profile, &label)
+}
+
+/// Add a profile to the session with a custom label. Returns profile index.
+#[wasm_bindgen]
+pub fn add_profile_with_label(data: &[u8], label: &str) -> Result<usize, JsError> {
+    let profile = flame_cat_core::parsers::parse_auto_visual(data)
+        .map_err(|e| JsError::new(&e.to_string()))?;
+    add_profile_to_session(profile, label)
+}
+
+fn add_profile_to_session(profile: VisualProfile, label: &str) -> Result<usize, JsError> {
+    let mut guard = lock_session()?;
+    let session = guard.get_or_insert_with(Session::new);
+    let idx = session.len();
+    session.add_profile(profile, label);
     Ok(idx)
+}
+
+/// Clear the current session and all loaded profiles.
+#[wasm_bindgen]
+pub fn clear_session() -> Result<(), JsError> {
+    let mut guard = lock_session()?;
+    *guard = None;
+    Ok(())
+}
+
+/// Get session metadata as JSON: profile count, unified time bounds, per-profile info.
+#[wasm_bindgen]
+pub fn get_session_info() -> Result<String, JsError> {
+    with_session(|session| {
+        #[derive(serde::Serialize)]
+        struct SessionInfo {
+            profile_count: usize,
+            start_time: f64,
+            end_time: f64,
+            duration: f64,
+            profiles: Vec<ProfileInfo>,
+        }
+
+        #[derive(serde::Serialize)]
+        struct ProfileInfo {
+            index: usize,
+            label: String,
+            source_format: String,
+            offset_us: f64,
+            start_time: f64,
+            end_time: f64,
+            span_count: usize,
+            has_time_domain: bool,
+            clock_kind: Option<String>,
+        }
+
+        let profiles = session
+            .profiles()
+            .iter()
+            .enumerate()
+            .map(|(i, e)| ProfileInfo {
+                index: i,
+                label: e.label.clone(),
+                source_format: e.profile.meta.source_format.to_string(),
+                offset_us: e.offset_us,
+                start_time: e.session_start(),
+                end_time: e.session_end(),
+                span_count: e.profile.span_count(),
+                has_time_domain: e.profile.meta.time_domain.is_some(),
+                clock_kind: e
+                    .profile
+                    .meta
+                    .time_domain
+                    .as_ref()
+                    .map(|td| format!("{:?}", td.clock_kind)),
+            })
+            .collect();
+
+        let info = SessionInfo {
+            profile_count: session.len(),
+            start_time: session.start_time(),
+            end_time: session.end_time(),
+            duration: session.duration(),
+            profiles,
+        };
+
+        serde_json::to_string(&info).map_err(|e| JsError::new(&e.to_string()))
+    })
+}
+
+/// Manually set the time offset (µs) for a profile in the session.
+///
+/// Use this for manual alignment when automatic clock domain alignment
+/// is not possible (e.g. React DevTools export + Chrome trace from
+/// different sessions).
+#[wasm_bindgen]
+pub fn set_profile_offset(profile_index: usize, offset_us: f64) -> Result<(), JsError> {
+    let mut guard = lock_session()?;
+    let session = guard.as_mut().ok_or_else(|| JsError::new("no session"))?;
+    let entry = session
+        .profiles_mut()
+        .get_mut(profile_index)
+        .ok_or_else(|| JsError::new("invalid profile index"))?;
+    entry.offset_us = offset_us;
+    Ok(())
 }
 
 /// Render a view for a profile, returning render commands as JSON.
@@ -45,135 +175,122 @@ pub fn render_view(
     view_end: Option<f64>,
     thread_id: Option<u32>,
 ) -> Result<String, JsError> {
-    let profiles = lock_profiles()?;
-    let profile = profiles
-        .get(profile_index)
-        .ok_or_else(|| JsError::new("invalid profile index"))?;
+    with_profile(profile_index, |profile| {
+        let viewport = Viewport {
+            x,
+            y,
+            width,
+            height,
+            dpr,
+        };
 
-    let viewport = Viewport {
-        x,
-        y,
-        width,
-        height,
-        dpr,
-    };
+        let vs = view_start.unwrap_or(profile.meta.start_time);
+        let ve = view_end.unwrap_or(profile.meta.end_time);
 
-    let vs = view_start.unwrap_or(profile.meta.start_time);
-    let ve = view_end.unwrap_or(profile.meta.end_time);
+        let commands = match view_type {
+            "time-order" => time_order::render_time_order(profile, &viewport, vs, ve, thread_id),
+            "left-heavy" => left_heavy::render_left_heavy(profile, &viewport, thread_id),
+            "sandwich" => {
+                let frame_id = selected_frame_id
+                    .ok_or_else(|| JsError::new("sandwich requires selected_frame_id"))?;
+                sandwich::render_sandwich(profile, frame_id, &viewport)
+            }
+            "ranked" => {
+                ranked::render_ranked(profile, &viewport, ranked::RankedSort::SelfTime, false)
+            }
+            _ => return Err(JsError::new(&format!("unknown view type: {view_type}"))),
+        };
 
-    let commands = match view_type {
-        "time-order" => time_order::render_time_order(profile, &viewport, vs, ve, thread_id),
-        "left-heavy" => left_heavy::render_left_heavy(profile, &viewport, thread_id),
-        "sandwich" => {
-            let frame_id = selected_frame_id
-                .ok_or_else(|| JsError::new("sandwich requires selected_frame_id"))?;
-            sandwich::render_sandwich(profile, frame_id, &viewport)
-        }
-        "ranked" => ranked::render_ranked(profile, &viewport, ranked::RankedSort::SelfTime, false),
-        _ => return Err(JsError::new(&format!("unknown view type: {view_type}"))),
-    };
-
-    serde_json::to_string(&commands).map_err(|e| JsError::new(&e.to_string()))
+        serde_json::to_string(&commands).map_err(|e| JsError::new(&e.to_string()))
+    })
 }
 
 /// Get profile metadata as JSON.
 #[wasm_bindgen]
 pub fn get_profile_metadata(profile_index: usize) -> Result<String, JsError> {
-    let profiles = lock_profiles()?;
-    let profile = profiles
-        .get(profile_index)
-        .ok_or_else(|| JsError::new("invalid profile index"))?;
-    serde_json::to_string(&profile.meta).map_err(|e| JsError::new(&e.to_string()))
+    with_profile(profile_index, |profile| {
+        serde_json::to_string(&profile.meta).map_err(|e| JsError::new(&e.to_string()))
+    })
 }
 
 /// Get the number of spans in a profile.
 #[wasm_bindgen]
 pub fn get_frame_count(profile_index: usize) -> Result<usize, JsError> {
-    let profiles = lock_profiles()?;
-    let profile = profiles
-        .get(profile_index)
-        .ok_or_else(|| JsError::new("invalid profile index"))?;
-    Ok(profile.span_count())
+    with_profile(profile_index, |profile| Ok(profile.span_count()))
 }
 
 /// Look up span details by frame ID. Returns JSON with name, start, end,
 /// duration, self_value, depth, category, and thread name.
 #[wasm_bindgen]
 pub fn get_span_info(profile_index: usize, frame_id: u64) -> Result<String, JsError> {
-    let profiles = lock_profiles()?;
-    let profile = profiles
-        .get(profile_index)
-        .ok_or_else(|| JsError::new("invalid profile index"))?;
-
-    for thread in &profile.threads {
-        for span in &thread.spans {
-            if span.id == frame_id {
-                #[derive(serde::Serialize)]
-                struct SpanInfo {
-                    name: String,
-                    start: f64,
-                    end: f64,
-                    duration: f64,
-                    self_time: f64,
-                    depth: u32,
-                    category: Option<String>,
-                    thread: String,
+    with_profile(profile_index, |profile| {
+        for thread in &profile.threads {
+            for span in &thread.spans {
+                if span.id == frame_id {
+                    #[derive(serde::Serialize)]
+                    struct SpanInfo {
+                        name: String,
+                        start: f64,
+                        end: f64,
+                        duration: f64,
+                        self_time: f64,
+                        depth: u32,
+                        category: Option<String>,
+                        thread: String,
+                    }
+                    let info = SpanInfo {
+                        name: span.name.to_string(),
+                        start: span.start,
+                        end: span.end,
+                        duration: span.duration(),
+                        self_time: span.self_value,
+                        depth: span.depth,
+                        category: span.category.as_ref().map(|c| c.name.to_string()),
+                        thread: thread.name.to_string(),
+                    };
+                    return serde_json::to_string(&info).map_err(|e| JsError::new(&e.to_string()));
                 }
-                let info = SpanInfo {
-                    name: span.name.to_string(),
-                    start: span.start,
-                    end: span.end,
-                    duration: span.duration(),
-                    self_time: span.self_value,
-                    depth: span.depth,
-                    category: span.category.as_ref().map(|c| c.name.to_string()),
-                    thread: thread.name.to_string(),
-                };
-                return serde_json::to_string(&info).map_err(|e| JsError::new(&e.to_string()));
             }
         }
-    }
 
-    Err(JsError::new(&format!("span {frame_id} not found")))
+        Err(JsError::new(&format!("span {frame_id} not found")))
+    })
 }
 
 /// Get the actual content time bounds (min span start, max span end) as JSON.
 /// Useful for zoom-to-fit, skipping empty regions at the edges.
 #[wasm_bindgen]
 pub fn get_content_bounds(profile_index: usize) -> Result<String, JsError> {
-    let profiles = lock_profiles()?;
-    let profile = profiles
-        .get(profile_index)
-        .ok_or_else(|| JsError::new("invalid profile index"))?;
-
-    let mut min_start = f64::MAX;
-    let mut max_end = f64::MIN;
-    for thread in &profile.threads {
-        for span in &thread.spans {
-            if span.start < min_start {
-                min_start = span.start;
-            }
-            if span.end > max_end {
-                max_end = span.end;
+    with_profile(profile_index, |profile| {
+        let mut min_start = f64::MAX;
+        let mut max_end = f64::MIN;
+        for thread in &profile.threads {
+            for span in &thread.spans {
+                if span.start < min_start {
+                    min_start = span.start;
+                }
+                if span.end > max_end {
+                    max_end = span.end;
+                }
             }
         }
-    }
 
-    if min_start > max_end {
-        min_start = profile.meta.start_time;
-        max_end = profile.meta.end_time;
-    }
+        if min_start > max_end {
+            min_start = profile.meta.start_time;
+            max_end = profile.meta.end_time;
+        }
 
-    #[derive(serde::Serialize)]
-    struct Bounds {
-        start: f64,
-        end: f64,
-    }
-    serde_json::to_string(&Bounds {
-        start: min_start,
-        end: max_end,
+        #[derive(serde::Serialize)]
+        struct Bounds {
+            start: f64,
+            end: f64,
+        }
+        serde_json::to_string(&Bounds {
+            start: min_start,
+            end: max_end,
+        })
+        .map_err(|e| JsError::new(&e.to_string()))
     })
-    .map_err(|e| JsError::new(&e.to_string()))
 }
 
 /// Render the minimap for a profile, returning render commands as JSON.
@@ -186,22 +303,19 @@ pub fn render_minimap(
     visible_start_frac: f64,
     visible_end_frac: f64,
 ) -> Result<String, JsError> {
-    let profiles = lock_profiles()?;
-    let profile = profiles
-        .get(profile_index)
-        .ok_or_else(|| JsError::new("invalid profile index"))?;
+    with_profile(profile_index, |profile| {
+        let viewport = Viewport {
+            x: 0.0,
+            y: 0.0,
+            width,
+            height,
+            dpr,
+        };
 
-    let viewport = Viewport {
-        x: 0.0,
-        y: 0.0,
-        width,
-        height,
-        dpr,
-    };
-
-    let commands =
-        minimap::render_minimap(profile, &viewport, visible_start_frac, visible_end_frac);
-    serde_json::to_string(&commands).map_err(|e| JsError::new(&e.to_string()))
+        let commands =
+            minimap::render_minimap(profile, &viewport, visible_start_frac, visible_end_frac);
+        serde_json::to_string(&commands).map_err(|e| JsError::new(&e.to_string()))
+    })
 }
 
 /// Get the list of thread groups for a profile as JSON.
@@ -209,33 +323,30 @@ pub fn render_minimap(
 /// Returns an array of `{ id, name, span_count, sort_key, max_depth }` objects.
 #[wasm_bindgen]
 pub fn get_thread_list(profile_index: usize) -> Result<String, JsError> {
-    let profiles = lock_profiles()?;
-    let profile = profiles
-        .get(profile_index)
-        .ok_or_else(|| JsError::new("invalid profile index"))?;
+    with_profile(profile_index, |profile| {
+        #[derive(serde::Serialize)]
+        struct ThreadInfo {
+            id: u32,
+            name: String,
+            span_count: usize,
+            sort_key: i64,
+            max_depth: u32,
+        }
 
-    #[derive(serde::Serialize)]
-    struct ThreadInfo {
-        id: u32,
-        name: String,
-        span_count: usize,
-        sort_key: i64,
-        max_depth: u32,
-    }
+        let threads: Vec<ThreadInfo> = profile
+            .threads
+            .iter()
+            .map(|t| ThreadInfo {
+                id: t.id,
+                name: t.name.to_string(),
+                span_count: t.spans.len(),
+                sort_key: t.sort_key,
+                max_depth: t.spans.iter().map(|s| s.depth).max().unwrap_or(0),
+            })
+            .collect();
 
-    let threads: Vec<ThreadInfo> = profile
-        .threads
-        .iter()
-        .map(|t| ThreadInfo {
-            id: t.id,
-            name: t.name.to_string(),
-            span_count: t.spans.len(),
-            sort_key: t.sort_key,
-            max_depth: t.spans.iter().map(|s| s.depth).max().unwrap_or(0),
-        })
-        .collect();
-
-    serde_json::to_string(&threads).map_err(|e| JsError::new(&e.to_string()))
+        serde_json::to_string(&threads).map_err(|e| JsError::new(&e.to_string()))
+    })
 }
 
 /// Get ranked entries for a profile as JSON.
@@ -245,19 +356,16 @@ pub fn get_ranked_entries(
     sort_field: &str,
     ascending: bool,
 ) -> Result<String, JsError> {
-    let profiles = lock_profiles()?;
-    let profile = profiles
-        .get(profile_index)
-        .ok_or_else(|| JsError::new("invalid profile index"))?;
+    with_profile(profile_index, |profile| {
+        let sort = match sort_field {
+            "self" => ranked::RankedSort::SelfTime,
+            "total" => ranked::RankedSort::TotalTime,
+            "name" => ranked::RankedSort::Name,
+            "count" => ranked::RankedSort::Count,
+            _ => ranked::RankedSort::SelfTime,
+        };
 
-    let sort = match sort_field {
-        "self" => ranked::RankedSort::SelfTime,
-        "total" => ranked::RankedSort::TotalTime,
-        "name" => ranked::RankedSort::Name,
-        "count" => ranked::RankedSort::Count,
-        _ => ranked::RankedSort::SelfTime,
-    };
-
-    let entries = ranked::get_ranked_entries(profile, sort, ascending);
-    serde_json::to_string(&entries).map_err(|e| JsError::new(&e.to_string()))
+        let entries = ranked::get_ranked_entries(profile, sort, ascending);
+        serde_json::to_string(&entries).map_err(|e| JsError::new(&e.to_string()))
+    })
 }
