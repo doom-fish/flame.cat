@@ -119,17 +119,6 @@ pub fn render_async_track(
                 label: Some(span.name.clone()),
                 frame_id: None,
             });
-
-            // Label if wide enough
-            if clamped_w > MIN_LABEL_WIDTH {
-                commands.push(RenderCommand::DrawText {
-                    position: Point::new(clamped_x + 3.0, y + ROW_HEIGHT / 2.0 + 4.0),
-                    text: span.name.clone(),
-                    color: ThemeToken::TextPrimary,
-                    font_size: FONT_SIZE,
-                    align: TextAlign::Left,
-                });
-            }
         }
 
         let rows_used = row_ends.len().max(1);
