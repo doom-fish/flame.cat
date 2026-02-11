@@ -9,8 +9,9 @@ pub use shared_str::SharedStr;
 pub use theme::ThemeToken;
 pub use types::{ClockKind, Color, Point, Rect, TimeDomain};
 pub use visual_profile::{
-    FrameTiming, ProfileMeta, SourceFormat, Span, SpanCategory, SpanKind, ThreadGroup, ValueUnit,
-    VisualProfile,
+    AsyncSpan, CounterSample, CounterTrack, CounterUnit, CpuNode, CpuSamples, FlowArrow,
+    FrameTiming, InstantEvent, Marker, MarkerScope, ObjectEvent, ObjectPhase, ProfileMeta,
+    SourceFormat, Span, SpanCategory, SpanKind, ThreadGroup, ValueUnit, VisualProfile,
 };
 
 /// Viewport describing the visible region — passed to view transforms so

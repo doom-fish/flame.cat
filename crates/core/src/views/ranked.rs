@@ -292,6 +292,13 @@ mod tests {
                 ],
             }],
             frames: vec![],
+            counters: vec![],
+            async_spans: vec![],
+            flow_arrows: vec![],
+            markers: vec![],
+            instant_events: vec![],
+            object_events: vec![],
+            cpu_samples: None,
         };
 
         let entries = get_ranked_entries(&profile, RankedSort::SelfTime, false);

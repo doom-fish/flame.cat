@@ -189,8 +189,7 @@ pub fn parse_cpuprofile(data: &[u8]) -> Result<Profile, CpuProfileParseError> {
 
     compute_self_times(&mut frames);
 
-    Ok(Profile {
-        metadata: ProfileMetadata {
+    Ok(Profile::new(ProfileMetadata {
             name: None,
             start_time: cpu_profile.start_time,
             end_time: cpu_profile.end_time,
@@ -198,7 +197,7 @@ pub fn parse_cpuprofile(data: &[u8]) -> Result<Profile, CpuProfileParseError> {
             time_domain: None,
         },
         frames,
-    })
+    ))
 }
 
 /// Reconstruct timeline from V8 sample data.
@@ -318,8 +317,7 @@ fn parse_from_samples(
 
     compute_self_times(&mut frames);
 
-    Ok(Profile {
-        metadata: ProfileMetadata {
+    Ok(Profile::new(ProfileMetadata {
             name: None,
             start_time: cpu_profile.start_time,
             end_time: cpu_profile.end_time,
@@ -327,7 +325,7 @@ fn parse_from_samples(
             time_domain: None,
         },
         frames,
-    })
+    ))
 }
 
 fn compute_self_times(frames: &mut [Frame]) {

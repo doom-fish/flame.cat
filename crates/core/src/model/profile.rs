@@ -1,6 +1,7 @@
 use flame_cat_protocol::{
-    ProfileMeta, SharedStr, SourceFormat, Span, SpanCategory, SpanKind, ThreadGroup, TimeDomain,
-    ValueUnit, VisualProfile,
+    AsyncSpan, CounterTrack, CpuSamples, FlowArrow, InstantEvent, Marker, ObjectEvent, ProfileMeta,
+    SharedStr, SourceFormat, Span, SpanCategory, SpanKind, ThreadGroup, TimeDomain, ValueUnit,
+    VisualProfile,
 };
 use serde::{Deserialize, Serialize};
 
@@ -49,9 +50,45 @@ pub struct ProfileMetadata {
 pub struct Profile {
     pub metadata: ProfileMetadata,
     pub frames: Vec<Frame>,
+    /// Counter tracks (memory, DOM nodes, custom metrics).
+    #[serde(default)]
+    pub counters: Vec<CounterTrack>,
+    /// Async spans (cross-thread, non-nested work).
+    #[serde(default)]
+    pub async_spans: Vec<AsyncSpan>,
+    /// Flow arrows (causality links between events).
+    #[serde(default)]
+    pub flow_arrows: Vec<FlowArrow>,
+    /// Markers (vertical lines at points in time).
+    #[serde(default)]
+    pub markers: Vec<Marker>,
+    /// Instant events.
+    #[serde(default)]
+    pub instant_events: Vec<InstantEvent>,
+    /// Object lifecycle events.
+    #[serde(default)]
+    pub object_events: Vec<ObjectEvent>,
+    /// CPU profiler sample data.
+    #[serde(default)]
+    pub cpu_samples: Option<CpuSamples>,
 }
 
 impl Profile {
+    /// Construct a profile with only frames (new event types default to empty).
+    pub fn new(metadata: ProfileMetadata, frames: Vec<Frame>) -> Self {
+        Self {
+            metadata,
+            frames,
+            counters: vec![],
+            async_spans: vec![],
+            flow_arrows: vec![],
+            markers: vec![],
+            instant_events: vec![],
+            object_events: vec![],
+            cpu_samples: None,
+        }
+    }
+
     pub fn duration(&self) -> f64 {
         self.metadata.end_time - self.metadata.start_time
     }
@@ -174,6 +211,13 @@ impl Profile {
             },
             threads,
             frames: vec![],
+            counters: self.counters,
+            async_spans: self.async_spans,
+            flow_arrows: self.flow_arrows,
+            markers: self.markers,
+            instant_events: self.instant_events,
+            object_events: self.object_events,
+            cpu_samples: self.cpu_samples,
         }
     }
 }
@@ -196,15 +240,14 @@ mod tests {
     use super::*;
 
     fn sample_profile(format: &str) -> Profile {
-        Profile {
-            metadata: ProfileMetadata {
+        Profile::new(ProfileMetadata {
                 name: Some("test.json".into()),
                 start_time: 0.0,
                 end_time: 200.0,
                 format: format.to_string(),
                 time_domain: None,
             },
-            frames: vec![
+            vec![
                 Frame {
                     id: 0,
                     name: "main".into(),
@@ -228,7 +271,7 @@ mod tests {
                     thread: None,
                 },
             ],
-        }
+        )
     }
 
     #[test]

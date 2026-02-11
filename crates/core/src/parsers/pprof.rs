@@ -164,8 +164,7 @@ pub fn parse_pprof(data: &[u8]) -> Result<Profile, PprofParseError> {
         .map(|ns| ns as f64 / 1000.0)
         .unwrap_or(offset);
 
-    Ok(Profile {
-        metadata: ProfileMetadata {
+    Ok(Profile::new(ProfileMetadata {
             name: None,
             start_time: 0.0,
             end_time: if duration_us > 0.0 {
@@ -177,7 +176,7 @@ pub fn parse_pprof(data: &[u8]) -> Result<Profile, PprofParseError> {
             time_domain: None,
         },
         frames,
-    })
+    ))
 }
 
 #[cfg(test)]

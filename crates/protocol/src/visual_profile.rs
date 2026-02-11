@@ -32,6 +32,27 @@ pub struct VisualProfile {
     /// Rendering frame timings extracted from the profile, if available.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub frames: Vec<FrameTiming>,
+    /// Counter tracks (memory, DOM nodes, custom metrics).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub counters: Vec<CounterTrack>,
+    /// Async spans (cross-thread, non-nested work).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub async_spans: Vec<AsyncSpan>,
+    /// Flow arrows (causality links between events).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub flow_arrows: Vec<FlowArrow>,
+    /// Markers (vertical lines at points in time).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub markers: Vec<Marker>,
+    /// Instant events (point-in-time, no duration).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub instant_events: Vec<InstantEvent>,
+    /// Object lifecycle events.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub object_events: Vec<ObjectEvent>,
+    /// CPU profiler sample data.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpu_samples: Option<CpuSamples>,
 }
 
 /// Top-level metadata about the profile.
@@ -247,6 +268,154 @@ pub struct FrameTiming {
     pub dropped: bool,
 }
 
+/// A counter track with time-series samples (memory, FPS, DOM nodes, etc.).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CounterTrack {
+    /// Counter name (e.g. "JS Heap", "DOM Nodes").
+    pub name: SharedStr,
+    /// Unit for the values.
+    pub unit: CounterUnit,
+    /// Sorted time-series samples.
+    pub samples: Vec<CounterSample>,
+}
+
+/// Unit type for counter values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CounterUnit {
+    Bytes,
+    Count,
+    Percent,
+    Microseconds,
+    Milliseconds,
+    None,
+}
+
+/// A single counter sample at a point in time.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CounterSample {
+    /// Timestamp in the profile's value unit.
+    pub ts: f64,
+    /// Counter value at this timestamp.
+    pub value: f64,
+}
+
+/// An async span that crosses thread boundaries or represents non-nested work.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AsyncSpan {
+    /// Unique correlation id (from trace event `id` field).
+    pub id: SharedStr,
+    /// Display name.
+    pub name: SharedStr,
+    /// Category.
+    pub cat: Option<SharedStr>,
+    /// Start time.
+    pub start: f64,
+    /// End time.
+    pub end: f64,
+    /// Process ID.
+    pub pid: u64,
+    /// Thread ID.
+    pub tid: u64,
+}
+
+/// A flow arrow connecting two events across threads/processes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlowArrow {
+    /// Flow event name.
+    pub name: SharedStr,
+    /// Correlation id.
+    pub id: SharedStr,
+    /// Source timestamp.
+    pub from_ts: f64,
+    /// Source thread id.
+    pub from_tid: u64,
+    /// Destination timestamp.
+    pub to_ts: f64,
+    /// Destination thread id.
+    pub to_tid: u64,
+}
+
+/// A marker (vertical line) at a point in time.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Marker {
+    /// Timestamp.
+    pub ts: f64,
+    /// Marker name (e.g. "navigationStart", "domInteractive").
+    pub name: SharedStr,
+    /// Scope: "global", "process", or "thread".
+    pub scope: MarkerScope,
+}
+
+/// Scope of a marker event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MarkerScope {
+    Global,
+    Process,
+    Thread,
+}
+
+/// An instant event (point-in-time, no duration).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InstantEvent {
+    /// Timestamp.
+    pub ts: f64,
+    /// Event name.
+    pub name: SharedStr,
+    /// Category.
+    pub cat: Option<SharedStr>,
+    /// Scope.
+    pub scope: MarkerScope,
+    /// Process ID.
+    pub pid: u64,
+    /// Thread ID.
+    pub tid: u64,
+}
+
+/// Object lifecycle event (create, snapshot, destroy).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ObjectEvent {
+    /// Object id.
+    pub id: SharedStr,
+    /// Object name/type.
+    pub name: SharedStr,
+    /// Lifecycle phase.
+    pub phase: ObjectPhase,
+    /// Timestamp.
+    pub ts: f64,
+}
+
+/// Object lifecycle phase.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ObjectPhase {
+    Create,
+    Snapshot,
+    Destroy,
+}
+
+/// CPU profiler sample data reconstructed from V8 ProfileChunk events.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CpuSamples {
+    /// Call tree nodes.
+    pub nodes: Vec<CpuNode>,
+    /// Sample node IDs (indexes into nodes by id).
+    pub samples: Vec<u32>,
+    /// Timestamps for each sample in the profile's value unit.
+    pub timestamps: Vec<f64>,
+}
+
+/// A single node in the CPU profiler call tree.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CpuNode {
+    /// Node id.
+    pub id: u32,
+    /// Parent node id (None for root).
+    pub parent: Option<u32>,
+    /// Function name.
+    pub function_name: SharedStr,
+    /// Script id.
+    pub script_id: u32,
+}
+
 // --- Conversions from the old Profile model ---
 
 impl VisualProfile {
@@ -346,6 +515,13 @@ mod tests {
                 },
             ],
             frames: vec![],
+            counters: vec![],
+            async_spans: vec![],
+            flow_arrows: vec![],
+            markers: vec![],
+            instant_events: vec![],
+            object_events: vec![],
+            cpu_samples: None,
         }
     }
 
