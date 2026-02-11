@@ -1,6 +1,6 @@
 use flame_cat_protocol::{
-    ProfileMeta, SharedStr, SourceFormat, Span, SpanCategory, SpanKind, ThreadGroup, ValueUnit,
-    VisualProfile,
+    ProfileMeta, SharedStr, SourceFormat, Span, SpanCategory, SpanKind, ThreadGroup, TimeDomain,
+    ValueUnit, VisualProfile,
 };
 use serde::{Deserialize, Serialize};
 
@@ -40,6 +40,9 @@ pub struct ProfileMetadata {
     pub end_time: f64,
     /// Source format identifier (e.g. "chrome", "firefox", "react").
     pub format: String,
+    /// Clock domain metadata for cross-profile alignment.
+    #[serde(default)]
+    pub time_domain: Option<TimeDomain>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -167,9 +170,10 @@ impl Profile {
                 total_value: self.metadata.end_time - self.metadata.start_time,
                 start_time: self.metadata.start_time,
                 end_time: self.metadata.end_time,
-                time_domain: None,
+                time_domain: self.metadata.time_domain,
             },
             threads,
+            frames: vec![],
         }
     }
 }
@@ -198,6 +202,7 @@ mod tests {
                 start_time: 0.0,
                 end_time: 200.0,
                 format: format.to_string(),
+                time_domain: None,
             },
             frames: vec![
                 Frame {

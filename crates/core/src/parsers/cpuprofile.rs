@@ -195,6 +195,7 @@ pub fn parse_cpuprofile(data: &[u8]) -> Result<Profile, CpuProfileParseError> {
             start_time: cpu_profile.start_time,
             end_time: cpu_profile.end_time,
             format: "cpuprofile".to_string(),
+            time_domain: None,
         },
         frames,
     })
@@ -323,6 +324,7 @@ fn parse_from_samples(
             start_time: cpu_profile.start_time,
             end_time: cpu_profile.end_time,
             format: "cpuprofile".to_string(),
+            time_domain: None,
         },
         frames,
     })

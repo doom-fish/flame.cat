@@ -35,13 +35,9 @@ pub fn render_left_heavy(
     }
 
     // Build parent → children index for O(1) lookup
-    let mut children_index: HashMap<Option<u64>, Vec<usize>> =
-        HashMap::with_capacity(spans.len());
+    let mut children_index: HashMap<Option<u64>, Vec<usize>> = HashMap::with_capacity(spans.len());
     for (i, span) in spans.iter().enumerate() {
-        children_index
-            .entry(span.parent)
-            .or_default()
-            .push(i);
+        children_index.entry(span.parent).or_default().push(i);
     }
 
     let roots = merge_children(&spans, &children_index, None);
@@ -209,6 +205,7 @@ mod tests {
                     },
                 ],
             }],
+            frames: vec![],
         };
         let vp = Viewport {
             x: 0.0,
@@ -239,6 +236,7 @@ mod tests {
                 time_domain: None,
             },
             threads: vec![],
+            frames: vec![],
         };
         let vp = Viewport {
             x: 0.0,

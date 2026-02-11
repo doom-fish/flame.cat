@@ -77,3 +77,18 @@ pub struct TimeDomain {
     /// Optional label identifying the clock origin (e.g. "Chrome PID 12345").
     pub origin_label: Option<String>,
 }
+
+impl TimeDomain {
+    /// Whether two time domains share the same underlying clock and can
+    /// be automatically aligned after unit normalization.
+    pub fn is_compatible(&self, other: &TimeDomain) -> bool {
+        matches!(
+            (&self.clock_kind, &other.clock_kind),
+            (ClockKind::LinuxMonotonic, ClockKind::LinuxMonotonic)
+                | (ClockKind::PerformanceNow, ClockKind::PerformanceNow)
+                | (ClockKind::WallClock, ClockKind::WallClock)
+                | (ClockKind::LinuxMonotonic, ClockKind::PerformanceNow)
+                | (ClockKind::PerformanceNow, ClockKind::LinuxMonotonic)
+        )
+    }
+}

@@ -291,6 +291,7 @@ mod tests {
                     },
                 ],
             }],
+            frames: vec![],
         };
 
         let entries = get_ranked_entries(&profile, RankedSort::SelfTime, false);

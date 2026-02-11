@@ -164,6 +164,7 @@ mod tests {
                     },
                 ],
             }],
+            frames: vec![],
         }
     }
 
@@ -204,6 +205,7 @@ mod tests {
                 time_domain: None,
             },
             threads: vec![],
+            frames: vec![],
         };
         let vp = Viewport {
             x: 0.0,

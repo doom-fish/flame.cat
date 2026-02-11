@@ -228,6 +228,7 @@ pub fn parse_speedscope(data: &[u8]) -> Result<Profile, SpeedscopeParseError> {
                 0.0
             },
             format: "speedscope".to_string(),
+            time_domain: None,
         },
         frames,
     })

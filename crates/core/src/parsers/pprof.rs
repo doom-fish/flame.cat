@@ -174,6 +174,7 @@ pub fn parse_pprof(data: &[u8]) -> Result<Profile, PprofParseError> {
                 offset
             },
             format: "pprof".to_string(),
+            time_domain: None,
         },
         frames,
     })

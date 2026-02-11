@@ -29,6 +29,9 @@ use serde::{Deserialize, Serialize};
 pub struct VisualProfile {
     pub meta: ProfileMeta,
     pub threads: Vec<ThreadGroup>,
+    /// Rendering frame timings extracted from the profile, if available.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub frames: Vec<FrameTiming>,
 }
 
 /// Top-level metadata about the profile.
@@ -147,6 +150,17 @@ impl ValueUnit {
             Self::Weight => format!("{:.0}", value),
         }
     }
+
+    /// Factor to multiply a value in this unit by to get microseconds.
+    /// Returns `None` for non-time units (Samples, Bytes, Weight).
+    pub fn to_microseconds_factor(&self) -> Option<f64> {
+        match self {
+            Self::Microseconds => Some(1.0),
+            Self::Milliseconds => Some(1_000.0),
+            Self::Nanoseconds => Some(0.001),
+            Self::Samples | Self::Bytes | Self::Weight => None,
+        }
+    }
 }
 
 /// A logical grouping of spans (thread, process, GPU queue, etc.).
@@ -216,6 +230,21 @@ pub struct SpanCategory {
     pub name: SharedStr,
     /// Optional source location (file path, module name).
     pub source: Option<SharedStr>,
+}
+
+/// A single rendering frame with timing information.
+///
+/// Used to build a "frames track" showing per-frame cost and jank detection.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FrameTiming {
+    /// Start time in the profile's value unit.
+    pub start: f64,
+    /// End time (= start of next frame, or profile end).
+    pub end: f64,
+    /// Duration in the profile's value unit.
+    pub duration: f64,
+    /// Whether this frame exceeded the target frame budget (e.g. 16.67ms for 60fps).
+    pub dropped: bool,
 }
 
 // --- Conversions from the old Profile model ---
@@ -316,6 +345,7 @@ mod tests {
                     }],
                 },
             ],
+            frames: vec![],
         }
     }
 

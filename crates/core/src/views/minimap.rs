@@ -108,6 +108,7 @@ mod tests {
                     category: None,
                 }],
             }],
+            frames: vec![],
         };
         let vp = Viewport {
             x: 0.0,

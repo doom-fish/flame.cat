@@ -84,6 +84,7 @@ pub fn parse_pix(data: &[u8]) -> Result<Profile, PixParseError> {
             },
             end_time: if end_time.is_finite() { end_time } else { 0.0 },
             format: "pix".to_string(),
+            time_domain: None,
         },
         frames,
     })

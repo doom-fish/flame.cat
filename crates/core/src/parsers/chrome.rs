@@ -1,3 +1,4 @@
+use flame_cat_protocol::{ClockKind, TimeDomain};
 use serde::Deserialize;
 use thiserror::Error;
 
@@ -44,9 +45,8 @@ enum TraceFile {
 }
 
 /// Metadata extracted from top-level Chrome trace fields.
-#[allow(dead_code)]
 struct TraceMetadata {
-    clock_domain: Option<String>,
+    time_domain: Option<TimeDomain>,
 }
 
 /// Extract top-level metadata from Chrome trace object format.
@@ -54,9 +54,20 @@ fn extract_trace_metadata(metadata: &Option<serde_json::Value>) -> TraceMetadata
     let clock_domain = metadata
         .as_ref()
         .and_then(|m| m.get("clock-domain"))
-        .and_then(|v| v.as_str())
-        .map(String::from);
-    TraceMetadata { clock_domain }
+        .and_then(|v| v.as_str());
+
+    let clock_kind = match clock_domain {
+        Some("LINUX_CLOCK_MONOTONIC") => Some(ClockKind::LinuxMonotonic),
+        Some(s) if s.contains("MONOTONIC") => Some(ClockKind::LinuxMonotonic),
+        _ => None,
+    };
+
+    let time_domain = clock_kind.map(|kind| TimeDomain {
+        clock_kind: kind,
+        origin_label: clock_domain.map(String::from),
+    });
+
+    TraceMetadata { time_domain }
 }
 
 /// Check if a trace event is a React Performance Track component measure.
@@ -126,12 +137,12 @@ fn extract_react_properties(event: &TraceEvent) -> Option<Vec<(String, String)>>
 /// Parse a Chrome DevTools trace JSON into a `Profile`.
 pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
     let trace_file: TraceFile = serde_json::from_slice(data)?;
-    let (events, _trace_meta) = match trace_file {
+    let (events, trace_meta) = match trace_file {
         TraceFile::Object {
             trace_events,
             metadata,
         } => (trace_events, extract_trace_metadata(&metadata)),
-        TraceFile::Array(events) => (events, TraceMetadata { clock_domain: None }),
+        TraceFile::Array(events) => (events, TraceMetadata { time_domain: None }),
     };
 
     // Collect thread name metadata
@@ -312,6 +323,7 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
             },
             end_time: if end_time.is_finite() { end_time } else { 0.0 },
             format: "chrome".to_string(),
+            time_domain: trace_meta.time_domain,
         },
         frames,
     })

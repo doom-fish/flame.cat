@@ -254,6 +254,7 @@ pub fn parse_firefox(data: &[u8]) -> Result<Profile, FirefoxParseError> {
             },
             end_time: if end_time.is_finite() { end_time } else { 0.0 },
             format: "firefox".to_string(),
+            time_domain: None,
         },
         frames: all_frames,
     })
