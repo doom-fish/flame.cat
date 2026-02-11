@@ -27,6 +27,7 @@ fn main() -> Result<()> {
         &viewport,
         profile.meta.start_time,
         profile.meta.end_time,
+        None,
     );
 
     renderer::render_tui(&profile, &commands)?;

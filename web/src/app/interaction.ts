@@ -24,13 +24,15 @@ type DragMode =
   | { kind: "lane-resize"; laneIndex: number; startY: number; startHeight: number }
   | { kind: "minimap-slide"; startFrac: number }
   | { kind: "minimap-select"; anchorFrac: number }
-  | { kind: "canvas-pan"; lastX: number; lastY: number; laneIndex: number };
+  | { kind: "canvas-pan"; lastX: number; lastY: number; laneIndex: number }
+  | { kind: "lane-reorder"; visibleIndex: number; startY: number; currentY: number };
 
 /**
  * Binds mouse/keyboard/touch events to the LaneManager and triggers re-renders.
  *
  * @param minimapHeight Height of the minimap in CSS pixels (0 if no profile loaded).
  * @param isProfileLoaded Returns true when a profile is loaded.
+ * @param onLaneReorder Called when a lane header drag completes reordering.
  */
 export function bindInteraction(
   canvas: HTMLCanvasElement,
@@ -38,6 +40,7 @@ export function bindInteraction(
   onRender: () => void,
   minimapHeight: () => number,
   isProfileLoaded: () => boolean,
+  onLaneReorder?: (fromVisible: number, toVisible: number) => void,
 ): () => void {
   let drag: DragMode = { kind: "none" };
 
@@ -98,7 +101,7 @@ export function bindInteraction(
     // 2. Lane resize handles
     const handleIdx = laneManager.isOnDragHandle(localY);
     if (handleIdx >= 0) {
-      const lane = laneManager.lanes[handleIdx];
+      const lane = laneManager.visibleLanes[handleIdx];
       if (lane) {
         drag = {
           kind: "lane-resize",
@@ -111,8 +114,20 @@ export function bindInteraction(
       return;
     }
 
-    // 3. Canvas drag-to-pan
+    // 3. Lane header drag-to-reorder (click on header area, x < 24 = drag handle)
     const laneIdx = laneManager.laneAtY(localY);
+    if (laneIdx >= 0) {
+      const headerTop = laneManager.laneY(laneIdx);
+      const isOnHeader = localY >= headerTop && localY < headerTop + laneManager.headerHeight;
+      if (isOnHeader && e.offsetX < 24) {
+        drag = { kind: "lane-reorder", visibleIndex: laneIdx, startY: e.clientY, currentY: e.clientY };
+        canvas.style.cursor = "grabbing";
+        e.preventDefault();
+        return;
+      }
+    }
+
+    // 4. Canvas drag-to-pan
     drag = {
       kind: "canvas-pan",
       lastX: e.clientX,
@@ -148,12 +163,17 @@ export function bindInteraction(
         return;
       }
       case "lane-resize": {
-        const lane = laneManager.lanes[drag.laneIndex];
+        const lane = laneManager.visibleLanes[drag.laneIndex];
         if (lane) {
           const delta = e.clientY - drag.startY;
           lane.height = Math.max(60, drag.startHeight + delta);
           onRender();
         }
+        return;
+      }
+      case "lane-reorder": {
+        drag.currentY = e.clientY;
+        // Visual feedback handled by cursor; actual reorder happens on mouseup
         return;
       }
       case "canvas-pan": {
@@ -176,8 +196,21 @@ export function bindInteraction(
             ? "ew-resize"
             : "crosshair";
         } else {
-          const handleIdx = laneManager.isOnDragHandle(e.offsetY - mmH);
-          canvas.style.cursor = handleIdx >= 0 ? "row-resize" : "default";
+          const localY = e.offsetY - mmH;
+          const handleIdx = laneManager.isOnDragHandle(localY);
+          if (handleIdx >= 0) {
+            canvas.style.cursor = "row-resize";
+          } else {
+            // Check if on lane header drag handle area
+            const lIdx = laneManager.laneAtY(localY);
+            if (lIdx >= 0) {
+              const headerTop = laneManager.laneY(lIdx);
+              const isOnHeader = localY >= headerTop && localY < headerTop + laneManager.headerHeight;
+              canvas.style.cursor = isOnHeader && e.offsetX < 24 ? "grab" : "default";
+            } else {
+              canvas.style.cursor = "default";
+            }
+          }
         }
         return;
       }
@@ -196,6 +229,18 @@ export function bindInteraction(
         laneManager.viewStart = Math.max(0, Math.min(1 - viewSpan, center - viewSpan / 2));
         laneManager.viewEnd = laneManager.viewStart + viewSpan;
         onRender();
+      }
+    }
+    if (drag.kind === "lane-reorder") {
+      // Determine target visible lane based on Y displacement
+      const mmH = minimapHeight();
+      const targetLocalY = e.clientY - canvas.getBoundingClientRect().top - mmH;
+      const targetIdx = laneManager.laneAtY(targetLocalY);
+      if (targetIdx >= 0 && targetIdx !== drag.visibleIndex) {
+        const fromFull = laneManager.visibleToFullIndex(drag.visibleIndex);
+        const toFull = laneManager.visibleToFullIndex(targetIdx);
+        laneManager.moveLane(fromFull, toFull);
+        onLaneReorder?.(drag.visibleIndex, targetIdx);
       }
     }
     if (drag.kind !== "none") {

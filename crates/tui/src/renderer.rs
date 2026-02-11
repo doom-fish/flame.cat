@@ -78,7 +78,7 @@ pub fn render_tui(profile: &VisualProfile, _commands: &[RenderCommand]) -> Resul
         let view_end = (view_start + visible_duration).min(profile.meta.end_time);
 
         let cmds =
-            flame_cat_core::views::time_order::render_time_order(profile, &viewport, view_start, view_end);
+            flame_cat_core::views::time_order::render_time_order(profile, &viewport, view_start, view_end, None);
 
         terminal.draw(|frame| {
             let area = frame.area();

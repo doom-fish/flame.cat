@@ -28,6 +28,8 @@ pub fn parse_profile(data: &[u8]) -> Result<usize, JsError> {
 /// For time-order views, `view_start` / `view_end` define the visible time
 /// window (absolute µs).  Pass `NaN` or negative values to auto-fit the full
 /// profile range.
+///
+/// `thread_id` optionally restricts rendering to a single thread group.
 #[wasm_bindgen]
 #[allow(clippy::too_many_arguments)]
 pub fn render_view(
@@ -41,6 +43,7 @@ pub fn render_view(
     selected_frame_id: Option<u64>,
     view_start: Option<f64>,
     view_end: Option<f64>,
+    thread_id: Option<u32>,
 ) -> Result<String, JsError> {
     let profiles = lock_profiles()?;
     let profile = profiles
@@ -59,7 +62,7 @@ pub fn render_view(
     let ve = view_end.unwrap_or(profile.meta.end_time);
 
     let commands = match view_type {
-        "time-order" => time_order::render_time_order(profile, &viewport, vs, ve),
+        "time-order" => time_order::render_time_order(profile, &viewport, vs, ve, thread_id),
         "left-heavy" => left_heavy::render_left_heavy(profile, &viewport),
         "sandwich" => {
             let frame_id = selected_frame_id
@@ -119,6 +122,40 @@ pub fn render_minimap(
     let commands =
         minimap::render_minimap(profile, &viewport, visible_start_frac, visible_end_frac);
     serde_json::to_string(&commands).map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// Get the list of thread groups for a profile as JSON.
+///
+/// Returns an array of `{ id, name, span_count, sort_key, max_depth }` objects.
+#[wasm_bindgen]
+pub fn get_thread_list(profile_index: usize) -> Result<String, JsError> {
+    let profiles = lock_profiles()?;
+    let profile = profiles
+        .get(profile_index)
+        .ok_or_else(|| JsError::new("invalid profile index"))?;
+
+    #[derive(serde::Serialize)]
+    struct ThreadInfo {
+        id: u32,
+        name: String,
+        span_count: usize,
+        sort_key: i64,
+        max_depth: u32,
+    }
+
+    let threads: Vec<ThreadInfo> = profile
+        .threads
+        .iter()
+        .map(|t| ThreadInfo {
+            id: t.id,
+            name: t.name.to_string(),
+            span_count: t.spans.len(),
+            sort_key: t.sort_key,
+            max_depth: t.spans.iter().map(|s| s.depth).max().unwrap_or(0),
+        })
+        .collect();
+
+    serde_json::to_string(&threads).map_err(|e| JsError::new(&e.to_string()))
 }
 
 /// Get ranked entries for a profile as JSON.

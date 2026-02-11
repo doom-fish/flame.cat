@@ -11,11 +11,14 @@ const THREAD_GAP: f64 = 4.0;
 ///
 /// `view_start` / `view_end` define the visible time window (absolute µs).
 /// The canvas pixel width comes from `viewport.width`.
+///
+/// When `thread_id` is `Some(id)`, only the matching thread group is rendered.
 pub fn render_time_order(
     profile: &VisualProfile,
     viewport: &Viewport,
     view_start: f64,
     view_end: f64,
+    thread_id: Option<u32>,
 ) -> Vec<RenderCommand> {
     let visible_duration = view_end - view_start;
     if visible_duration <= 0.0 {
@@ -34,28 +37,39 @@ pub fn render_time_order(
     let mut y_offset: f64 = 0.0;
 
     for thread in &profile.threads {
-        // Thread header
-        let header_y = y_offset - viewport.y;
-        if header_y + THREAD_HEADER_HEIGHT >= 0.0 && header_y <= viewport.height {
-            commands.push(RenderCommand::DrawRect {
-                rect: Rect::new(0.0, header_y, viewport.width, THREAD_HEADER_HEIGHT - 1.0),
-                color: ThemeToken::LaneHeaderBackground,
-                border_color: Some(ThemeToken::LaneBorder),
-                label: None,
-                frame_id: None,
-            });
-            commands.push(RenderCommand::DrawText {
-                position: Point {
-                    x: 6.0,
-                    y: header_y + THREAD_HEADER_HEIGHT / 2.0 + 3.0,
-                },
-                text: SharedStr::from(format!("{} ({} spans)", thread.name, thread.spans.len())),
-                color: ThemeToken::LaneHeaderText,
-                font_size: 11.0,
-                align: TextAlign::Left,
-            });
+        // Skip threads not matching the filter
+        if thread_id.is_some_and(|tid| thread.id != tid) {
+            continue;
         }
-        y_offset += THREAD_HEADER_HEIGHT;
+
+        // Thread header (skip when rendering a single thread — the caller provides the header)
+        if thread_id.is_none() {
+            let header_y = y_offset - viewport.y;
+            if header_y + THREAD_HEADER_HEIGHT >= 0.0 && header_y <= viewport.height {
+                commands.push(RenderCommand::DrawRect {
+                    rect: Rect::new(0.0, header_y, viewport.width, THREAD_HEADER_HEIGHT - 1.0),
+                    color: ThemeToken::LaneHeaderBackground,
+                    border_color: Some(ThemeToken::LaneBorder),
+                    label: None,
+                    frame_id: None,
+                });
+                commands.push(RenderCommand::DrawText {
+                    position: Point {
+                        x: 6.0,
+                        y: header_y + THREAD_HEADER_HEIGHT / 2.0 + 3.0,
+                    },
+                    text: SharedStr::from(format!(
+                        "{} ({} spans)",
+                        thread.name,
+                        thread.spans.len()
+                    )),
+                    color: ThemeToken::LaneHeaderText,
+                    font_size: 11.0,
+                    align: TextAlign::Left,
+                });
+            }
+            y_offset += THREAD_HEADER_HEIGHT;
+        }
 
         // Find the max depth in this thread for vertical sizing
         let max_depth = thread.spans.iter().map(|s| s.depth).max().unwrap_or(0);
@@ -167,6 +181,7 @@ mod tests {
             &vp,
             profile.meta.start_time,
             profile.meta.end_time,
+            None,
         );
         let rects: Vec<_> = cmds
             .iter()
@@ -197,6 +212,6 @@ mod tests {
             height: 600.0,
             dpr: 1.0,
         };
-        assert!(render_time_order(&profile, &vp, 0.0, 0.0).is_empty());
+        assert!(render_time_order(&profile, &vp, 0.0, 0.0, None).is_empty());
     }
 }

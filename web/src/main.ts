@@ -10,6 +10,7 @@ import {
   Hovertip,
   DetailPanel,
   SearchBar,
+  LaneSidebar,
 } from "./app";
 import type { ViewType } from "./app";
 import { bindInteraction } from "./app/interaction";
@@ -76,6 +77,9 @@ async function main() {
     },
     onSearch: () => searchBar.show(),
     onOpenFile: openFilePicker,
+    onLanes: () => {
+      laneSidebar.toggle();
+    },
   });
   root.appendChild(toolbar);
 
@@ -116,6 +120,22 @@ async function main() {
 
   const laneManager = new LaneManager();
 
+  // Lane sidebar
+  const laneSidebar = new LaneSidebar(canvasContainer, {
+    onToggle: (laneId, visible) => {
+      const lane = laneManager.lanes.find((l) => l.id === laneId);
+      if (lane) {
+        lane.visible = visible;
+        renderAll();
+      }
+    },
+    onReorder: (from, to) => {
+      laneManager.moveLane(from, to);
+      laneSidebar.update(laneManager.lanes);
+      renderAll();
+    },
+  });
+
   const MINIMAP_HEIGHT = 40;
 
   const renderAll = () => {
@@ -144,10 +164,11 @@ async function main() {
     // Lane headers
     allCommands.push(...laneManager.renderHeaders(canvas.clientWidth, laneYOffset));
 
-    // Lane content
+    // Lane content (visible lanes only)
     const { viewStart, viewEnd } = laneManager.getViewWindow();
-    for (let i = 0; i < laneManager.lanes.length; i++) {
-      const lane = laneManager.lanes[i];
+    const visible = laneManager.visibleLanes;
+    for (let i = 0; i < visible.length; i++) {
+      const lane = visible[i];
       if (!lane) continue;
       const laneY = laneManager.laneY(i) + laneManager.headerHeight + laneYOffset;
       try {
@@ -171,6 +192,7 @@ async function main() {
           lane.selectedFrameId != null ? BigInt(lane.selectedFrameId) : undefined,
           absViewStart,
           absViewEnd,
+          lane.threadId,
         );
         const laneCmds: RenderCommand[] = JSON.parse(commandsJson) as RenderCommand[];
 
@@ -241,8 +263,9 @@ async function main() {
   const hitTest = (mx: number, my: number): { name: string; frameId: number } | null => {
     const laneYOffset = profileLoaded ? MINIMAP_HEIGHT : 0;
     const { viewStart, viewEnd } = laneManager.getViewWindow();
-    for (let i = 0; i < laneManager.lanes.length; i++) {
-      const lane = laneManager.lanes[i];
+    const visible = laneManager.visibleLanes;
+    for (let i = 0; i < visible.length; i++) {
+      const lane = visible[i];
       if (!lane) continue;
       const laneY = laneManager.laneY(i) + laneManager.headerHeight + laneYOffset;
       if (my < laneY || my > laneY + lane.height) continue;
@@ -266,6 +289,7 @@ async function main() {
           lane.selectedFrameId != null ? BigInt(lane.selectedFrameId) : undefined,
           absViewStart,
           absViewEnd,
+          lane.threadId,
         );
         const cmds: RenderCommand[] = JSON.parse(json) as RenderCommand[];
         const localY = my - laneY;
@@ -351,7 +375,12 @@ async function main() {
       searchBar.show();
     }
     if (e.key === "Escape" && detailPanel.isVisible) detailPanel.hide();
+    if (e.key === "Escape" && laneSidebar.isVisible) laneSidebar.hide();
     if (!e.ctrlKey && !e.metaKey && !e.altKey && profileLoaded) {
+      if (e.key === "l" || e.key === "L") {
+        laneSidebar.toggle();
+        return;
+      }
       const views: Record<string, ViewType> = {
         "1": "time-order",
         "2": "left-heavy",
@@ -384,6 +413,11 @@ async function main() {
     border: colorStr(resolveColor(theme, "Border")),
     inputBg: colorStr(resolveColor(theme, "Background")),
   });
+  laneSidebar.applyTheme({
+    bg: colorStr(resolveColor(theme, "ToolbarBackground")),
+    text: colorStr(resolveColor(theme, "TextPrimary")),
+    border: colorStr(resolveColor(theme, "Border")),
+  });
 
   bindInteraction(
     canvas,
@@ -391,6 +425,9 @@ async function main() {
     renderAll,
     () => (profileLoaded ? MINIMAP_HEIGHT : 0),
     () => profileLoaded,
+    (_from, _to) => {
+      laneSidebar.update(laneManager.lanes);
+    },
   );
 
   // Shared file-loading logic
@@ -410,12 +447,37 @@ async function main() {
       console.log(`Loaded profile: ${frameCount} frames, ${profileDuration}µs`);
       const centerEl = toolbar.querySelector("#toolbar-center");
       if (centerEl) centerEl.textContent = meta.name ?? file.name;
-      laneManager.addLane({
-        id: `lane-${laneManager.lanes.length}`,
-        viewType: activeView,
-        profileIndex: handle,
-        height: Math.max(200, canvas.clientHeight - 100),
-      });
+
+      // Clear existing lanes
+      laneManager.lanes.length = 0;
+
+      // Create one lane per thread group
+      const threads = JSON.parse(wasm.get_thread_list(handle)) as {
+        id: number;
+        name: string;
+        span_count: number;
+        sort_key: number;
+        max_depth: number;
+      }[];
+
+      const FRAME_HEIGHT = 20;
+      const MIN_LANE_HEIGHT = 60;
+      const MAX_LANE_HEIGHT = 400;
+
+      for (const thread of threads) {
+        const contentHeight = (thread.max_depth + 1) * FRAME_HEIGHT + 8;
+        const laneHeight = Math.max(MIN_LANE_HEIGHT, Math.min(MAX_LANE_HEIGHT, contentHeight));
+        laneManager.addLane({
+          id: `thread-${handle}-${thread.id}`,
+          viewType: activeView,
+          profileIndex: handle,
+          height: laneHeight,
+          threadId: thread.id,
+          threadName: `${thread.name} (${thread.span_count})`,
+        });
+      }
+
+      laneSidebar.update(laneManager.lanes);
       renderAll();
     } catch (err) {
       console.error("Failed to load profile:", err);

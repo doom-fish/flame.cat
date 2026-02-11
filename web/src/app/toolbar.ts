@@ -6,6 +6,7 @@ export interface ToolbarConfig {
   onViewChange: (view: ViewType) => void;
   onSearch: () => void;
   onOpenFile: () => void;
+  onLanes: () => void;
 }
 
 const TOOLBAR_HEIGHT = 36;
@@ -102,6 +103,21 @@ export function createToolbar(config: ToolbarConfig): HTMLElement {
   `;
   openBtn.addEventListener("click", config.onOpenFile);
   right.appendChild(openBtn);
+
+  const lanesBtn = document.createElement("button");
+  lanesBtn.textContent = "☰";
+  lanesBtn.title = "Toggle lanes";
+  lanesBtn.style.cssText = `
+    border: none;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+    border-radius: 3px;
+    -webkit-tap-highlight-color: transparent;
+  `;
+  lanesBtn.addEventListener("click", config.onLanes);
+  right.appendChild(lanesBtn);
 
   const searchBtn = document.createElement("button");
   searchBtn.textContent = "🔍";
