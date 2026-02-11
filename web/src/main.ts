@@ -523,6 +523,93 @@ async function main() {
     // Clear the global lane area clip
     allCommands.push("ClearClip");
 
+    // Flow arrows (rendered above lanes, below time selection)
+    if (profileLoaded) {
+      try {
+        const { viewStart: vs, viewEnd: ve } = laneManager.getViewWindow();
+        const firstLane = laneManager.lanes[0];
+        if (firstLane) {
+          const meta = JSON.parse(wasm.get_profile_metadata(firstLane.profileIndex)) as {
+            start_time: number;
+            end_time: number;
+          };
+          const duration = meta.end_time - meta.start_time;
+          const absVS = meta.start_time + vs * duration;
+          const absVE = meta.start_time + ve * duration;
+          const arrowsJson = wasm.get_flow_arrows(firstLane.profileIndex, absVS, absVE);
+          const arrows = JSON.parse(arrowsJson) as {
+            name: string;
+            from_ts: number;
+            from_tid: number;
+            to_ts: number;
+            to_tid: number;
+          }[];
+
+          if (arrows.length > 0) {
+            // Build threadId → lane Y center mapping
+            const tidToY = new Map<number, number>();
+            const visible = laneManager.visibleLanes;
+            for (let i = 0; i < visible.length; i++) {
+              const lane = visible[i];
+              if (lane?.threadId != null) {
+                const ly = laneManager.laneY(i) + laneManager.headerHeight + laneYOffset + scrollOffset;
+                tidToY.set(lane.threadId, ly + Math.min(lane.height, 40) / 2);
+              }
+            }
+
+            const viewSpan = ve - vs;
+            for (const arrow of arrows) {
+              const fromY = tidToY.get(arrow.from_tid);
+              const toY = tidToY.get(arrow.to_tid);
+              if (fromY == null || toY == null) continue;
+
+              const fromX = ((arrow.from_ts - absVS) / (absVE - absVS)) * canvas.clientWidth;
+              const toX = ((arrow.to_ts - absVS) / (absVE - absVS)) * canvas.clientWidth;
+
+              // Draw curved Bézier-like arrow using line segments
+              const midX = (fromX + toX) / 2;
+              const steps = 12;
+              for (let s = 0; s < steps; s++) {
+                const t0 = s / steps;
+                const t1 = (s + 1) / steps;
+                // Quadratic Bézier: from → (midX, midY) → to
+                const cpY = (fromY + toY) / 2 - Math.abs(toY - fromY) * 0.2;
+                const x0 = (1 - t0) * (1 - t0) * fromX + 2 * (1 - t0) * t0 * midX + t0 * t0 * toX;
+                const y0 = (1 - t0) * (1 - t0) * fromY + 2 * (1 - t0) * t0 * cpY + t0 * t0 * toY;
+                const x1 = (1 - t1) * (1 - t1) * fromX + 2 * (1 - t1) * t1 * midX + t1 * t1 * toX;
+                const y1 = (1 - t1) * (1 - t1) * fromY + 2 * (1 - t1) * t1 * cpY + t1 * t1 * toY;
+                allCommands.push({
+                  DrawLine: { from: { x: x0, y: y0 }, to: { x: x1, y: y1 }, color: "FlowArrow", width: 1.5 },
+                });
+              }
+              // Arrowhead at destination
+              const angle = Math.atan2(toY - ((1 - 0.9) * (1 - 0.9) * fromY + 2 * (1 - 0.9) * 0.9 * ((fromY + toY) / 2 - Math.abs(toY - fromY) * 0.2) + 0.9 * 0.9 * toY),
+                                       toX - ((1 - 0.9) * (1 - 0.9) * fromX + 2 * (1 - 0.9) * 0.9 * midX + 0.9 * 0.9 * toX));
+              const headLen = 6;
+              allCommands.push({
+                DrawLine: {
+                  from: { x: toX - headLen * Math.cos(angle - 0.4), y: toY - headLen * Math.sin(angle - 0.4) },
+                  to: { x: toX, y: toY },
+                  color: "FlowArrow",
+                  width: 1.5,
+                },
+              });
+              allCommands.push({
+                DrawLine: {
+                  from: { x: toX - headLen * Math.cos(angle + 0.4), y: toY - headLen * Math.sin(angle + 0.4) },
+                  to: { x: toX, y: toY },
+                  color: "FlowArrow",
+                  width: 1.5,
+                },
+              });
+            }
+          }
+        }
+      } catch {
+        /* flow arrows are optional */
+      }
+    }
+
     // Time selection overlay
     const timeSel = _getTimeSelection?.();
     if (timeSel && timeSel.end - timeSel.start > 0.0001) {

@@ -624,3 +624,42 @@ pub fn search_spans(profile_index: usize, query: &str) -> Result<String, JsError
         serde_json::to_string(&result).map_err(|e| JsError::new(&e.to_string()))
     })
 }
+
+/// Get flow arrows for the visible time range.
+#[wasm_bindgen]
+pub fn get_flow_arrows(
+    profile_index: usize,
+    view_start: f64,
+    view_end: f64,
+) -> Result<String, JsError> {
+    with_profile(profile_index, |profile| {
+        #[derive(serde::Serialize)]
+        struct FlowArrowOut {
+            name: String,
+            from_ts: f64,
+            from_tid: u64,
+            to_ts: f64,
+            to_tid: u64,
+        }
+
+        let arrows: Vec<FlowArrowOut> = profile
+            .flow_arrows
+            .iter()
+            .filter(|a| {
+                // Include if either endpoint is in the visible range
+                (a.from_ts >= view_start && a.from_ts <= view_end)
+                    || (a.to_ts >= view_start && a.to_ts <= view_end)
+                    || (a.from_ts <= view_start && a.to_ts >= view_end)
+            })
+            .map(|a| FlowArrowOut {
+                name: a.name.to_string(),
+                from_ts: a.from_ts,
+                from_tid: a.from_tid,
+                to_ts: a.to_ts,
+                to_tid: a.to_tid,
+            })
+            .collect();
+
+        serde_json::to_string(&arrows).map_err(|e| JsError::new(&e.to_string()))
+    })
+}

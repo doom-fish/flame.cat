@@ -53,6 +53,7 @@ export const darkTheme: Theme = {
     FrameGood: { r: 0.3, g: 0.69, b: 0.31, a: 0.8 },
     FrameWarning: { r: 0.95, g: 0.77, b: 0.06, a: 0.8 },
     FrameDropped: { r: 0.91, g: 0.3, b: 0.24, a: 0.9 },
+    FlowArrow: { r: 0.47, g: 0.75, b: 0.96, a: 0.7 },
   },
 };
 
@@ -97,6 +98,7 @@ export const lightTheme: Theme = {
     FrameGood: { r: 0.26, g: 0.63, b: 0.28, a: 0.7 },
     FrameWarning: { r: 0.9, g: 0.7, b: 0.04, a: 0.7 },
     FrameDropped: { r: 0.89, g: 0.26, b: 0.2, a: 0.8 },
+    FlowArrow: { r: 0.16, g: 0.47, b: 0.78, a: 0.6 },
   },
 };
 

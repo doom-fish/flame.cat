@@ -38,7 +38,8 @@ export type ThemeToken =
   | "AsyncSpanBorder"
   | "FrameGood"
   | "FrameWarning"
-  | "FrameDropped";
+  | "FrameDropped"
+  | "FlowArrow";
 
 export interface Point {
   x: number;
