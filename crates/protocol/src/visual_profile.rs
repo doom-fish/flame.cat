@@ -1,4 +1,5 @@
 use crate::shared_str::SharedStr;
+use crate::types::TimeDomain;
 use serde::{Deserialize, Serialize};
 
 /// The canonical visual profile IR that every profiling format compiles into.
@@ -45,6 +46,8 @@ pub struct ProfileMeta {
     pub start_time: f64,
     /// Wall-clock end time (microseconds since epoch), if known.
     pub end_time: f64,
+    /// Clock domain metadata for cross-profile alignment.
+    pub time_domain: Option<TimeDomain>,
 }
 
 /// The original profiling format — informational only.
@@ -261,6 +264,7 @@ mod tests {
                 total_value: 100.0,
                 start_time: 0.0,
                 end_time: 100.0,
+                time_domain: None,
             },
             threads: vec![
                 ThreadGroup {

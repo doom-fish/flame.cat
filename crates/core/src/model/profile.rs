@@ -170,6 +170,7 @@ impl Profile {
                 total_value: self.metadata.end_time - self.metadata.start_time,
                 start_time: self.metadata.start_time,
                 end_time: self.metadata.end_time,
+                time_domain: None,
             },
             threads,
         }

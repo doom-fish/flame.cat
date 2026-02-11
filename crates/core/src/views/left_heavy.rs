@@ -146,6 +146,7 @@ mod tests {
                 total_value: 100.0,
                 start_time: 0.0,
                 end_time: 100.0,
+                time_domain: None,
             },
             threads: vec![ThreadGroup {
                 id: 0,
@@ -203,6 +204,7 @@ mod tests {
                 total_value: 0.0,
                 start_time: 0.0,
                 end_time: 0.0,
+                time_domain: None,
             },
             threads: vec![],
         };

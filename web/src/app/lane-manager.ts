@@ -34,6 +34,8 @@ export class LaneManager {
   viewStart = 0;
   /** Visible time window end as a fraction of total duration (1 = end). */
   viewEnd = 1;
+  /** Global vertical scroll offset for the lane area. */
+  globalScrollY = 0;
 
   addLane(config: Omit<LaneConfig, "scrollY" | "visible"> & { scrollY?: number; visible?: boolean }): void {
     this.lanes.push({ scrollY: 0, visible: true, ...config });
@@ -67,7 +69,7 @@ export class LaneManager {
   /** Which visible lane is at a given Y coordinate? Returns index into visibleLanes or -1. */
   laneAtY(y: number): number {
     const visible = this.visibleLanes;
-    let offset = 0;
+    let offset = -this.globalScrollY;
     for (let i = 0; i < visible.length; i++) {
       const lane = visible[i];
       if (!lane) continue;
@@ -81,7 +83,7 @@ export class LaneManager {
   /** Is the Y coordinate on a resize drag handle between visible lanes? */
   isOnDragHandle(y: number): number {
     const visible = this.visibleLanes;
-    let offset = 0;
+    let offset = -this.globalScrollY;
     for (let i = 0; i < visible.length; i++) {
       const lane = visible[i];
       if (!lane) continue;
@@ -139,6 +141,12 @@ export class LaneManager {
   scrollLane(visibleIndex: number, dy: number): void {
     const lane = this.visibleLanes[visibleIndex];
     if (lane) lane.scrollY = Math.max(0, lane.scrollY + dy);
+  }
+
+  /** Scroll the entire lane area vertically, clamped to content bounds. */
+  scrollGlobal(dy: number, viewportHeight: number): void {
+    const maxScroll = Math.max(0, this.totalHeight() - viewportHeight);
+    this.globalScrollY = Math.max(0, Math.min(maxScroll, this.globalScrollY + dy));
   }
 
   /** Generate lane header render commands for visible lanes. */

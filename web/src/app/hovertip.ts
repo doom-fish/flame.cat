@@ -14,22 +14,31 @@ export class Hovertip {
       pointer-events: none;
       user-select: none;
       font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
-      font-size: 12px;
-      padding: 4px 8px;
-      border-radius: 3px;
-      max-width: 400px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      font-size: 11px;
+      padding: 6px 10px;
+      border-radius: 4px;
+      max-width: 420px;
       z-index: 100;
       display: none;
+      line-height: 1.5;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
     `;
 
     this.nameEl = document.createElement("div");
-    this.nameEl.style.fontWeight = "bold";
+    this.nameEl.style.cssText = `
+      font-weight: 600;
+      font-size: 12px;
+      margin-bottom: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    `;
 
     this.detailEl = document.createElement("div");
-    this.detailEl.style.opacity = "0.8";
+    this.detailEl.style.cssText = `
+      opacity: 0.85;
+      white-space: pre-line;
+    `;
 
     this.el.appendChild(this.nameEl);
     this.el.appendChild(this.detailEl);

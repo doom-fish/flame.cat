@@ -7,7 +7,7 @@ pub mod visual_profile;
 pub use commands::{RenderCommand, TextAlign};
 pub use shared_str::SharedStr;
 pub use theme::ThemeToken;
-pub use types::{Color, Point, Rect};
+pub use types::{ClockKind, Color, Point, Rect, TimeDomain};
 pub use visual_profile::{
     ProfileMeta, SourceFormat, Span, SpanCategory, SpanKind, ThreadGroup, ValueUnit, VisualProfile,
 };

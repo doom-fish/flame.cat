@@ -41,7 +41,7 @@ export function bindInteraction(
   minimapHeight: () => number,
   isProfileLoaded: () => boolean,
   onLaneReorder?: (fromVisible: number, toVisible: number) => void,
-): () => void {
+): { cleanup: () => void; animateViewTo: (start: number, end: number, durationMs?: number) => void } {
   let drag: DragMode = { kind: "none" };
 
   /** Convert a canvas X to a fractional position [0,1] across the full timeline. */
@@ -59,6 +59,33 @@ export function bindInteraction(
     return x >= vpLeft && x <= vpRight;
   };
 
+  // ── Smooth animation ────────────────────────────────────────────────
+
+  let animationId: number | null = null;
+
+  /** Smoothly animate the view window from current to target values. */
+  const animateViewTo = (targetStart: number, targetEnd: number, durationMs = 200) => {
+    if (animationId != null) cancelAnimationFrame(animationId);
+    const fromStart = laneManager.viewStart;
+    const fromEnd = laneManager.viewEnd;
+    const startTime = performance.now();
+
+    const step = (now: number) => {
+      const t = Math.min(1, (now - startTime) / durationMs);
+      // Ease-out cubic
+      const ease = 1 - (1 - t) ** 3;
+      laneManager.viewStart = fromStart + (targetStart - fromStart) * ease;
+      laneManager.viewEnd = fromEnd + (targetEnd - fromEnd) * ease;
+      onRender();
+      if (t < 1) {
+        animationId = requestAnimationFrame(step);
+      } else {
+        animationId = null;
+      }
+    };
+    animationId = requestAnimationFrame(step);
+  };
+
   // ── Mouse ──────────────────────────────────────────────────────────
 
   const onWheel = (e: WheelEvent) => {
@@ -68,15 +95,13 @@ export function bindInteraction(
       const factor = e.deltaY > 0 ? 0.9 : 1.1;
       laneManager.zoomAt(factor, e.offsetX, canvas.clientWidth);
     } else if (e.shiftKey) {
-      // Horizontal scroll
+      // Horizontal scroll (pan time axis)
       laneManager.scrollBy(e.deltaY, 0, canvas.clientWidth);
     } else {
-      // Vertical scroll within a lane
+      // Vertical scroll of entire lane area
       const mmH = minimapHeight();
-      const laneIdx = laneManager.laneAtY(e.offsetY - mmH);
-      if (laneIdx >= 0) {
-        laneManager.scrollLane(laneIdx, e.deltaY);
-      }
+      const viewportHeight = canvas.clientHeight - mmH;
+      laneManager.scrollGlobal(e.deltaY, viewportHeight);
     }
     onRender();
   };
@@ -178,11 +203,12 @@ export function bindInteraction(
       }
       case "canvas-pan": {
         const dx = drag.lastX - e.clientX;
-        const dy = drag.lastY - e.clientY;
+        const dy = e.clientY - drag.lastY;
         laneManager.scrollBy(dx, 0, canvas.clientWidth);
-        if (drag.laneIndex >= 0) {
-          laneManager.scrollLane(drag.laneIndex, dy);
-        }
+        // Global vertical scroll
+        const mmH = minimapHeight();
+        const viewportHeight = canvas.clientHeight - mmH;
+        laneManager.scrollGlobal(-dy, viewportHeight);
         drag.lastX = e.clientX;
         drag.lastY = e.clientY;
         onRender();
@@ -261,14 +287,18 @@ export function bindInteraction(
         laneManager.scrollBy(step, 0, canvas.clientWidth);
         onRender();
         break;
-      case "ArrowUp":
-        if (laneManager.lanes[0]) laneManager.scrollLane(0, -step);
+      case "ArrowUp": {
+        const mmH = minimapHeight();
+        laneManager.scrollGlobal(-step, canvas.clientHeight - mmH);
         onRender();
         break;
-      case "ArrowDown":
-        if (laneManager.lanes[0]) laneManager.scrollLane(0, step);
+      }
+      case "ArrowDown": {
+        const mmH = minimapHeight();
+        laneManager.scrollGlobal(step, canvas.clientHeight - mmH);
         onRender();
         break;
+      }
       case "+":
       case "=":
         laneManager.zoomAt(1.2, canvas.clientWidth / 2, canvas.clientWidth);
@@ -277,6 +307,16 @@ export function bindInteraction(
       case "-":
         laneManager.zoomAt(0.8, canvas.clientWidth / 2, canvas.clientWidth);
         onRender();
+        break;
+      case "Home":
+        // Reset zoom to full view (animated)
+        animateViewTo(0, 1);
+        laneManager.globalScrollY = 0;
+        for (const lane of laneManager.visibleLanes) lane.scrollY = 0;
+        break;
+      case "0":
+        // Also reset zoom with 0 key (animated)
+        animateViewTo(0, 1);
         break;
     }
   };
@@ -390,10 +430,8 @@ export function bindInteraction(
       const dy = touchState.lastY - pos.y;
       laneManager.scrollBy(dx, 0, canvas.clientWidth);
       const mmH = minimapHeight();
-      const laneIdx = laneManager.laneAtY(pos.y - mmH);
-      if (laneIdx >= 0) {
-        laneManager.scrollLane(laneIdx, dy);
-      }
+      const viewportHeight = canvas.clientHeight - mmH;
+      laneManager.scrollGlobal(dy, viewportHeight);
       touchState.lastX = pos.x;
       touchState.lastY = pos.y;
       onRender();
@@ -416,7 +454,7 @@ export function bindInteraction(
   canvas.addEventListener("touchmove", onTouchMove, { passive: false });
   canvas.addEventListener("touchend", onTouchEnd);
 
-  return () => {
+  const cleanup = () => {
     canvas.removeEventListener("wheel", onWheel);
     canvas.removeEventListener("mousedown", onMouseDown);
     window.removeEventListener("mousemove", onMouseMove);
@@ -426,4 +464,6 @@ export function bindInteraction(
     canvas.removeEventListener("touchmove", onTouchMove);
     canvas.removeEventListener("touchend", onTouchEnd);
   };
+
+  return { cleanup, animateViewTo };
 }

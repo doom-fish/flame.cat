@@ -40,6 +40,14 @@ function colorStr(c: Color): string {
   return `rgba(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)},${c.a})`;
 }
 
+/** Format microseconds into a human-readable string. */
+function formatTime(us: number): string {
+  if (us < 1) return `${(us * 1000).toFixed(1)}ns`;
+  if (us < 1000) return `${us.toFixed(1)}µs`;
+  if (us < 1_000_000) return `${(us / 1000).toFixed(2)}ms`;
+  return `${(us / 1_000_000).toFixed(3)}s`;
+}
+
 async function main() {
   // Layout: toolbar → canvas container → detail panel
   const root = document.createElement("div");
@@ -92,6 +100,46 @@ async function main() {
   canvas.id = "canvas";
   canvas.style.cssText = "width:100%;height:100%;display:block;touch-action:none;";
   canvasContainer.appendChild(canvas);
+
+  // Empty state / welcome screen
+  const emptyState = document.createElement("div");
+  emptyState.style.cssText = `
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    user-select: none;
+    gap: 16px;
+  `;
+  const dropIcon = document.createElement("div");
+  dropIcon.textContent = "🔥";
+  dropIcon.style.cssText = "font-size: 48px; opacity: 0.6;";
+  const dropText = document.createElement("div");
+  dropText.style.cssText = `
+    font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+    font-size: 14px;
+    opacity: 0.5;
+    text-align: center;
+    line-height: 1.8;
+  `;
+  dropText.textContent = "Drop a profile here or click 📂 to open\nSupports Chrome, Firefox, speedscope, pprof, collapsed, and more";
+  const shortcutsText = document.createElement("div");
+  shortcutsText.style.cssText = `
+    font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+    font-size: 11px;
+    opacity: 0.35;
+    text-align: center;
+    line-height: 1.8;
+    white-space: pre-line;
+  `;
+  shortcutsText.textContent = "1-4: Switch views  ·  Ctrl+F: Search  ·  L: Lanes\nScroll: Pan  ·  Ctrl+Scroll: Zoom  ·  Drag: Pan";
+  emptyState.appendChild(dropIcon);
+  emptyState.appendChild(dropText);
+  emptyState.appendChild(shortcutsText);
+  canvasContainer.appendChild(emptyState);
 
   // Detail panel
   const detailPanel = new DetailPanel(root);
@@ -161,8 +209,14 @@ async function main() {
       }
     }
 
-    // Lane headers
-    allCommands.push(...laneManager.renderHeaders(canvas.clientWidth, laneYOffset));
+    // Clip the lane area below the minimap
+    const scrollOffset = -laneManager.globalScrollY;
+    allCommands.push({
+      SetClip: { rect: { x: 0, y: laneYOffset, w: canvas.clientWidth, h: canvas.clientHeight - laneYOffset } },
+    });
+
+    // Lane headers (offset by global scroll)
+    allCommands.push(...laneManager.renderHeaders(canvas.clientWidth, laneYOffset + scrollOffset));
 
     // Lane content (visible lanes only)
     const { viewStart, viewEnd } = laneManager.getViewWindow();
@@ -170,7 +224,7 @@ async function main() {
     for (let i = 0; i < visible.length; i++) {
       const lane = visible[i];
       if (!lane) continue;
-      const laneY = laneManager.laneY(i) + laneManager.headerHeight + laneYOffset;
+      const laneY = laneManager.laneY(i) + laneManager.headerHeight + laneYOffset + scrollOffset;
       try {
         // Compute absolute time window from fractional view window + profile metadata
         const meta = JSON.parse(wasm.get_profile_metadata(lane.profileIndex)) as {
@@ -232,6 +286,9 @@ async function main() {
       }
     }
 
+    // Clear the global lane area clip
+    allCommands.push("ClearClip");
+
     renderer.render(allCommands, 0, 0);
   };
 
@@ -260,14 +317,15 @@ async function main() {
   };
 
   // Hit test: find frame at mouse position
-  const hitTest = (mx: number, my: number): { name: string; frameId: number } | null => {
+  const hitTest = (mx: number, my: number): { name: string; frameId: number; profileIndex: number } | null => {
     const laneYOffset = profileLoaded ? MINIMAP_HEIGHT : 0;
+    const scrollOffset = -laneManager.globalScrollY;
     const { viewStart, viewEnd } = laneManager.getViewWindow();
     const visible = laneManager.visibleLanes;
     for (let i = 0; i < visible.length; i++) {
       const lane = visible[i];
       if (!lane) continue;
-      const laneY = laneManager.laneY(i) + laneManager.headerHeight + laneYOffset;
+      const laneY = laneManager.laneY(i) + laneManager.headerHeight + laneYOffset + scrollOffset;
       if (my < laneY || my > laneY + lane.height) continue;
       try {
         const meta = JSON.parse(wasm.get_profile_metadata(lane.profileIndex)) as {
@@ -297,7 +355,7 @@ async function main() {
           if (typeof cmd !== "string" && "DrawRect" in cmd && cmd.DrawRect.frame_id != null) {
             const r = cmd.DrawRect.rect;
             if (mx >= r.x && mx <= r.x + r.w && localY >= r.y && localY <= r.y + r.h) {
-              return { name: cmd.DrawRect.label ?? "unknown", frameId: cmd.DrawRect.frame_id };
+              return { name: cmd.DrawRect.label ?? "unknown", frameId: cmd.DrawRect.frame_id, profileIndex: lane.profileIndex };
             }
           }
         }
@@ -313,13 +371,29 @@ async function main() {
     if (!profileLoaded) return;
     const result = hitTest(e.offsetX, e.offsetY);
     if (result) {
+      let detail = "";
+      try {
+        const info = JSON.parse(wasm.get_span_info(result.profileIndex, BigInt(result.frameId))) as {
+          duration: number;
+          self_time: number;
+          thread: string;
+          category: string | null;
+        };
+        const pctTotal = profileDuration > 0 ? ((info.duration / profileDuration) * 100).toFixed(1) : "?";
+        const pctSelf = profileDuration > 0 ? ((info.self_time / profileDuration) * 100).toFixed(1) : "?";
+        detail = `Duration: ${formatTime(info.duration)} (${pctTotal}%)\nSelf: ${formatTime(info.self_time)} (${pctSelf}%)`;
+        if (info.category) detail += `\nCategory: ${info.category}`;
+        detail += `\nThread: ${info.thread}`;
+      } catch {
+        detail = `frame #${result.frameId}`;
+      }
       hovertip.show(
         e.offsetX,
         e.offsetY,
         canvas.clientWidth,
         canvas.clientHeight,
         result.name,
-        `frame #${result.frameId}`,
+        detail,
       );
     } else {
       hovertip.hide();
@@ -418,8 +492,11 @@ async function main() {
     text: colorStr(resolveColor(theme, "TextPrimary")),
     border: colorStr(resolveColor(theme, "Border")),
   });
+  // Empty state text color
+  dropText.style.color = colorStr(resolveColor(theme, "TextPrimary"));
+  shortcutsText.style.color = colorStr(resolveColor(theme, "TextPrimary"));
 
-  bindInteraction(
+  const { animateViewTo } = bindInteraction(
     canvas,
     laneManager,
     renderAll,
@@ -444,12 +521,14 @@ async function main() {
       const frameCount = wasm.get_frame_count(handle);
       profileDuration = meta.end_time - meta.start_time;
       profileLoaded = true;
+      emptyState.style.display = "none";
       console.log(`Loaded profile: ${frameCount} frames, ${profileDuration}µs`);
       const centerEl = toolbar.querySelector("#toolbar-center");
       if (centerEl) centerEl.textContent = meta.name ?? file.name;
 
       // Clear existing lanes
       laneManager.lanes.length = 0;
+      laneManager.globalScrollY = 0;
 
       // Create one lane per thread group
       const threads = JSON.parse(wasm.get_thread_list(handle)) as {
@@ -461,7 +540,7 @@ async function main() {
       }[];
 
       const FRAME_HEIGHT = 20;
-      const MIN_LANE_HEIGHT = 60;
+      const MIN_LANE_HEIGHT = 40;
       const MAX_LANE_HEIGHT = 400;
 
       for (const thread of threads) {
@@ -478,6 +557,22 @@ async function main() {
       }
 
       laneSidebar.update(laneManager.lanes);
+
+      // Zoom-to-fit: center viewport on actual content bounds
+      try {
+        const bounds = JSON.parse(wasm.get_content_bounds(handle)) as { start: number; end: number };
+        const contentDuration = bounds.end - bounds.start;
+        if (contentDuration > 0 && profileDuration > 0 && contentDuration < profileDuration * 0.95) {
+          const padding = contentDuration * 0.05;
+          const fitStart = Math.max(0, (bounds.start - padding - meta.start_time) / profileDuration);
+          const fitEnd = Math.min(1, (bounds.end + padding - meta.start_time) / profileDuration);
+          laneManager.viewStart = fitStart;
+          laneManager.viewEnd = fitEnd;
+        }
+      } catch {
+        // fall through — keep full view
+      }
+
       renderAll();
     } catch (err) {
       console.error("Failed to load profile:", err);
@@ -488,10 +583,18 @@ async function main() {
   canvas.addEventListener("dragover", (e) => {
     e.preventDefault();
     e.stopPropagation();
+    canvasContainer.style.outline = "2px dashed rgba(100,160,255,0.6)";
+    canvasContainer.style.outlineOffset = "-4px";
+  });
+  canvas.addEventListener("dragleave", () => {
+    canvasContainer.style.outline = "";
+    canvasContainer.style.outlineOffset = "";
   });
   canvas.addEventListener("drop", async (e) => {
     e.preventDefault();
     e.stopPropagation();
+    canvasContainer.style.outline = "";
+    canvasContainer.style.outlineOffset = "";
     const file = e.dataTransfer?.files[0];
     if (file) await loadFile(file);
   });

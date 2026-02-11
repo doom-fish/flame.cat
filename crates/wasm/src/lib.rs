@@ -96,6 +96,87 @@ pub fn get_frame_count(profile_index: usize) -> Result<usize, JsError> {
     Ok(profile.span_count())
 }
 
+/// Look up span details by frame ID. Returns JSON with name, start, end,
+/// duration, self_value, depth, category, and thread name.
+#[wasm_bindgen]
+pub fn get_span_info(profile_index: usize, frame_id: u64) -> Result<String, JsError> {
+    let profiles = lock_profiles()?;
+    let profile = profiles
+        .get(profile_index)
+        .ok_or_else(|| JsError::new("invalid profile index"))?;
+
+    for thread in &profile.threads {
+        for span in &thread.spans {
+            if span.id == frame_id {
+                #[derive(serde::Serialize)]
+                struct SpanInfo {
+                    name: String,
+                    start: f64,
+                    end: f64,
+                    duration: f64,
+                    self_time: f64,
+                    depth: u32,
+                    category: Option<String>,
+                    thread: String,
+                }
+                let info = SpanInfo {
+                    name: span.name.to_string(),
+                    start: span.start,
+                    end: span.end,
+                    duration: span.duration(),
+                    self_time: span.self_value,
+                    depth: span.depth,
+                    category: span.category.as_ref().map(|c| c.name.to_string()),
+                    thread: thread.name.to_string(),
+                };
+                return serde_json::to_string(&info)
+                    .map_err(|e| JsError::new(&e.to_string()));
+            }
+        }
+    }
+
+    Err(JsError::new(&format!("span {frame_id} not found")))
+}
+
+/// Get the actual content time bounds (min span start, max span end) as JSON.
+/// Useful for zoom-to-fit, skipping empty regions at the edges.
+#[wasm_bindgen]
+pub fn get_content_bounds(profile_index: usize) -> Result<String, JsError> {
+    let profiles = lock_profiles()?;
+    let profile = profiles
+        .get(profile_index)
+        .ok_or_else(|| JsError::new("invalid profile index"))?;
+
+    let mut min_start = f64::MAX;
+    let mut max_end = f64::MIN;
+    for thread in &profile.threads {
+        for span in &thread.spans {
+            if span.start < min_start {
+                min_start = span.start;
+            }
+            if span.end > max_end {
+                max_end = span.end;
+            }
+        }
+    }
+
+    if min_start > max_end {
+        min_start = profile.meta.start_time;
+        max_end = profile.meta.end_time;
+    }
+
+    #[derive(serde::Serialize)]
+    struct Bounds {
+        start: f64,
+        end: f64,
+    }
+    serde_json::to_string(&Bounds {
+        start: min_start,
+        end: max_end,
+    })
+    .map_err(|e| JsError::new(&e.to_string()))
+}
+
 /// Render the minimap for a profile, returning render commands as JSON.
 #[wasm_bindgen]
 pub fn render_minimap(
