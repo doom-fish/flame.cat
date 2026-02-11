@@ -190,17 +190,22 @@ export function bindInteraction(
   const onWheel = (e: WheelEvent) => {
     e.preventDefault();
     if (e.ctrlKey || e.metaKey) {
-      // Zoom at cursor
+      // Pinch-to-zoom on trackpad (or Ctrl+scroll on mouse)
       const factor = e.deltaY > 0 ? 0.9 : 1.1;
       laneManager.zoomAt(factor, e.offsetX, canvas.clientWidth);
-    } else if (e.shiftKey) {
-      // Horizontal scroll (pan time axis)
-      laneManager.scrollBy(e.deltaY, 0, canvas.clientWidth);
     } else {
-      // Vertical scroll of entire lane area
-      const mmH = minimapHeight();
-      const viewportHeight = canvas.clientHeight - mmH;
-      laneManager.scrollGlobal(e.deltaY, viewportHeight);
+      // Horizontal: deltaX from trackpad swipe or Shift+scroll
+      const dx = e.shiftKey ? e.deltaY : e.deltaX;
+      if (dx !== 0) {
+        laneManager.scrollBy(dx, 0, canvas.clientWidth);
+      }
+      // Vertical scroll
+      const dy = e.shiftKey ? 0 : e.deltaY;
+      if (dy !== 0) {
+        const mmH = minimapHeight();
+        const viewportHeight = canvas.clientHeight - mmH;
+        laneManager.scrollGlobal(dy, viewportHeight);
+      }
     }
     onRender();
   };
