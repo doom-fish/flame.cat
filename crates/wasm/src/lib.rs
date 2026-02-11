@@ -129,8 +129,7 @@ pub fn get_span_info(profile_index: usize, frame_id: u64) -> Result<String, JsEr
                     category: span.category.as_ref().map(|c| c.name.to_string()),
                     thread: thread.name.to_string(),
                 };
-                return serde_json::to_string(&info)
-                    .map_err(|e| JsError::new(&e.to_string()));
+                return serde_json::to_string(&info).map_err(|e| JsError::new(&e.to_string()));
             }
         }
     }

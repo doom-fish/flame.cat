@@ -197,14 +197,16 @@ fn aggregate_spans(profile: &VisualProfile, sort: RankedSort, ascending: bool) -
     }
 
     let mut entries: Vec<RankedEntry> = Vec::with_capacity(by_name.len());
-    entries.extend(by_name.into_values().map(|(name, self_time, total_time, count)| {
-        RankedEntry {
-            name,
-            self_time,
-            total_time,
-            count,
-        }
-    }));
+    entries.extend(
+        by_name
+            .into_values()
+            .map(|(name, self_time, total_time, count)| RankedEntry {
+                name,
+                self_time,
+                total_time,
+                count,
+            }),
+    );
 
     match sort {
         RankedSort::SelfTime => entries.sort_by(|a, b| b.self_time.total_cmp(&a.self_time)),

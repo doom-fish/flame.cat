@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use flame_cat_protocol::{Rect, RenderCommand, SharedStr, Span, ThemeToken, Viewport, VisualProfile};
+use flame_cat_protocol::{
+    Rect, RenderCommand, SharedStr, Span, ThemeToken, Viewport, VisualProfile,
+};
 
 const FRAME_HEIGHT: f64 = 20.0;
 

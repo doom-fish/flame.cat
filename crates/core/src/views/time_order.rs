@@ -186,9 +186,7 @@ mod tests {
         );
         let rects: Vec<_> = cmds
             .iter()
-            .filter(|c| {
-                matches!(c, RenderCommand::DrawRect { frame_id, .. } if frame_id.is_some())
-            })
+            .filter(|c| matches!(c, RenderCommand::DrawRect { frame_id, .. } if frame_id.is_some()))
             .collect();
         assert_eq!(rects.len(), 2);
     }

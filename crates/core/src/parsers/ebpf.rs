@@ -124,8 +124,8 @@ fn parse_bpftrace(text: &str) -> Result<Profile, EbpfParseError> {
                     category: Some("ebpf".to_string()),
                     parent: parent_id,
                     self_time: if is_leaf { count } else { 0.0 },
-                thread: None,
-                    });
+                    thread: None,
+                });
 
                 parent_id = Some(id);
             }
@@ -185,7 +185,7 @@ fn parse_perf_script(text: &str) -> Result<Profile, EbpfParseError> {
                         category: Some("perf".to_string()),
                         parent: parent_id,
                         self_time: if is_leaf { 1.0 } else { 0.0 },
-                    thread: None,
+                        thread: None,
                     });
 
                     parent_id = Some(id);
@@ -227,8 +227,8 @@ fn parse_perf_script(text: &str) -> Result<Profile, EbpfParseError> {
                 category: Some("perf".to_string()),
                 parent: parent_id,
                 self_time: if is_leaf { 1.0 } else { 0.0 },
-            thread: None,
-                    });
+                thread: None,
+            });
 
             parent_id = Some(id);
         }

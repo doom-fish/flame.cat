@@ -143,10 +143,7 @@ impl Profile {
                 category,
             };
 
-            thread_groups
-                .entry(thread_name)
-                .or_default()
-                .push(span);
+            thread_groups.entry(thread_name).or_default().push(span);
         }
 
         // Sort thread groups: put "CrRendererMain" or "Main" first, then by event count

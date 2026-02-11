@@ -37,16 +37,101 @@ enum TraceFile {
     Object {
         #[serde(rename = "traceEvents")]
         trace_events: Vec<TraceEvent>,
+        #[serde(default)]
+        metadata: Option<serde_json::Value>,
     },
     Array(Vec<TraceEvent>),
+}
+
+/// Metadata extracted from top-level Chrome trace fields.
+#[allow(dead_code)]
+struct TraceMetadata {
+    clock_domain: Option<String>,
+}
+
+/// Extract top-level metadata from Chrome trace object format.
+fn extract_trace_metadata(metadata: &Option<serde_json::Value>) -> TraceMetadata {
+    let clock_domain = metadata
+        .as_ref()
+        .and_then(|m| m.get("clock-domain"))
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    TraceMetadata { clock_domain }
+}
+
+/// Check if a trace event is a React Performance Track component measure.
+///
+/// React 19.2+ emits `performance.measure()` calls that Chrome records as
+/// user timing events. The key identifier is `args.detail.devtools.track`
+/// containing `"Components ⚛"`.
+fn is_react_component_event(event: &TraceEvent) -> bool {
+    event.args.as_ref().is_some_and(|args| {
+        args.get("detail")
+            .and_then(|d| d.get("devtools"))
+            .and_then(|dt| dt.get("track"))
+            .and_then(|t| t.as_str())
+            .is_some_and(|s| s.contains("Components"))
+    })
+}
+
+/// Check if a trace event is a React Scheduler lane measure.
+fn is_react_scheduler_event(event: &TraceEvent) -> bool {
+    event.args.as_ref().is_some_and(|args| {
+        args.get("detail")
+            .and_then(|d| d.get("devtools"))
+            .and_then(|dt| dt.get("track"))
+            .and_then(|t| t.as_str())
+            .is_some_and(|s| s == "Blocking" || s == "Transition" || s == "Suspense" || s == "Idle")
+    })
+}
+
+/// Extract the React component self-time color severity from a trace event.
+/// React uses: primary-light (<0.5ms), primary (<10ms), primary-dark (<100ms), error (>=100ms).
+fn extract_react_color(event: &TraceEvent) -> Option<&str> {
+    event.args.as_ref().and_then(|args| {
+        args.get("detail")
+            .and_then(|d| d.get("devtools"))
+            .and_then(|dt| dt.get("color"))
+            .and_then(|c| c.as_str())
+    })
+}
+
+/// Extract changed props from a React DEV-mode trace event.
+/// In DEV builds, React emits a `properties` array with changed prop details.
+#[cfg(test)]
+fn extract_react_properties(event: &TraceEvent) -> Option<Vec<(String, String)>> {
+    event.args.as_ref().and_then(|args| {
+        args.get("detail")
+            .and_then(|d| d.get("devtools"))
+            .and_then(|dt| dt.get("properties"))
+            .and_then(|p| p.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|entry| {
+                        let pair = entry.as_array()?;
+                        if pair.len() >= 2 {
+                            Some((
+                                pair[0].as_str().unwrap_or("").to_string(),
+                                pair[1].as_str().unwrap_or("").to_string(),
+                            ))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            })
+    })
 }
 
 /// Parse a Chrome DevTools trace JSON into a `Profile`.
 pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
     let trace_file: TraceFile = serde_json::from_slice(data)?;
-    let events = match trace_file {
-        TraceFile::Object { trace_events } => trace_events,
-        TraceFile::Array(events) => events,
+    let (events, _trace_meta) = match trace_file {
+        TraceFile::Object {
+            trace_events,
+            metadata,
+        } => (trace_events, extract_trace_metadata(&metadata)),
+        TraceFile::Array(events) => (events, TraceMetadata { clock_domain: None }),
     };
 
     // Collect thread name metadata
@@ -96,6 +181,48 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
             }
         }
 
+        // Determine category: React component/scheduler events get a "react" category.
+        let category = if is_react_component_event(event) {
+            // Append self-time severity as subcategory for coloring.
+            let color = extract_react_color(event).unwrap_or("primary");
+            Some(format!("react.component.{color}"))
+        } else if is_react_scheduler_event(event) {
+            let track = event
+                .args
+                .as_ref()
+                .and_then(|a| a.get("detail"))
+                .and_then(|d| d.get("devtools"))
+                .and_then(|dt| dt.get("track"))
+                .and_then(|t| t.as_str())
+                .unwrap_or("unknown");
+            Some(format!("react.scheduler.{}", track.to_lowercase()))
+        } else if event.cat.is_empty() {
+            None
+        } else {
+            Some(event.cat.clone())
+        };
+
+        // For React component events, override the thread name to group
+        // them in a dedicated "React Components" lane.
+        let effective_thread = if is_react_component_event(event) {
+            Some("React Components".to_string())
+        } else if is_react_scheduler_event(event) {
+            let track = event
+                .args
+                .as_ref()
+                .and_then(|a| a.get("detail"))
+                .and_then(|d| d.get("devtools"))
+                .and_then(|dt| dt.get("track"))
+                .and_then(|t| t.as_str())
+                .unwrap_or("Scheduler");
+            Some(format!("React Scheduler: {track}"))
+        } else {
+            thread_name
+        };
+
+        // Strip the zero-width space prefix React uses for measure names in DEV.
+        let name = event.name.trim_start_matches('\u{200b}').to_string();
+
         match event.ph.as_str() {
             "X" => {
                 let dur = event.dur.unwrap_or(0.0);
@@ -110,18 +237,14 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
                 let frame_idx = frames.len();
                 frames.push(Frame {
                     id,
-                    name: event.name.clone(),
+                    name,
                     start: event.ts,
                     end: event.ts + dur,
                     depth,
-                    category: if event.cat.is_empty() {
-                        None
-                    } else {
-                        Some(event.cat.clone())
-                    },
+                    category,
                     parent: parent_id,
                     self_time: 0.0, // computed below
-                    thread: thread_name,
+                    thread: effective_thread,
                 });
                 // Keep X events on stack so nested children get correct depth
                 stacks.entry(key).or_default().push(frame_idx);
@@ -138,18 +261,14 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
                 let frame_idx = frames.len();
                 frames.push(Frame {
                     id,
-                    name: event.name.clone(),
+                    name,
                     start: event.ts,
                     end: event.ts, // will be updated on E
                     depth,
-                    category: if event.cat.is_empty() {
-                        None
-                    } else {
-                        Some(event.cat.clone())
-                    },
+                    category,
                     parent: parent_id,
                     self_time: 0.0,
-                    thread: thread_name,
+                    thread: effective_thread,
                 });
                 stacks.entry(key).or_default().push(frame_idx);
             }
@@ -261,5 +380,131 @@ mod tests {
         let json = r#"{"traceEvents":[]}"#;
         let profile = parse_chrome_trace(json.as_bytes()).unwrap();
         assert!(profile.frames.is_empty());
+    }
+
+    #[test]
+    fn parse_react_component_events() {
+        // Simulate React 19.2 Performance Track events in a Chrome trace.
+        // React emits performance.measure() with detail.devtools metadata.
+        let json = r#"{"traceEvents":[
+            {"name":"thread_name","ph":"M","pid":1,"tid":1,"ts":0,"cat":"__metadata",
+             "args":{"name":"CrRendererMain"}},
+            {"name":"\u200bApp","ph":"X","ts":1000,"dur":500,"pid":1,"tid":1,"cat":"blink.user_timing",
+             "args":{"detail":{"devtools":{"track":"Components ⚛","color":"primary-light"}}}},
+            {"name":"\u200bHeader","ph":"X","ts":1000,"dur":150,"pid":1,"tid":1,"cat":"blink.user_timing",
+             "args":{"detail":{"devtools":{"track":"Components ⚛","color":"primary-light"}}}},
+            {"name":"\u200bBody","ph":"X","ts":1200,"dur":300,"pid":1,"tid":1,"cat":"blink.user_timing",
+             "args":{"detail":{"devtools":{"track":"Components ⚛","color":"primary",
+              "properties":[["Changed Props",""],["count","5 → 6"]]}}}},
+            {"name":"\u200bList","ph":"X","ts":1200,"dur":200,"pid":1,"tid":1,"cat":"blink.user_timing",
+             "args":{"detail":{"devtools":{"track":"Components ⚛","color":"primary-dark"}}}}
+        ]}"#;
+
+        let profile = parse_chrome_trace(json.as_bytes()).unwrap();
+
+        // Should have 4 React component frames (thread_name is metadata, not a frame)
+        let react_frames: Vec<_> = profile
+            .frames
+            .iter()
+            .filter(|f| {
+                f.category
+                    .as_ref()
+                    .is_some_and(|c| c.starts_with("react.component"))
+            })
+            .collect();
+        assert_eq!(react_frames.len(), 4);
+
+        // Zero-width space prefix should be stripped from names
+        assert_eq!(react_frames[0].name, "App");
+        assert_eq!(react_frames[1].name, "Header");
+        assert_eq!(react_frames[2].name, "Body");
+        assert_eq!(react_frames[3].name, "List");
+
+        // All React component frames go to "React Components" thread
+        assert!(
+            react_frames
+                .iter()
+                .all(|f| f.thread.as_deref() == Some("React Components"))
+        );
+
+        // Categories encode self-time severity
+        assert_eq!(
+            react_frames[0].category.as_deref(),
+            Some("react.component.primary-light")
+        );
+        assert_eq!(
+            react_frames[2].category.as_deref(),
+            Some("react.component.primary")
+        );
+        assert_eq!(
+            react_frames[3].category.as_deref(),
+            Some("react.component.primary-dark")
+        );
+
+        // Nesting: App is the root (depth 0), Header and Body are children (depth 1),
+        // List is nested inside Body (depth 2 on the React Components thread)
+        assert_eq!(react_frames[0].depth, 0); // App
+        assert_eq!(react_frames[1].depth, 1); // Header (inside App)
+    }
+
+    #[test]
+    fn parse_react_scheduler_events() {
+        let json = r#"{"traceEvents":[
+            {"name":"Blocking","ph":"X","ts":0,"dur":1000,"pid":1,"tid":1,"cat":"blink.user_timing",
+             "args":{"detail":{"devtools":{"track":"Blocking","color":"primary"}}}},
+            {"name":"Transition","ph":"X","ts":2000,"dur":500,"pid":1,"tid":1,"cat":"blink.user_timing",
+             "args":{"detail":{"devtools":{"track":"Transition","color":"primary-light"}}}}
+        ]}"#;
+
+        let profile = parse_chrome_trace(json.as_bytes()).unwrap();
+        assert_eq!(profile.frames.len(), 2);
+
+        let blocking = &profile.frames[0];
+        assert_eq!(blocking.name, "Blocking");
+        assert_eq!(
+            blocking.category.as_deref(),
+            Some("react.scheduler.blocking")
+        );
+        assert_eq!(
+            blocking.thread.as_deref(),
+            Some("React Scheduler: Blocking")
+        );
+
+        let transition = &profile.frames[1];
+        assert_eq!(
+            transition.category.as_deref(),
+            Some("react.scheduler.transition")
+        );
+    }
+
+    #[test]
+    fn extract_react_dev_properties() {
+        let json = r#"{"traceEvents":[
+            {"name":"\u200bCounter","ph":"X","ts":0,"dur":100,"pid":1,"tid":1,"cat":"blink.user_timing",
+             "args":{"detail":{"devtools":{"track":"Components ⚛","color":"primary",
+              "properties":[["Changed Props",""],["count","5 → 6"],["label","\"hello\" → \"world\""]]}}}}
+        ]}"#;
+
+        let profile = parse_chrome_trace(json.as_bytes()).unwrap();
+        assert_eq!(profile.frames.len(), 1);
+
+        // Verify we can extract properties from the raw event
+        let raw: serde_json::Value = serde_json::from_slice(json.as_bytes()).unwrap();
+        let events = raw["traceEvents"].as_array().unwrap();
+        let event: TraceEvent = serde_json::from_value(events[0].clone()).unwrap();
+        let props = extract_react_properties(&event).unwrap();
+        assert_eq!(props.len(), 3);
+        assert_eq!(props[0], ("Changed Props".to_string(), "".to_string()));
+        assert_eq!(props[1], ("count".to_string(), "5 → 6".to_string()));
+    }
+
+    #[test]
+    fn parse_trace_with_metadata() {
+        let json = r#"{"traceEvents":[
+            {"name":"a","ph":"X","ts":0,"dur":10,"pid":1,"tid":1,"cat":""}
+        ],"metadata":{"clock-domain":"LINUX_CLOCK_MONOTONIC"}}"#;
+
+        let profile = parse_chrome_trace(json.as_bytes()).unwrap();
+        assert_eq!(profile.frames.len(), 1);
     }
 }

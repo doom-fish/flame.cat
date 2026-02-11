@@ -45,7 +45,8 @@ pub fn render_sandwich(
     // === Callers section (walk upward) ===
     let caller_y_base = 0.0;
 
-    let mut caller_time: std::collections::HashMap<SharedStr, f64> = std::collections::HashMap::new();
+    let mut caller_time: std::collections::HashMap<SharedStr, f64> =
+        std::collections::HashMap::new();
     for m in &matching {
         let mut current = m.parent;
         while let Some(pid) = current {
@@ -94,7 +95,8 @@ pub fn render_sandwich(
     // === Callees section (walk downward) ===
     let callee_y_base = center_y + FRAME_HEIGHT + SEPARATOR_HEIGHT;
 
-    let mut callee_time: std::collections::HashMap<SharedStr, f64> = std::collections::HashMap::new();
+    let mut callee_time: std::collections::HashMap<SharedStr, f64> =
+        std::collections::HashMap::new();
     // Build children lookup for O(1) per matching span.
     let mut children_of: std::collections::HashMap<u64, Vec<&flame_cat_protocol::Span>> =
         std::collections::HashMap::new();

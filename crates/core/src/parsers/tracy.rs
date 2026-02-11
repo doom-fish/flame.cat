@@ -122,7 +122,7 @@ fn flatten_zone(
         category: thread_name.map(ToString::to_string),
         parent: parent_id,
         self_time: 0.0,
-                    thread: None,
+        thread: None,
     });
 
     for child in &zone.children {

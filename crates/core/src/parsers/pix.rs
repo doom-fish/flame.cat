@@ -114,7 +114,7 @@ fn flatten_pix_event(
         category: event.category.clone().or_else(|| event.thread.clone()),
         parent: parent_id,
         self_time: 0.0,
-                    thread: None,
+        thread: None,
     });
 
     for child in &event.children {

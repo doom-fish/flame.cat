@@ -135,8 +135,8 @@ pub fn parse_pprof(data: &[u8]) -> Result<Profile, PprofParseError> {
                 category,
                 parent: parent_id,
                 self_time: if is_leaf { weight } else { 0.0 },
-            thread: None,
-                    });
+                thread: None,
+            });
 
             parent_id = Some(id);
         }

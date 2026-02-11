@@ -77,8 +77,9 @@ pub fn render_tui(profile: &VisualProfile, _commands: &[RenderCommand]) -> Resul
         let view_start = profile.meta.start_time + scroll_x;
         let view_end = (view_start + visible_duration).min(profile.meta.end_time);
 
-        let cmds =
-            flame_cat_core::views::time_order::render_time_order(profile, &viewport, view_start, view_end, None);
+        let cmds = flame_cat_core::views::time_order::render_time_order(
+            profile, &viewport, view_start, view_end, None,
+        );
 
         terminal.draw(|frame| {
             let area = frame.area();
@@ -151,9 +152,7 @@ pub fn render_tui(profile: &VisualProfile, _commands: &[RenderCommand]) -> Resul
                     }
                     KeyCode::Right => {
                         let step = (duration / zoom) * 0.1;
-                        scroll_x = (scroll_x + step)
-                            .min(duration - duration / zoom)
-                            .max(0.0);
+                        scroll_x = (scroll_x + step).min(duration - duration / zoom).max(0.0);
                     }
                     KeyCode::Up => scroll_y = (scroll_y - 20.0).max(0.0),
                     KeyCode::Down => scroll_y += 20.0,
