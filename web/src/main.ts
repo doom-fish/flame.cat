@@ -319,6 +319,15 @@ async function main() {
             absViewStart,
             absViewEnd,
           );
+        } else if (trackType === "async") {
+          commandsJson = wasm.render_async_track(
+            lane.profileIndex,
+            canvas.clientWidth,
+            lane.height,
+            window.devicePixelRatio,
+            absViewStart,
+            absViewEnd,
+          );
         } else {
           commandsJson = wasm.render_view(
             lane.profileIndex,
@@ -635,6 +644,7 @@ async function main() {
       const FRAME_HEIGHT = 20;
       const MIN_LANE_HEIGHT = 40;
       const MAX_LANE_HEIGHT = 400;
+      const AUTO_HIDE_THRESHOLD = 3; // auto-hide threads with fewer spans
 
       for (const thread of threads) {
         const contentHeight = (thread.max_depth + 1) * FRAME_HEIGHT + 8;
@@ -646,6 +656,7 @@ async function main() {
           height: laneHeight,
           threadId: thread.id,
           threadName: `${thread.name} (${thread.span_count})`,
+          visible: thread.span_count >= AUTO_HIDE_THRESHOLD,
         });
       }
 
@@ -658,6 +669,7 @@ async function main() {
         const extra = JSON.parse(extraJson) as {
           counter_count: number;
           marker_count: number;
+          async_span_count: number;
           has_frames: boolean;
           counter_names: string[];
           marker_names: string[];
@@ -672,6 +684,18 @@ async function main() {
             height: 60,
             trackType: "frame",
             threadName: "⏱ Frame Cost",
+          });
+        }
+
+        // Async spans track
+        if (extra.async_span_count > 0) {
+          laneManager.addLane({
+            id: `async-${handle}`,
+            viewType: activeView,
+            profileIndex: handle,
+            height: 120,
+            trackType: "async",
+            threadName: `🔀 Async Spans (${extra.async_span_count})`,
           });
         }
 
@@ -700,7 +724,7 @@ async function main() {
           });
         }
 
-        if (extra.counter_count > 0 || extra.marker_count > 0 || extra.has_frames) {
+        if (extra.counter_count > 0 || extra.marker_count > 0 || extra.has_frames || extra.async_span_count > 0) {
           laneSidebar.update(laneManager.lanes);
         }
       } catch {

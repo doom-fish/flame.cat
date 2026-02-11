@@ -1,3 +1,4 @@
+pub mod async_track;
 pub mod counter;
 pub mod frame_track;
 pub mod left_heavy;
