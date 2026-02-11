@@ -37,31 +37,44 @@ export function generateSDFAtlas(device: GPUDevice): GlyphAtlas {
 
   // Step 1: Render glyphs to offscreen canvas and measure
   const measure = document.createElement("canvas");
-  const mctx = measure.getContext("2d")!;
+  const mctx = measure.getContext("2d");
+  if (!mctx) throw new Error("Cannot create 2D context for SDF atlas");
   mctx.font = `${RENDER_SIZE}px sans-serif`;
 
-  const glyphData: { char: string; width: number; imgData: ImageData }[] = [];
+  // Measure all glyphs first
+  const glyphInfo: { char: string; width: number; cellW: number }[] = [];
   const cellH = RENDER_SIZE + SDF_SPREAD * 2;
+  let maxCellW = 0;
 
   for (const ch of chars) {
     const tm = mctx.measureText(ch);
     const cellW = Math.ceil(tm.width) + SDF_SPREAD * 2;
+    glyphInfo.push({ char: ch, width: tm.width, cellW });
+    maxCellW = Math.max(maxCellW, cellW);
+  }
 
-    const gc = document.createElement("canvas");
-    gc.width = cellW;
-    gc.height = cellH;
-    const gctx = gc.getContext("2d")!;
+  // Render all glyphs on a single offscreen canvas
+  const gc = document.createElement("canvas");
+  gc.width = maxCellW;
+  gc.height = cellH;
+  const gctx = gc.getContext("2d");
+  if (!gctx) throw new Error("Cannot create glyph render context");
+
+  const glyphData: { char: string; width: number; imgData: ImageData }[] = [];
+
+  for (const info of glyphInfo) {
+    gctx.clearRect(0, 0, maxCellW, cellH);
     gctx.fillStyle = "#000";
-    gctx.fillRect(0, 0, cellW, cellH);
+    gctx.fillRect(0, 0, info.cellW, cellH);
     gctx.fillStyle = "#fff";
     gctx.font = `${RENDER_SIZE}px sans-serif`;
     gctx.textBaseline = "top";
-    gctx.fillText(ch, SDF_SPREAD, SDF_SPREAD);
+    gctx.fillText(info.char, SDF_SPREAD, SDF_SPREAD);
 
     glyphData.push({
-      char: ch,
-      width: tm.width,
-      imgData: gctx.getImageData(0, 0, cellW, cellH),
+      char: info.char,
+      width: info.width,
+      imgData: gctx.getImageData(0, 0, info.cellW, cellH),
     });
   }
 

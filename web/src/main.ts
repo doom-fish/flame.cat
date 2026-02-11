@@ -87,7 +87,7 @@ async function main() {
 
   // Canvas container
   const canvasContainer = document.createElement("div");
-  canvasContainer.style.cssText = "flex:1;position:relative;min-height:0;";
+  canvasContainer.style.cssText = "flex:1;position:relative;min-height:0;touch-action:none;overflow:hidden;";
   root.appendChild(canvasContainer);
 
   const canvas = document.createElement("canvas");
@@ -255,10 +255,12 @@ async function main() {
     renderer = result.renderer;
     backend = result.backend;
   } catch (e) {
+    console.error("WebGPU init failed:", e);
     document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#e0e0e0;background:#1a1a2e;flex-direction:column;gap:16px">
       <h1 style="font-size:48px;margin:0">🔥</h1>
       <h2 style="margin:0">flame.cat requires WebGPU</h2>
-      <p style="color:#888;max-width:400px;text-align:center">Your browser does not support WebGPU. Please use Chrome 113+, Edge 113+, or Safari 18+ with a compatible GPU.</p>
+      <p style="color:#888;max-width:400px;text-align:center">${e instanceof Error ? e.message : String(e)}</p>
+      <p style="color:#666;font-size:12px">Please use Chrome 113+, Edge 113+, or Safari 18+ with a compatible GPU.</p>
     </div>`;
     return;
   }

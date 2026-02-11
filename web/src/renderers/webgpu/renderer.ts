@@ -35,6 +35,7 @@ export class WebGPURenderer {
   private atlas!: GlyphAtlas;
   private canvas: HTMLCanvasElement;
   private theme: Theme;
+  private canvasFormat!: GPUTextureFormat;
 
   constructor(canvas: HTMLCanvasElement, theme: Theme) {
     this.canvas = canvas;
@@ -45,13 +46,17 @@ export class WebGPURenderer {
     const adapter = await navigator.gpu?.requestAdapter();
     if (!adapter) throw new Error("WebGPU not supported");
     this.device = await adapter.requestDevice();
+    this.device.addEventListener("uncapturederror", (e) => {
+      console.error("WebGPU error:", (e as GPUUncapturedErrorEvent).error.message);
+    });
 
     const context = this.canvas.getContext("webgpu");
     if (!context) throw new Error("Failed to get webgpu context");
     this.gpuContext = context;
 
     const format = navigator.gpu.getPreferredCanvasFormat();
-    this.gpuContext.configure({ device: this.device, format, alphaMode: "premultiplied" });
+    this.canvasFormat = format;
+    this.gpuContext.configure({ device: this.device, format, alphaMode: "opaque" });
 
     // Generate SDF glyph atlas
     this.atlas = generateSDFAtlas(this.device);
@@ -160,10 +165,14 @@ export class WebGPURenderer {
     const dpr = window.devicePixelRatio;
     const width = this.canvas.clientWidth;
     const height = this.canvas.clientHeight;
+    if (width === 0 || height === 0) return;
     const pxW = Math.round(width * dpr);
     const pxH = Math.round(height * dpr);
-    this.canvas.width = pxW;
-    this.canvas.height = pxH;
+    if (this.canvas.width !== pxW || this.canvas.height !== pxH) {
+      this.canvas.width = pxW;
+      this.canvas.height = pxH;
+      this.gpuContext.configure({ device: this.device, format: this.canvasFormat, alphaMode: "opaque" });
+    }
 
     const uniforms = new Float32Array([width, height, scrollX, scrollY, 1, 1, dpr, 0]);
     this.device.queue.writeBuffer(this.uniformBuffer, 0, uniforms);
@@ -355,6 +364,10 @@ export class WebGPURenderer {
     const totalRects = rects.length / RECT_FLOATS;
     const totalGlyphs = glyphs.length / GLYPH_FLOATS;
 
+    if (commands.length > 0 && totalRects === 0) {
+      console.warn("WebGPU: got", commands.length, "commands but 0 rects");
+    }
+
     if (totalRects > 0) {
       this.ensureRectBuffer(totalRects);
       this.device.queue.writeBuffer(this.rectInstanceBuffer, 0, new Float32Array(rects));
@@ -364,40 +377,44 @@ export class WebGPURenderer {
       this.device.queue.writeBuffer(this.glyphInstanceBuffer, 0, new Float32Array(glyphs));
     }
 
+    let texture: GPUTexture;
+    try {
+      texture = this.gpuContext.getCurrentTexture();
+    } catch {
+      // Context lost — reconfigure and retry
+      this.gpuContext.configure({ device: this.device, format: this.canvasFormat, alphaMode: "opaque" });
+      try {
+        texture = this.gpuContext.getCurrentTexture();
+      } catch {
+        return; // Still failing, skip this frame
+      }
+    }
+
     const encoder = this.device.createCommandEncoder();
     const pass = encoder.beginRenderPass({
       colorAttachments: [{
-        view: this.gpuContext.getCurrentTexture().createView(),
+        view: texture.createView(),
         clearValue: this.bgColor(),
         loadOp: "clear",
         storeOp: "store",
       }],
     });
 
-    for (const batch of batches) {
-      if (batch.scissor) {
-        pass.setScissorRect(batch.scissor.x, batch.scissor.y, batch.scissor.w, batch.scissor.h);
-      } else {
-        pass.setScissorRect(0, 0, pxW, pxH);
-      }
+    // Simple path: draw all rects in one call, ignore batching for now
+    if (totalRects > 0) {
+      pass.setPipeline(this.rectPipeline);
+      pass.setBindGroup(0, this.rectBindGroup);
+      pass.setVertexBuffer(0, this.quadVertexBuffer);
+      pass.setVertexBuffer(1, this.rectInstanceBuffer);
+      pass.draw(6, totalRects);
+    }
 
-      // Draw rects
-      if (batch.rectCount > 0) {
-        pass.setPipeline(this.rectPipeline);
-        pass.setBindGroup(0, this.rectBindGroup);
-        pass.setVertexBuffer(0, this.quadVertexBuffer);
-        pass.setVertexBuffer(1, this.rectInstanceBuffer);
-        pass.draw(6, batch.rectCount, 0, batch.rectStart);
-      }
-
-      // Draw glyphs
-      if (batch.glyphCount > 0) {
-        pass.setPipeline(this.textPipeline);
-        pass.setBindGroup(0, this.textBindGroup);
-        pass.setVertexBuffer(0, this.quadVertexBuffer);
-        pass.setVertexBuffer(1, this.glyphInstanceBuffer);
-        pass.draw(6, batch.glyphCount, 0, batch.glyphStart);
-      }
+    if (totalGlyphs > 0) {
+      pass.setPipeline(this.textPipeline);
+      pass.setBindGroup(0, this.textBindGroup);
+      pass.setVertexBuffer(0, this.quadVertexBuffer);
+      pass.setVertexBuffer(1, this.glyphInstanceBuffer);
+      pass.draw(6, totalGlyphs);
     }
 
     pass.end();
