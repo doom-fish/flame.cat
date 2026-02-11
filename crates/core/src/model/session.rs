@@ -125,35 +125,62 @@ impl Session {
 
     /// Compute the offset for a new profile based on clock domain compatibility.
     ///
-    /// Three cases:
-    /// 1. Compatible clocks (e.g. both `CLOCK_MONOTONIC`): timestamps are
-    ///    already comparable — offset accounts only for unit differences (0.0
-    ///    since `to_session_time` handles normalization).
-    /// 2. New profile has no time domain (e.g. React DevTools export with
-    ///    relative timestamps): align its start to the first existing
-    ///    profile's start on the session timeline.
-    /// 3. Incompatible or unknown clocks: same as case 2 — place at session
-    ///    start so profiles are visible together (user can adjust manually).
+    /// Four cases:
+    /// 1. Same clock (e.g. both `LinuxMonotonic`): offset=0, unit normalization
+    ///    is enough.
+    /// 2. `PerformanceNow` ↔ `LinuxMonotonic` with `navigation_start_us`:
+    ///    exact alignment — `monotonic = navigation_start + performance.now()`.
+    /// 3. `PerformanceNow` ↔ `LinuxMonotonic` without `navigation_start_us`:
+    ///    fall through to case 4.
+    /// 4. No time domain or incompatible clocks: align start to session start.
     fn compute_offset(&self, profile: &VisualProfile) -> f64 {
+        use flame_cat_protocol::ClockKind;
+
         if self.profiles.is_empty() {
             return 0.0;
         }
 
-        // Compatible clocks: no offset needed, unit normalization is enough.
         if let Some(ref new_td) = profile.meta.time_domain {
             for existing in &self.profiles {
-                if let Some(ref existing_td) = existing.profile.meta.time_domain
-                    && new_td.is_compatible(existing_td)
-                {
+                let Some(ref existing_td) = existing.profile.meta.time_domain else {
+                    continue;
+                };
+                if !new_td.is_compatible(existing_td) {
+                    continue;
+                }
+
+                // Same clock kind: directly comparable.
+                if new_td.clock_kind == existing_td.clock_kind {
                     return 0.0;
                 }
+
+                // PerformanceNow ↔ LinuxMonotonic: use navigationStart anchor.
+                // navigationStart is the monotonic-clock µs at which performance.now() == 0.
+                let nav_start = existing_td
+                    .navigation_start_us
+                    .or(new_td.navigation_start_us);
+                if let Some(nav_start_us) = nav_start {
+                    if new_td.clock_kind == ClockKind::PerformanceNow {
+                        // New profile uses performance.now(): session_time = nav_start + local_time_µs
+                        return nav_start_us;
+                    }
+                    // New profile is LinuxMonotonic, existing is PerformanceNow (rare)
+                    return 0.0;
+                }
+
+                // Compatible but no navigationStart — fall through.
+                break;
             }
         }
 
         // No compatible clock found (or no time domain at all).
         // Align new profile's start to the existing session's start.
         let session_start = self.start_time();
-        let new_factor = profile.meta.value_unit.to_microseconds_factor().unwrap_or(1.0);
+        let new_factor = profile
+            .meta
+            .value_unit
+            .to_microseconds_factor()
+            .unwrap_or(1.0);
         let new_start_us = profile.meta.start_time * new_factor;
         session_start - new_start_us
     }
@@ -236,10 +263,12 @@ mod tests {
         let td_mono = TimeDomain {
             clock_kind: ClockKind::LinuxMonotonic,
             origin_label: None,
+            navigation_start_us: None,
         };
         let td_perf_now = TimeDomain {
             clock_kind: ClockKind::PerformanceNow,
             origin_label: None,
+            navigation_start_us: None,
         };
         assert!(td_mono.is_compatible(&td_perf_now));
         assert!(td_perf_now.is_compatible(&td_mono));
@@ -247,6 +276,7 @@ mod tests {
         let td_wall = TimeDomain {
             clock_kind: ClockKind::WallClock,
             origin_label: None,
+            navigation_start_us: None,
         };
         assert!(!td_mono.is_compatible(&td_wall));
     }
@@ -285,27 +315,72 @@ mod tests {
             Some(TimeDomain {
                 clock_kind: ClockKind::LinuxMonotonic,
                 origin_label: None,
+                navigation_start_us: None,
             }),
         );
-        // React DevTools with relative timestamps (µs from profiling start)
-        let react = make_profile(2836.0, 2846.0, ValueUnit::Microseconds, None);
+        // Profile with no time domain (unknown source)
+        let unknown = make_profile(2836.0, 2846.0, ValueUnit::Microseconds, None);
+
+        let mut session = Session::from_profile(chrome, "chrome");
+        session.add_profile(unknown, "unknown");
+
+        // Unknown profile should be aligned to Chrome's start
+        let unknown_entry = &session.profiles()[1];
+        let expected_offset = 325_186_766_678.0 - 2836.0;
+        assert!(
+            (unknown_entry.offset_us - expected_offset).abs() < 1.0,
+            "Unknown offset should align to Chrome start: got {}, expected {}",
+            unknown_entry.offset_us,
+            expected_offset,
+        );
+        assert!(
+            (unknown_entry.session_start() - 325_186_766_678.0).abs() < 1.0,
+            "Unknown session start should equal Chrome start",
+        );
+    }
+
+    #[test]
+    fn auto_align_performance_now_with_navigation_start() {
+        // Chrome trace with navigationStart anchor
+        let chrome = make_profile(
+            325_186_766_678.0,
+            325_191_926_889.0,
+            ValueUnit::Microseconds,
+            Some(TimeDomain {
+                clock_kind: ClockKind::LinuxMonotonic,
+                origin_label: None,
+                navigation_start_us: Some(325_186_769_518.0),
+            }),
+        );
+        // React DevTools with PerformanceNow timestamps (µs)
+        let react = make_profile(
+            2_836_400.0, // performance.now() = 2836.4ms = 2836400µs
+            2_845_900.0,
+            ValueUnit::Microseconds,
+            Some(TimeDomain {
+                clock_kind: ClockKind::PerformanceNow,
+                origin_label: None,
+                navigation_start_us: None,
+            }),
+        );
 
         let mut session = Session::from_profile(chrome, "chrome");
         session.add_profile(react, "react");
 
-        // React should be aligned to Chrome's start
+        // React offset should be navigationStart
         let react_entry = &session.profiles()[1];
-        let expected_offset = 325_186_766_678.0 - 2836.0;
         assert!(
-            (react_entry.offset_us - expected_offset).abs() < 1.0,
-            "React offset should align to Chrome start: got {}, expected {}",
+            (react_entry.offset_us - 325_186_769_518.0).abs() < 1.0,
+            "React offset should be navigationStart: got {}, expected 325186769518",
             react_entry.offset_us,
-            expected_offset,
         );
-        // React session start should match Chrome session start
+        // React session start = navigationStart + 2836400µs
+        let expected_start = 325_186_769_518.0 + 2_836_400.0;
         assert!(
-            (react_entry.session_start() - 325_186_766_678.0).abs() < 1.0,
-            "React session start should equal Chrome start",
+            (react_entry.session_start() - expected_start).abs() < 1.0,
+            "React start should be nav_start + perf_now: got {:.0}, expected {:.0}",
+            react_entry.session_start(),
+            expected_start,
         );
     }
 }

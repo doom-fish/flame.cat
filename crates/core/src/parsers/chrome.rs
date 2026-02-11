@@ -47,6 +47,10 @@ enum TraceFile {
 /// Metadata extracted from top-level Chrome trace fields.
 struct TraceMetadata {
     time_domain: Option<TimeDomain>,
+    /// `navigationStart` timestamp in µs (from `blink.user_timing`).
+    /// This is `performance.timeOrigin` on the monotonic clock — the anchor
+    /// point for converting `performance.now()` values to monotonic time.
+    navigation_start_us: Option<f64>,
 }
 
 /// Extract top-level metadata from Chrome trace object format.
@@ -65,9 +69,13 @@ fn extract_trace_metadata(metadata: &Option<serde_json::Value>) -> TraceMetadata
     let time_domain = clock_kind.map(|kind| TimeDomain {
         clock_kind: kind,
         origin_label: clock_domain.map(String::from),
+        navigation_start_us: None, // filled in later from events
     });
 
-    TraceMetadata { time_domain }
+    TraceMetadata {
+        time_domain,
+        navigation_start_us: None,
+    }
 }
 
 /// Check if a trace event is a React Performance Track component measure.
@@ -142,12 +150,19 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
             trace_events,
             metadata,
         } => (trace_events, extract_trace_metadata(&metadata)),
-        TraceFile::Array(events) => (events, TraceMetadata { time_domain: None }),
+        TraceFile::Array(events) => (
+            events,
+            TraceMetadata {
+                time_domain: None,
+                navigation_start_us: None,
+            },
+        ),
     };
 
-    // Collect thread name metadata
+    // Collect thread name metadata and navigationStart
     let mut thread_names: std::collections::HashMap<(u64, u64), String> =
         std::collections::HashMap::new();
+    let mut navigation_start_us = trace_meta.navigation_start_us;
     for event in &events {
         if event.ph == "M"
             && event.name == "thread_name"
@@ -159,6 +174,22 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
         {
             thread_names.insert((event.pid, event.tid), name.to_string());
         }
+        // Extract navigationStart (= performance.timeOrigin on monotonic clock)
+        if navigation_start_us.is_none()
+            && event.name == "navigationStart"
+            && event.cat == "blink.user_timing"
+        {
+            navigation_start_us = Some(event.ts);
+        }
+    }
+
+    // Store navigationStart on the time domain if found
+    let mut trace_meta = trace_meta;
+    if let Some(nav_start) = navigation_start_us {
+        if let Some(ref mut td) = trace_meta.time_domain {
+            td.navigation_start_us = Some(nav_start);
+        }
+        trace_meta.navigation_start_us = Some(nav_start);
     }
 
     let mut frames: Vec<Frame> = Vec::with_capacity(events.len());

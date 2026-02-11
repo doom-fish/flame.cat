@@ -302,10 +302,17 @@ impl FiberTree {
         frames: &mut Vec<Frame>,
         next_id: &mut u64,
     ) {
-        let actual_durations: std::collections::HashMap<u64, f64> =
-            commit.fiber_actual_durations.iter().copied().collect();
-        let self_durations: std::collections::HashMap<u64, f64> =
-            commit.fiber_self_durations.iter().copied().collect();
+        // Durations from React are in ms; convert to µs to match commit_start.
+        let actual_durations: std::collections::HashMap<u64, f64> = commit
+            .fiber_actual_durations
+            .iter()
+            .map(|&(id, dur)| (id, dur * 1000.0))
+            .collect();
+        let self_durations: std::collections::HashMap<u64, f64> = commit
+            .fiber_self_durations
+            .iter()
+            .map(|&(id, dur)| (id, dur * 1000.0))
+            .collect();
         let change_descs: std::collections::HashMap<u64, &ChangeDescription> = commit
             .change_descriptions
             .as_ref()
@@ -466,8 +473,8 @@ pub fn parse_react_profile(data: &[u8]) -> Result<Profile, ReactParseError> {
                     tree.apply_operations(&root.operations[commit_idx]);
                 }
 
-                let commit_start = commit.timestamp;
-                let commit_end = commit_start + commit.duration;
+                let commit_start = commit.timestamp * 1000.0; // ms → µs
+                let commit_end = commit_start + commit.duration * 1000.0;
 
                 global_start = global_start.min(commit_start);
                 global_end = global_end.max(commit_end);
@@ -496,18 +503,22 @@ pub fn parse_react_profile(data: &[u8]) -> Result<Profile, ReactParseError> {
         } else {
             // Fallback: flat representation without tree structure.
             for commit in &root.commit_data {
-                let commit_start = commit.timestamp;
-                let commit_end = commit_start + commit.duration;
+                let commit_start = commit.timestamp * 1000.0; // ms → µs
+                let commit_end = commit_start + commit.duration * 1000.0;
 
                 global_start = global_start.min(commit_start);
                 global_end = global_end.max(commit_end);
 
-                let self_durations: std::collections::HashMap<u64, f64> =
-                    commit.fiber_self_durations.iter().copied().collect();
+                let self_durations: std::collections::HashMap<u64, f64> = commit
+                    .fiber_self_durations
+                    .iter()
+                    .map(|&(id, dur)| (id, dur * 1000.0))
+                    .collect();
 
                 let mut offset = commit_start;
                 for (fiber_id, actual_duration) in &commit.fiber_actual_durations {
-                    if *actual_duration <= 0.0 {
+                    let actual_us = actual_duration * 1000.0;
+                    if actual_us <= 0.0 {
                         continue;
                     }
 
@@ -519,7 +530,7 @@ pub fn parse_react_profile(data: &[u8]) -> Result<Profile, ReactParseError> {
                         id,
                         name: format!("fiber-{fiber_id}"),
                         start: offset,
-                        end: offset + actual_duration,
+                        end: offset + actual_us,
                         depth: 0,
                         category: Some("react".to_string()),
                         parent: None,
@@ -527,7 +538,7 @@ pub fn parse_react_profile(data: &[u8]) -> Result<Profile, ReactParseError> {
                         thread: Some("React Components".to_string()),
                     });
 
-                    offset += actual_duration;
+                    offset += actual_us;
                 }
             }
         }
@@ -550,7 +561,11 @@ pub fn parse_react_profile(data: &[u8]) -> Result<Profile, ReactParseError> {
                 0.0
             },
             format: "react".to_string(),
-            time_domain: None,
+            time_domain: Some(flame_cat_protocol::TimeDomain {
+                clock_kind: flame_cat_protocol::ClockKind::PerformanceNow,
+                origin_label: Some("React DevTools (performance.now)".into()),
+                navigation_start_us: None,
+            }),
         },
         frames,
     })
@@ -699,7 +714,7 @@ mod tests {
         assert_eq!(app.name, "App");
         assert_eq!(app.depth, 0);
         assert!(app.parent.is_none());
-        assert!((app.self_time - 2.0).abs() < f64::EPSILON);
+        assert!((app.self_time - 2000.0).abs() < f64::EPSILON); // 2ms = 2000µs
 
         // Header at depth 1, child of App
         let header = &profile.frames[1];
@@ -762,10 +777,10 @@ mod tests {
         // 2 commits × 2 components = 4 frames
         assert_eq!(profile.frames.len(), 4);
 
-        // First commit at t=100
-        assert!((profile.frames[0].start - 100.0).abs() < f64::EPSILON);
-        // Second commit at t=200
-        assert!((profile.frames[2].start - 200.0).abs() < f64::EPSILON);
+        // First commit at t=100ms = 100000µs
+        assert!((profile.frames[0].start - 100_000.0).abs() < f64::EPSILON);
+        // Second commit at t=200ms = 200000µs
+        assert!((profile.frames[2].start - 200_000.0).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -850,7 +865,7 @@ mod tests {
         eprintln!("\n=== Real React Profile: Metronome App ===");
         eprintln!("Frames: {}", profile.frames.len());
         eprintln!(
-            "Time range: {:.2}ms → {:.2}ms (dur {:.2}ms)",
+            "Time range: {:.2}µs → {:.2}µs (dur {:.2}µs)",
             profile.metadata.start_time,
             profile.metadata.end_time,
             profile.duration()
@@ -859,7 +874,7 @@ mod tests {
         for f in &sorted {
             let indent = "  ".repeat(f.depth as usize);
             eprintln!(
-                "{}[d{}] {} | {:.2}ms → {:.2}ms (dur={:.2}ms self={:.2}ms) | {}",
+                "{}[d{}] {} | {:.2}µs → {:.2}µs (dur={:.2}µs self={:.2}µs) | {}",
                 indent,
                 f.depth,
                 f.name,
@@ -894,19 +909,19 @@ mod tests {
         let app = sorted.iter().find(|f| f.name == "App").unwrap();
         assert_eq!(app.depth, 0, "App should be at depth 0 (root)");
         assert!(
-            (app.self_time - 0.7).abs() < 0.01,
-            "App self_time should be ~0.7ms, got {}",
+            (app.self_time - 700.0).abs() < 10.0,
+            "App self_time should be ~700µs (0.7ms), got {}",
             app.self_time
         );
         assert!(
-            (app.duration() - 9.5).abs() < 0.01,
-            "App duration should be ~9.5ms"
+            (app.duration() - 9500.0).abs() < 10.0,
+            "App duration should be ~9500µs (9.5ms)"
         );
 
         // Verify the commit starts at the correct time
         assert!(
-            (app.start - 2836.4).abs() < 0.01,
-            "App should start at commit timestamp 2836.4ms, got {}",
+            (app.start - 2_836_400.0).abs() < 10.0,
+            "App should start at commit timestamp 2836.4ms = 2836400µs, got {}",
             app.start
         );
 

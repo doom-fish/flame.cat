@@ -76,6 +76,12 @@ pub struct TimeDomain {
     pub clock_kind: ClockKind,
     /// Optional label identifying the clock origin (e.g. "Chrome PID 12345").
     pub origin_label: Option<String>,
+    /// For `PerformanceNow` profiles: the monotonic-clock timestamp (µs) at
+    /// which `performance.now() == 0` (i.e. `performance.timeOrigin`).
+    /// Extracted from Chrome traces as the `navigationStart` user-timing event.
+    /// When present, enables exact alignment with `LinuxMonotonic` profiles.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub navigation_start_us: Option<f64>,
 }
 
 impl TimeDomain {

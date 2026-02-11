@@ -47,14 +47,8 @@ fn load_chrome_and_react_into_session() {
     );
 
     // Log time domain info
-    println!(
-        "Chrome time_domain: {:?}",
-        chrome_profile.meta.time_domain
-    );
-    println!(
-        "React  time_domain: {:?}",
-        react_profile.meta.time_domain
-    );
+    println!("Chrome time_domain: {:?}", chrome_profile.meta.time_domain);
+    println!("React  time_domain: {:?}", react_profile.meta.time_domain);
 
     // Create session with Chrome trace first
     let mut session = Session::from_profile(chrome_profile, "chrome-trace.json");
@@ -93,17 +87,40 @@ fn load_chrome_and_react_into_session() {
         react_entry.session_end(),
     );
 
-    // React profile (no time domain) should be auto-aligned to Chrome's start
+    // React profile uses PerformanceNow, Chrome has navigationStart anchor.
+    // Perfect alignment: React offset = navigationStart from Chrome trace.
+    let chrome_nav_start = chrome_entry
+        .profile
+        .meta
+        .time_domain
+        .as_ref()
+        .and_then(|td| td.navigation_start_us)
+        .expect("Chrome trace should have navigationStart");
     assert!(
-        react_entry.offset_us.abs() > 1.0,
-        "React offset should be non-zero (auto-aligned): got {}",
+        (react_entry.offset_us - chrome_nav_start).abs() < 1.0,
+        "React offset should equal Chrome navigationStart for perfect alignment: got {:.0}, expected {:.0}",
         react_entry.offset_us,
+        chrome_nav_start,
+    );
+
+    // React commit at performance.now()=2836.4ms should map to:
+    // session_time = navigationStart + 2836400µs
+    let expected_react_start = chrome_nav_start + 2_836_400.0;
+    assert!(
+        (react_entry.session_start() - expected_react_start).abs() < 10.0,
+        "React session start should be navigationStart + commit_timestamp: got {:.0}, expected {:.0}",
+        react_entry.session_start(),
+        expected_react_start,
+    );
+
+    // React profile should fall within Chrome trace time range
+    assert!(
+        react_entry.session_start() >= chrome_entry.session_start(),
+        "React should start after Chrome trace start",
     );
     assert!(
-        (react_entry.session_start() - chrome_entry.session_start()).abs() < 1.0,
-        "React session start should match Chrome start after auto-alignment: React={:.0}, Chrome={:.0}",
-        react_entry.session_start(),
-        chrome_entry.session_start(),
+        react_entry.session_end() <= chrome_entry.session_end(),
+        "React should end before Chrome trace end",
     );
 
     // Manual offset adjustment should work
@@ -115,5 +132,7 @@ fn load_chrome_and_react_into_session() {
         "Manual offset should shift session time by 1000µs"
     );
 
-    println!("\n✅ Multi-profile session works: Chrome trace + React DevTools auto-aligned and offset-adjustable");
+    println!(
+        "\n✅ Multi-profile session works: Chrome trace + React DevTools auto-aligned and offset-adjustable"
+    );
 }
