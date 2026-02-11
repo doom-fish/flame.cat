@@ -385,7 +385,13 @@ async function main() {
     inputBg: colorStr(resolveColor(theme, "Background")),
   });
 
-  bindInteraction(canvas, laneManager, renderAll);
+  bindInteraction(
+    canvas,
+    laneManager,
+    renderAll,
+    () => (profileLoaded ? MINIMAP_HEIGHT : 0),
+    () => profileLoaded,
+  );
 
   // Shared file-loading logic
   const loadFile = async (file: File) => {

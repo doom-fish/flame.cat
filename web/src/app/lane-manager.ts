@@ -28,7 +28,7 @@ export class LaneManager {
   viewStart = 0;
   /** Visible time window end as a fraction of total duration (1 = end). */
   viewEnd = 1;
-  private dragState: { laneIndex: number; startY: number; startHeight: number } | null = null;
+  private dragState: null = null;
 
   addLane(config: Omit<LaneConfig, "scrollY"> & { scrollY?: number }): void {
     this.lanes.push({ scrollY: 0, ...config });
@@ -76,31 +76,6 @@ export class LaneManager {
       if (Math.abs(y - offset) <= DRAG_HANDLE_SIZE) return i;
     }
     return -1;
-  }
-
-  /** Start dragging a lane resize handle. */
-  startDrag(laneIndex: number, mouseY: number): void {
-    const lane = this.lanes[laneIndex];
-    if (!lane) return;
-    this.dragState = { laneIndex, startY: mouseY, startHeight: lane.height };
-  }
-
-  /** Update drag position. */
-  updateDrag(mouseY: number): void {
-    if (!this.dragState) return;
-    const lane = this.lanes[this.dragState.laneIndex];
-    if (!lane) return;
-    const delta = mouseY - this.dragState.startY;
-    lane.height = Math.max(MIN_LANE_HEIGHT, this.dragState.startHeight + delta);
-  }
-
-  /** End dragging. */
-  endDrag(): void {
-    this.dragState = null;
-  }
-
-  get isDragging(): boolean {
-    return this.dragState !== null;
   }
 
   /** Scroll the shared time axis by pixel delta. */

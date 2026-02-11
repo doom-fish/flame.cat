@@ -19,25 +19,58 @@ function touchMidX(a: Touch, b: Touch, canvas: HTMLCanvasElement): number {
   return (a.clientX + b.clientX) / 2 - rect.left;
 }
 
+type DragMode =
+  | { kind: "none" }
+  | { kind: "lane-resize"; laneIndex: number; startY: number; startHeight: number }
+  | { kind: "minimap-slide"; startFrac: number }
+  | { kind: "minimap-select"; anchorFrac: number }
+  | { kind: "canvas-pan"; lastX: number; lastY: number; laneIndex: number };
+
 /**
  * Binds mouse/keyboard/touch events to the LaneManager and triggers re-renders.
+ *
+ * @param minimapHeight Height of the minimap in CSS pixels (0 if no profile loaded).
+ * @param isProfileLoaded Returns true when a profile is loaded.
  */
 export function bindInteraction(
   canvas: HTMLCanvasElement,
   laneManager: LaneManager,
   onRender: () => void,
+  minimapHeight: () => number,
+  isProfileLoaded: () => boolean,
 ): () => void {
-  // --- Mouse ---
+  let drag: DragMode = { kind: "none" };
+
+  /** Convert a canvas X to a fractional position [0,1] across the full timeline. */
+  const xToFrac = (x: number): number => Math.max(0, Math.min(1, x / canvas.clientWidth));
+
+  /** Is the Y coordinate inside the minimap area? */
+  const isInMinimap = (y: number): boolean => isProfileLoaded() && y < minimapHeight();
+
+  /** Is the Y coordinate over the minimap's viewport indicator? */
+  const isOnMinimapViewport = (x: number, y: number): boolean => {
+    if (!isInMinimap(y)) return false;
+    const { viewStart, viewEnd } = laneManager.getViewWindow();
+    const vpLeft = viewStart * canvas.clientWidth;
+    const vpRight = viewEnd * canvas.clientWidth;
+    return x >= vpLeft && x <= vpRight;
+  };
+
+  // ── Mouse ──────────────────────────────────────────────────────────
 
   const onWheel = (e: WheelEvent) => {
     e.preventDefault();
     if (e.ctrlKey || e.metaKey) {
+      // Zoom at cursor
       const factor = e.deltaY > 0 ? 0.9 : 1.1;
       laneManager.zoomAt(factor, e.offsetX, canvas.clientWidth);
     } else if (e.shiftKey) {
+      // Horizontal scroll
       laneManager.scrollBy(e.deltaY, 0, canvas.clientWidth);
     } else {
-      const laneIdx = laneManager.laneAtY(e.offsetY);
+      // Vertical scroll within a lane
+      const mmH = minimapHeight();
+      const laneIdx = laneManager.laneAtY(e.offsetY - mmH);
       if (laneIdx >= 0) {
         laneManager.scrollLane(laneIdx, e.deltaY);
       }
@@ -46,25 +79,128 @@ export function bindInteraction(
   };
 
   const onMouseDown = (e: MouseEvent) => {
-    const handleIdx = laneManager.isOnDragHandle(e.offsetY);
-    if (handleIdx >= 0) {
-      laneManager.startDrag(handleIdx, e.clientY);
+    const mmH = minimapHeight();
+    const localY = e.offsetY - mmH;
+
+    // 1. Minimap interactions
+    if (isInMinimap(e.offsetY)) {
+      if (isOnMinimapViewport(e.offsetX, e.offsetY)) {
+        // Drag the viewport indicator
+        drag = { kind: "minimap-slide", startFrac: xToFrac(e.offsetX) };
+      } else {
+        // Start a range selection (or click-to-center)
+        drag = { kind: "minimap-select", anchorFrac: xToFrac(e.offsetX) };
+      }
       e.preventDefault();
+      return;
     }
+
+    // 2. Lane resize handles
+    const handleIdx = laneManager.isOnDragHandle(localY);
+    if (handleIdx >= 0) {
+      const lane = laneManager.lanes[handleIdx];
+      if (lane) {
+        drag = {
+          kind: "lane-resize",
+          laneIndex: handleIdx,
+          startY: e.clientY,
+          startHeight: lane.height,
+        };
+      }
+      e.preventDefault();
+      return;
+    }
+
+    // 3. Canvas drag-to-pan
+    const laneIdx = laneManager.laneAtY(localY);
+    drag = {
+      kind: "canvas-pan",
+      lastX: e.clientX,
+      lastY: e.clientY,
+      laneIndex: laneIdx,
+    };
+    canvas.style.cursor = "grabbing";
+    e.preventDefault();
   };
 
   const onMouseMove = (e: MouseEvent) => {
-    if (laneManager.isDragging) {
-      laneManager.updateDrag(e.clientY);
-      onRender();
+    switch (drag.kind) {
+      case "minimap-slide": {
+        const frac = xToFrac(e.offsetX);
+        const delta = frac - drag.startFrac;
+        const viewSpan = laneManager.viewEnd - laneManager.viewStart;
+        laneManager.viewStart = Math.max(0, Math.min(1 - viewSpan, laneManager.viewStart + delta));
+        laneManager.viewEnd = laneManager.viewStart + viewSpan;
+        drag.startFrac = frac;
+        onRender();
+        return;
+      }
+      case "minimap-select": {
+        // Live preview of the selection range
+        const frac = xToFrac(e.offsetX);
+        const lo = Math.min(drag.anchorFrac, frac);
+        const hi = Math.max(drag.anchorFrac, frac);
+        if (hi - lo > 0.002) {
+          laneManager.viewStart = lo;
+          laneManager.viewEnd = hi;
+          onRender();
+        }
+        return;
+      }
+      case "lane-resize": {
+        const lane = laneManager.lanes[drag.laneIndex];
+        if (lane) {
+          const delta = e.clientY - drag.startY;
+          lane.height = Math.max(60, drag.startHeight + delta);
+          onRender();
+        }
+        return;
+      }
+      case "canvas-pan": {
+        const dx = drag.lastX - e.clientX;
+        const dy = drag.lastY - e.clientY;
+        laneManager.scrollBy(dx, 0, canvas.clientWidth);
+        if (drag.laneIndex >= 0) {
+          laneManager.scrollLane(drag.laneIndex, dy);
+        }
+        drag.lastX = e.clientX;
+        drag.lastY = e.clientY;
+        onRender();
+        return;
+      }
+      case "none": {
+        // Cursor styling
+        const mmH = minimapHeight();
+        if (isInMinimap(e.offsetY)) {
+          canvas.style.cursor = isOnMinimapViewport(e.offsetX, e.offsetY)
+            ? "ew-resize"
+            : "crosshair";
+        } else {
+          const handleIdx = laneManager.isOnDragHandle(e.offsetY - mmH);
+          canvas.style.cursor = handleIdx >= 0 ? "row-resize" : "default";
+        }
+        return;
+      }
     }
-    const handleIdx = laneManager.isOnDragHandle(e.offsetY);
-    canvas.style.cursor = handleIdx >= 0 || laneManager.isDragging ? "row-resize" : "default";
   };
 
-  const onMouseUp = () => {
-    if (laneManager.isDragging) {
-      laneManager.endDrag();
+  const onMouseUp = (e: MouseEvent) => {
+    if (drag.kind === "minimap-select") {
+      // If barely moved, treat as click-to-center instead of range select
+      const frac = xToFrac(e.offsetX);
+      const span = Math.abs(frac - drag.anchorFrac);
+      if (span < 0.002) {
+        // Click-to-center: move viewport so this fraction is centered
+        const viewSpan = laneManager.viewEnd - laneManager.viewStart;
+        const center = frac;
+        laneManager.viewStart = Math.max(0, Math.min(1 - viewSpan, center - viewSpan / 2));
+        laneManager.viewEnd = laneManager.viewStart + viewSpan;
+        onRender();
+      }
+    }
+    if (drag.kind !== "none") {
+      drag = { kind: "none" };
+      canvas.style.cursor = "default";
       onRender();
     }
   };
@@ -80,6 +216,14 @@ export function bindInteraction(
         laneManager.scrollBy(step, 0, canvas.clientWidth);
         onRender();
         break;
+      case "ArrowUp":
+        if (laneManager.lanes[0]) laneManager.scrollLane(0, -step);
+        onRender();
+        break;
+      case "ArrowDown":
+        if (laneManager.lanes[0]) laneManager.scrollLane(0, step);
+        onRender();
+        break;
       case "+":
       case "=":
         laneManager.zoomAt(1.2, canvas.clientWidth / 2, canvas.clientWidth);
@@ -92,7 +236,7 @@ export function bindInteraction(
     }
   };
 
-  // --- Touch ---
+  // ── Touch ──────────────────────────────────────────────────────────
 
   let touchState: {
     startX: number;
@@ -108,6 +252,18 @@ export function bindInteraction(
       const t = e.touches[0];
       if (!t) return;
       const pos = touchOffset(t, canvas);
+
+      // Minimap touch
+      if (isInMinimap(pos.y)) {
+        if (isOnMinimapViewport(pos.x, pos.y)) {
+          drag = { kind: "minimap-slide", startFrac: xToFrac(pos.x) };
+        } else {
+          drag = { kind: "minimap-select", anchorFrac: xToFrac(pos.x) };
+        }
+        e.preventDefault();
+        return;
+      }
+
       touchState = {
         startX: pos.x,
         startY: pos.y,
@@ -116,6 +272,7 @@ export function bindInteraction(
         pinchDist: null,
         isSingleFinger: true,
       };
+      e.preventDefault();
     } else if (e.touches.length === 2) {
       const t0 = e.touches[0];
       const t1 = e.touches[1];
@@ -140,6 +297,32 @@ export function bindInteraction(
   };
 
   const onTouchMove = (e: TouchEvent) => {
+    // Minimap drag (touch)
+    if (drag.kind === "minimap-slide" || drag.kind === "minimap-select") {
+      const t = e.touches[0];
+      if (!t) return;
+      e.preventDefault();
+      const pos = touchOffset(t, canvas);
+      if (drag.kind === "minimap-slide") {
+        const frac = xToFrac(pos.x);
+        const delta = frac - drag.startFrac;
+        const viewSpan = laneManager.viewEnd - laneManager.viewStart;
+        laneManager.viewStart = Math.max(0, Math.min(1 - viewSpan, laneManager.viewStart + delta));
+        laneManager.viewEnd = laneManager.viewStart + viewSpan;
+        drag.startFrac = frac;
+      } else {
+        const frac = xToFrac(pos.x);
+        const lo = Math.min(drag.anchorFrac, frac);
+        const hi = Math.max(drag.anchorFrac, frac);
+        if (hi - lo > 0.002) {
+          laneManager.viewStart = lo;
+          laneManager.viewEnd = hi;
+        }
+      }
+      onRender();
+      return;
+    }
+
     if (!touchState) return;
 
     if (e.touches.length === 2 && touchState.pinchDist !== null) {
@@ -161,7 +344,8 @@ export function bindInteraction(
       const dx = touchState.lastX - pos.x;
       const dy = touchState.lastY - pos.y;
       laneManager.scrollBy(dx, 0, canvas.clientWidth);
-      const laneIdx = laneManager.laneAtY(pos.y);
+      const mmH = minimapHeight();
+      const laneIdx = laneManager.laneAtY(pos.y - mmH);
       if (laneIdx >= 0) {
         laneManager.scrollLane(laneIdx, dy);
       }
@@ -172,6 +356,9 @@ export function bindInteraction(
   };
 
   const onTouchEnd = (_e: TouchEvent) => {
+    if (drag.kind === "minimap-select" || drag.kind === "minimap-slide") {
+      drag = { kind: "none" };
+    }
     touchState = null;
   };
 
