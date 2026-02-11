@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 
 use flame_cat_core::model::Session;
-use flame_cat_core::views::{async_track, counter, frame_track, left_heavy, markers, minimap, ranked, sandwich, time_axis, time_order};
+use flame_cat_core::views::{async_track, counter, cpu_samples, frame_track, left_heavy, markers, minimap, ranked, sandwich, time_axis, time_order};
 use flame_cat_protocol::{Viewport, VisualProfile};
 use wasm_bindgen::prelude::*;
 
@@ -528,6 +528,36 @@ pub fn render_async_track(
         };
 
         let commands = async_track::render_async_track(&profile.async_spans, &viewport, vs, ve);
+        serde_json::to_string(&commands).map_err(|e| JsError::new(&e.to_string()))
+    })
+}
+
+/// Render CPU sampling flame chart for a profile.
+#[wasm_bindgen]
+pub fn render_cpu_samples(
+    profile_index: usize,
+    width: f64,
+    height: f64,
+    dpr: f64,
+    view_start: Option<f64>,
+    view_end: Option<f64>,
+) -> Result<String, JsError> {
+    with_profile(profile_index, |profile| {
+        let vs = view_start.unwrap_or(profile.meta.start_time);
+        let ve = view_end.unwrap_or(profile.meta.end_time);
+        let viewport = Viewport {
+            x: 0.0,
+            y: 0.0,
+            width,
+            height,
+            dpr,
+        };
+
+        let commands = if let Some(ref samples) = profile.cpu_samples {
+            cpu_samples::render_cpu_samples(samples, &viewport, vs, ve)
+        } else {
+            Vec::new()
+        };
         serde_json::to_string(&commands).map_err(|e| JsError::new(&e.to_string()))
     })
 }

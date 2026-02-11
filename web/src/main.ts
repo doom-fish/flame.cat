@@ -423,6 +423,15 @@ async function main() {
             absViewStart,
             absViewEnd,
           );
+        } else if (trackType === "cpu") {
+          commandsJson = wasm.render_cpu_samples(
+            lane.profileIndex,
+            canvas.clientWidth,
+            lane.height,
+            window.devicePixelRatio,
+            absViewStart,
+            absViewEnd,
+          );
         } else if (trackType === "network") {
           // Network waterfall rendered in JS from get_network_requests
           commandsJson = "[]";
@@ -1019,6 +1028,7 @@ async function main() {
           marker_count: number;
           async_span_count: number;
           has_frames: boolean;
+          has_cpu_samples: boolean;
           counter_names: string[];
           marker_names: string[];
         };
@@ -1044,6 +1054,18 @@ async function main() {
             height: 120,
             trackType: "async",
             threadName: `🔀 Async Spans (${extra.async_span_count})`,
+          });
+        }
+
+        // CPU sampling flame chart
+        if (extra.has_cpu_samples) {
+          laneManager.addLane({
+            id: `cpu-${handle}`,
+            viewType: activeView,
+            profileIndex: handle,
+            height: 200,
+            trackType: "cpu",
+            threadName: "🔥 CPU Samples",
           });
         }
 
