@@ -1151,8 +1151,67 @@ mod tests {
         let profile = parse_chrome_trace(json.as_bytes()).unwrap();
         assert_eq!(profile.markers.len(), 3);
         assert_eq!(profile.markers[0].name.as_ref(), "navigationStart");
+        assert_eq!(
+            profile.markers[0].category.as_ref().map(|s| s.as_ref()),
+            Some("navigation")
+        );
         assert_eq!(profile.markers[1].name.as_ref(), "domInteractive");
         assert_eq!(profile.markers[2].name.as_ref(), "loadEventEnd");
+    }
+
+    #[test]
+    fn parse_web_vitals_markers() {
+        let json = r#"{"traceEvents":[
+            {"name":"navigationStart","ph":"R","ts":100,"pid":1,"tid":1,"cat":"blink.user_timing"},
+            {"name":"firstContentfulPaint","ph":"R","ts":200,"pid":1,"tid":1,"cat":"blink.user_timing"},
+            {"name":"largestContentfulPaint::Candidate","ph":"R","ts":300,"pid":1,"tid":1,"cat":"blink.user_timing"},
+            {"name":"InteractiveTime","ph":"R","ts":400,"pid":1,"tid":1,"cat":"blink.user_timing,rail"},
+            {"name":"LayoutShift","ph":"R","ts":350,"pid":1,"tid":1,"cat":"blink.user_timing,rail"}
+        ]}"#;
+
+        let profile = parse_chrome_trace(json.as_bytes()).unwrap();
+        assert_eq!(profile.markers.len(), 5);
+
+        // FCP should be a web-vital
+        let fcp = profile
+            .markers
+            .iter()
+            .find(|m| m.name.as_ref() == "firstContentfulPaint")
+            .unwrap();
+        assert_eq!(
+            fcp.category.as_ref().map(|s| s.as_ref()),
+            Some("web-vital")
+        );
+
+        // LCP should be normalized to "LCP"
+        let lcp = profile.markers.iter().find(|m| m.name.as_ref() == "LCP").unwrap();
+        assert_eq!(
+            lcp.category.as_ref().map(|s| s.as_ref()),
+            Some("web-vital")
+        );
+        assert!((lcp.ts - 300.0).abs() < f64::EPSILON);
+
+        // TTI
+        let tti = profile
+            .markers
+            .iter()
+            .find(|m| m.name.as_ref() == "InteractiveTime")
+            .unwrap();
+        assert_eq!(
+            tti.category.as_ref().map(|s| s.as_ref()),
+            Some("web-vital")
+        );
+
+        // Navigation markers
+        let nav = profile
+            .markers
+            .iter()
+            .find(|m| m.name.as_ref() == "navigationStart")
+            .unwrap();
+        assert_eq!(
+            nav.category.as_ref().map(|s| s.as_ref()),
+            Some("navigation")
+        );
     }
 
     #[test]

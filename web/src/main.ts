@@ -65,6 +65,7 @@ async function main() {
   let searchQuery = "";
   let profileLoaded = false;
   let profileDuration = 0;
+  let selectedSpanName: string | null = null;
 
   // Hidden file input for file picking (supports multiple)
   const fileInput = document.createElement("input");
@@ -475,6 +476,35 @@ async function main() {
               allCommands.push(cmd);
             }
           }
+        } else if (selectedSpanName) {
+          // Selection: highlight same-name spans, dim others
+          for (const cmd of laneCmds) {
+            if (
+              typeof cmd !== "string" &&
+              "DrawRect" in cmd &&
+              cmd.DrawRect.label &&
+              cmd.DrawRect.frame_id != null
+            ) {
+              if (cmd.DrawRect.label === selectedSpanName) {
+                allCommands.push(cmd);
+                allCommands.push({
+                  DrawRect: {
+                    rect: cmd.DrawRect.rect,
+                    color: "SearchHighlight",
+                    border_color: "Border",
+                    label: null,
+                    frame_id: null,
+                  },
+                });
+              } else {
+                allCommands.push({
+                  DrawRect: { ...cmd.DrawRect, color: "FlameNeutral", border_color: null },
+                });
+              }
+            } else {
+              allCommands.push(cmd);
+            }
+          }
         } else {
           allCommands.push(...laneCmds);
         }
@@ -607,36 +637,32 @@ async function main() {
     const result = hitTest(e.offsetX, e.offsetY);
     if (result) {
       for (const lane of laneManager.lanes) lane.selectedFrameId = result.frameId;
+      selectedSpanName = result.name;
       try {
-        const firstLane = laneManager.lanes[0];
-        if (firstLane) {
-          const json = wasm.get_ranked_entries(firstLane.profileIndex, "self", false);
-          const entries = JSON.parse(json) as {
-            name: string;
-            self_time: number;
-            total_time: number;
-            count: number;
-          }[];
-          const entry = entries.find((e) => e.name === result.name);
-          if (entry) {
-            detailPanel.show(
-              {
-                name: entry.name,
-                selfTime: entry.self_time,
-                totalTime: entry.total_time,
-                depth: 0,
-                category: null,
-              },
-              profileDuration,
-            );
-          }
-        }
+        const info = JSON.parse(wasm.get_span_info(result.profileIndex, BigInt(result.frameId))) as {
+          duration: number;
+          self_time: number;
+          thread: string;
+          category: string | null;
+          depth: number;
+        };
+        detailPanel.show(
+          {
+            name: result.name,
+            selfTime: info.self_time,
+            totalTime: info.duration,
+            depth: info.depth ?? 0,
+            category: info.category,
+          },
+          profileDuration,
+        );
       } catch {
         /* ignore */
       }
       renderAll();
     } else {
       detailPanel.hide();
+      selectedSpanName = null;
       for (const lane of laneManager.lanes) lane.selectedFrameId = undefined;
       renderAll();
     }
