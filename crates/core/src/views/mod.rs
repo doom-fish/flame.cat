@@ -6,6 +6,7 @@ pub mod frame_track;
 pub mod left_heavy;
 pub mod markers;
 pub mod minimap;
+pub mod object_track;
 pub mod ranked;
 pub mod sandwich;
 pub mod time_axis;

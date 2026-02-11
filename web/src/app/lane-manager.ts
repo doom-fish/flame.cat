@@ -1,7 +1,7 @@
 import type { RenderCommand } from "../protocol";
 
 export type ViewType = "time-order" | "left-heavy" | "sandwich" | "ranked";
-export type TrackType = "thread" | "counter" | "marker" | "frame" | "async" | "network" | "cpu";
+export type TrackType = "thread" | "counter" | "marker" | "frame" | "async" | "network" | "cpu" | "object";
 
 export interface LaneConfig {
   id: string;

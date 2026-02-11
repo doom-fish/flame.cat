@@ -432,6 +432,15 @@ async function main() {
             absViewStart,
             absViewEnd,
           );
+        } else if (trackType === "object") {
+          commandsJson = wasm.render_object_track(
+            lane.profileIndex,
+            canvas.clientWidth,
+            lane.height,
+            window.devicePixelRatio,
+            absViewStart,
+            absViewEnd,
+          );
         } else if (trackType === "network") {
           // Network waterfall rendered in JS from get_network_requests
           commandsJson = "[]";
@@ -1027,6 +1036,7 @@ async function main() {
           counter_count: number;
           marker_count: number;
           async_span_count: number;
+          object_event_count: number;
           has_frames: boolean;
           has_cpu_samples: boolean;
           counter_names: string[];
@@ -1066,6 +1076,18 @@ async function main() {
             height: 200,
             trackType: "cpu",
             threadName: "🔥 CPU Samples",
+          });
+        }
+
+        // Object lifecycle track
+        if (extra.object_event_count > 0) {
+          laneManager.addLane({
+            id: `objects-${handle}`,
+            viewType: activeView,
+            profileIndex: handle,
+            height: 80,
+            trackType: "object",
+            threadName: `📦 Objects (${extra.object_event_count})`,
           });
         }
 
