@@ -3,3 +3,8 @@ target = "index.html"
 
 [watch]
 ignore = []
+
+# Release build: enable WASM optimizations
+# Run with: trunk build --release
+[tools]
+wasm_opt = "117"

@@ -751,27 +751,6 @@ impl FlameApp {
         }
     }
 
-    /// Pan the viewport by a fractional amount, preserving the view span.
-    fn pan_viewport(&mut self, dx_frac: f64) {
-        self.anim_target = None; // cancel animation on direct interaction
-        let span = self.view_end - self.view_start;
-        let new_start = (self.view_start + dx_frac).clamp(0.0, 1.0 - span);
-        self.view_start = new_start;
-        self.view_end = new_start + span;
-        self.invalidate_commands();
-    }
-
-    /// Zoom the viewport by a factor, centered at a fractional position.
-    fn zoom_viewport(&mut self, factor: f64, center_frac: f64) {
-        self.anim_target = None; // cancel animation on direct interaction
-        let view_span = self.view_end - self.view_start;
-        let cursor_time = self.view_start + center_frac * view_span;
-        let new_span = (view_span * factor).clamp(1e-12, 1.0);
-        self.view_start = (cursor_time - center_frac * new_span).max(0.0);
-        self.view_end = (self.view_start + new_span).min(1.0);
-        self.invalidate_commands();
-    }
-
     /// Start an animated transition to the given viewport.
     fn animate_to(&mut self, start: f64, end: f64) {
         self.anim_target = Some((start.max(0.0), end.min(1.0)));

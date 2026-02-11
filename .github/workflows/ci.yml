@@ -36,6 +36,6 @@ jobs:
         run: |
           SIZE=$(stat -c%s target/wasm32-unknown-unknown/release/flame_cat_ui.wasm)
           echo "WASM size: $((SIZE / 1024 / 1024))MB ($SIZE bytes)"
-          if [ "$SIZE" -gt 10485760 ]; then
-            echo "::warning::WASM binary exceeds 10MB budget"
+          if [ "$SIZE" -gt 5242880 ]; then
+            echo "::warning::WASM binary exceeds 5MB budget"
           fi
