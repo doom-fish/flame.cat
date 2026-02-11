@@ -60,7 +60,7 @@ async function main() {
   // Hidden file input for mobile file picking
   const fileInput = document.createElement("input");
   fileInput.type = "file";
-  fileInput.accept = ".json,.cpuprofile";
+  fileInput.accept = ".json,.cpuprofile,.txt,.collapsed,.folded,.speedscope,.prof,.out";
   fileInput.style.display = "none";
   document.body.appendChild(fileInput);
 

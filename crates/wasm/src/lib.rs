@@ -7,11 +7,11 @@ use wasm_bindgen::prelude::*;
 
 static PROFILES: Mutex<Vec<Profile>> = Mutex::new(Vec::new());
 
-/// Parse a profile from bytes (JSON). Returns a handle (index) for later use.
+/// Parse a profile from bytes (auto-detects format). Returns a handle (index) for later use.
 #[wasm_bindgen]
 pub fn parse_profile(data: &[u8]) -> Result<usize, JsError> {
-    let profile = flame_cat_core::parsers::chrome::parse_chrome_trace(data)
-        .map_err(|e| JsError::new(&e.to_string()))?;
+    let profile =
+        flame_cat_core::parsers::parse_auto(data).map_err(|e| JsError::new(&e.to_string()))?;
     let mut profiles = PROFILES.lock().unwrap();
     let idx = profiles.len();
     profiles.push(profile);
