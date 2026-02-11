@@ -45,6 +45,19 @@ pub struct FlameApp {
     minimap_density: Option<Vec<u32>>,
     /// Show keyboard help overlay.
     show_help: bool,
+    /// Animation targets for smooth viewport transitions.
+    anim_target: Option<(f64, f64)>,
+    /// Context menu state: span info + screen position.
+    context_menu: Option<ContextMenu>,
+}
+
+#[derive(Clone)]
+struct ContextMenu {
+    span_name: String,
+    /// Viewport-fractional bounds for zoom-to-span.
+    zoom_start: f64,
+    zoom_end: f64,
+    pos: egui::Pos2,
 }
 
 #[derive(Clone)]
@@ -147,6 +160,8 @@ impl FlameApp {
             loading: false,
             minimap_density: None,
             show_help: false,
+            anim_target: None,
+            context_menu: None,
         }
     }
 
@@ -685,6 +700,7 @@ impl FlameApp {
 
         if resp.dragged() {
             if let Some(pos) = resp.interact_pointer_pos() {
+                self.anim_target = None;
                 let frac = ((pos.x - rect.left()) / rect.width()) as f64;
                 let frac = frac.clamp(0.0, 1.0);
                 let delta_x = resp.drag_delta().x;
@@ -737,6 +753,7 @@ impl FlameApp {
 
     /// Pan the viewport by a fractional amount, preserving the view span.
     fn pan_viewport(&mut self, dx_frac: f64) {
+        self.anim_target = None; // cancel animation on direct interaction
         let span = self.view_end - self.view_start;
         let new_start = (self.view_start + dx_frac).clamp(0.0, 1.0 - span);
         self.view_start = new_start;
@@ -746,12 +763,43 @@ impl FlameApp {
 
     /// Zoom the viewport by a factor, centered at a fractional position.
     fn zoom_viewport(&mut self, factor: f64, center_frac: f64) {
+        self.anim_target = None; // cancel animation on direct interaction
         let view_span = self.view_end - self.view_start;
         let cursor_time = self.view_start + center_frac * view_span;
         let new_span = (view_span * factor).clamp(1e-12, 1.0);
         self.view_start = (cursor_time - center_frac * new_span).max(0.0);
         self.view_end = (self.view_start + new_span).min(1.0);
         self.invalidate_commands();
+    }
+
+    /// Start an animated transition to the given viewport.
+    fn animate_to(&mut self, start: f64, end: f64) {
+        self.anim_target = Some((start.max(0.0), end.min(1.0)));
+    }
+
+    /// Advance viewport animation by one frame. Returns true if still animating.
+    fn tick_animation(&mut self, ctx: &egui::Context) -> bool {
+        let Some((target_start, target_end)) = self.anim_target else {
+            return false;
+        };
+        // Exponential ease-out: approach target by 20% each frame (~60fps → ~150ms to settle)
+        let t = 0.2;
+        let new_start = self.view_start + (target_start - self.view_start) * t;
+        let new_end = self.view_end + (target_end - self.view_end) * t;
+        // Snap when close enough (sub-pixel precision at any zoom)
+        let epsilon = (target_end - target_start) * 1e-4;
+        if (new_start - target_start).abs() < epsilon && (new_end - target_end).abs() < epsilon {
+            self.view_start = target_start;
+            self.view_end = target_end;
+            self.anim_target = None;
+            self.invalidate_commands();
+            return false;
+        }
+        self.view_start = new_start;
+        self.view_end = new_end;
+        self.invalidate_commands();
+        ctx.request_repaint();
+        true
     }
 
     fn render_toolbar(&mut self, ctx: &egui::Context) {
@@ -1009,6 +1057,7 @@ impl FlameApp {
             let response = ui.allocate_rect(available, egui::Sense::click_and_drag());
 
             if response.dragged() {
+                self.anim_target = None;
                 let delta = response.drag_delta();
                 let view_span = self.view_end - self.view_start;
                 let dx_frac = -(delta.x as f64) / (available.width() as f64) * view_span;
@@ -1026,6 +1075,7 @@ impl FlameApp {
 
             if ctrl_held && scroll.y.abs() > 0.1 {
                 // Ctrl+scroll = zoom (like Chrome DevTools / Perfetto)
+                self.anim_target = None;
                 let zoom_factor = 2.0_f64.powf(-(scroll.y as f64) * 0.01);
                 let mouse_frac = if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
                     ((pos.x - available.left()) as f64 / available.width() as f64)
@@ -1048,6 +1098,7 @@ impl FlameApp {
 
             // Horizontal scroll (trackpad two-finger) = horizontal pan
             if !ctrl_held && scroll.x.abs() > 0.1 {
+                self.anim_target = None;
                 let view_span = self.view_end - self.view_start;
                 let dx_frac =
                     -(scroll.x as f64) / (available.width() as f64) * view_span;
@@ -1060,6 +1111,7 @@ impl FlameApp {
             // Also handle pinch zoom gesture
             let zoom_delta = ui.input(|i| i.zoom_delta());
             if (zoom_delta - 1.0).abs() > 0.001 {
+                self.anim_target = None;
                 let mouse_frac = if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
                     ((pos.x - available.left()) as f64 / available.width() as f64)
                         .clamp(0.0, 1.0)
@@ -1099,22 +1151,22 @@ impl FlameApp {
                 if i.key_pressed(egui::Key::Plus) || i.key_pressed(egui::Key::Equals) {
                     let center = (self.view_start + self.view_end) / 2.0;
                     let new_span = (view_span * 0.5).clamp(1e-12, 1.0);
-                    self.view_start = (center - new_span / 2.0).max(0.0);
-                    self.view_end = (center + new_span / 2.0).min(1.0);
-                    self.invalidate_commands();
+                    self.animate_to(
+                        (center - new_span / 2.0).max(0.0),
+                        (center + new_span / 2.0).min(1.0),
+                    );
                 }
                 if i.key_pressed(egui::Key::Minus) {
                     let center = (self.view_start + self.view_end) / 2.0;
                     let new_span = (view_span * 2.0).clamp(1e-12, 1.0);
-                    self.view_start = (center - new_span / 2.0).max(0.0);
-                    self.view_end = (center + new_span / 2.0).min(1.0);
-                    self.invalidate_commands();
+                    self.animate_to(
+                        (center - new_span / 2.0).max(0.0),
+                        (center + new_span / 2.0).min(1.0),
+                    );
                 }
                 if i.key_pressed(egui::Key::Num0) {
-                    self.view_start = 0.0;
-                    self.view_end = 1.0;
+                    self.animate_to(0.0, 1.0);
                     self.scroll_y = 0.0;
-                    self.invalidate_commands();
                 }
                 if i.key_pressed(egui::Key::Escape) {
                     self.selected_span = None;
@@ -1213,10 +1265,11 @@ impl FlameApp {
                         &self.search_query,
                     );
 
-                    // Hover tooltip + click to select
+                    // Hover tooltip + click to select + right-click context menu
                     if let Some(hover_pos) = ui.input(|i| i.pointer.hover_pos()) {
                         if content_rect.contains(hover_pos) {
                             let clicked = response.clicked();
+                            let right_clicked = response.secondary_clicked();
                             for hit in &result.hit_regions {
                                 if hit.rect.contains(hover_pos) {
                                     if let Some(name) = find_span_label(cmds, hit.frame_id) {
@@ -1229,12 +1282,26 @@ impl FlameApp {
                                                 });
                                             });
                                         if clicked {
+                                            self.context_menu = None;
                                             self.selected_span = Some(SelectedSpan {
                                                 name,
                                                 frame_id: hit.frame_id,
                                                 lane_index: i,
                                                 start_us: hit.rect.left() as f64,
                                                 end_us: hit.rect.right() as f64,
+                                            });
+                                        } else if right_clicked {
+                                            let span_left = (hit.rect.left() - available.left()) as f64 / available.width() as f64;
+                                            let span_right = (hit.rect.right() - available.left()) as f64 / available.width() as f64;
+                                            let view_span = self.view_end - self.view_start;
+                                            let abs_left = self.view_start + span_left * view_span;
+                                            let abs_right = self.view_start + span_right * view_span;
+                                            let pad = (abs_right - abs_left) * 0.15;
+                                            self.context_menu = Some(ContextMenu {
+                                                span_name: name,
+                                                zoom_start: (abs_left - pad).max(0.0),
+                                                zoom_end: (abs_right + pad).min(1.0),
+                                                pos: hover_pos,
                                             });
                                         }
                                     }
@@ -1342,11 +1409,9 @@ impl FlameApp {
                 y_offset += total_height + 1.0;
             }
 
-            // Apply deferred double-click zoom
+            // Apply deferred double-click zoom (animated)
             if let Some((new_start, new_end)) = deferred_zoom {
-                self.view_start = new_start;
-                self.view_end = new_end;
-                self.invalidate_commands();
+                self.animate_to(new_start, new_end);
             }
         });
     }
@@ -1410,6 +1475,7 @@ impl FlameApp {
                             ("Drag", "Pan + vertical scroll"),
                             ("Double-click", "Zoom to span"),
                             ("Click", "Select span"),
+                            ("Right-click", "Context menu"),
                             ("Esc", "Deselect / close help"),
                             ("?", "Toggle this help"),
                         ];
@@ -1426,6 +1492,48 @@ impl FlameApp {
                     });
             });
     }
+
+    fn render_context_menu(&mut self, ctx: &egui::Context) {
+        let Some(menu) = self.context_menu.clone() else {
+            return;
+        };
+
+        let area_resp = egui::Area::new(egui::Id::new("span_context_menu"))
+            .order(egui::Order::Foreground)
+            .current_pos(menu.pos)
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.set_min_width(160.0);
+                    ui.label(egui::RichText::new(&menu.span_name).strong().size(12.0));
+                    ui.separator();
+                    if ui.button("📋 Copy Name").clicked() {
+                        ui.ctx().copy_text(menu.span_name.clone());
+                        self.context_menu = None;
+                    }
+                    if ui.button("🔍 Zoom to Span").clicked() {
+                        self.animate_to(menu.zoom_start, menu.zoom_end);
+                        self.context_menu = None;
+                    }
+                    if ui.button("🔎 Find Similar").clicked() {
+                        self.search_query = menu.span_name.clone();
+                        self.context_menu = None;
+                    }
+                });
+            });
+
+        // Dismiss if clicked outside the menu area or Escape
+        let dismiss = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+        if dismiss {
+            self.context_menu = None;
+        } else if ctx.input(|i| i.pointer.any_pressed()) {
+            let menu_rect = area_resp.response.rect;
+            if let Some(pos) = ctx.input(|i| i.pointer.interact_pos()) {
+                if !menu_rect.contains(pos) {
+                    self.context_menu = None;
+                }
+            }
+        }
+    }
 }
 
 impl eframe::App for FlameApp {
@@ -1440,12 +1548,15 @@ impl eframe::App for FlameApp {
             self.loading = false;
         }
 
+        self.tick_animation(ctx);
+
         self.render_toolbar(ctx);
         self.render_status_bar(ctx);
         self.render_detail_panel(ctx);
         self.render_sidebar(ctx);
         self.render_central_panel(ctx);
         self.render_help_overlay(ctx);
+        self.render_context_menu(ctx);
         self.handle_file_drop(ctx);
 
         // Global ? key to toggle help
