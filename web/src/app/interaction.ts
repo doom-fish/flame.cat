@@ -191,7 +191,9 @@ export function bindInteraction(
     e.preventDefault();
     if (e.ctrlKey || e.metaKey) {
       // Pinch-to-zoom on trackpad (or Ctrl+scroll on mouse)
-      const factor = e.deltaY > 0 ? 0.9 : 1.1;
+      // Use deltaY magnitude for proportional zoom; clamp to avoid jumps
+      const zoomSpeed = 0.005;
+      const factor = Math.pow(2, -e.deltaY * zoomSpeed);
       laneManager.zoomAt(factor, e.offsetX, canvas.clientWidth);
     } else {
       // Horizontal: deltaX from trackpad swipe or Shift+scroll

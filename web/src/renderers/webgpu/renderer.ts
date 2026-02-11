@@ -36,6 +36,8 @@ export class WebGPURenderer {
   private canvas: HTMLCanvasElement;
   private theme: Theme;
   private canvasFormat!: GPUTextureFormat;
+  private rectStagingBuffer: Float32Array | null = null;
+  private glyphStagingBuffer: Float32Array | null = null;
 
   constructor(canvas: HTMLCanvasElement, theme: Theme) {
     this.canvas = canvas;
@@ -178,8 +180,19 @@ export class WebGPURenderer {
     this.device.queue.writeBuffer(this.uniformBuffer, 0, uniforms);
 
     // --- Collect all geometry in a single pass ---
-    const rects: number[] = [];
-    const glyphs: number[] = [];
+    // Pre-allocated typed arrays to avoid GC pressure
+    const maxRects = commands.length * 6; // worst case: rect + 4 borders + label bg
+    const maxGlyphs = commands.length * 40; // rough estimate
+    if (!this.rectStagingBuffer || this.rectStagingBuffer.length < maxRects * RECT_FLOATS) {
+      this.rectStagingBuffer = new Float32Array(maxRects * RECT_FLOATS);
+    }
+    if (!this.glyphStagingBuffer || this.glyphStagingBuffer.length < maxGlyphs * GLYPH_FLOATS) {
+      this.glyphStagingBuffer = new Float32Array(maxGlyphs * GLYPH_FLOATS);
+    }
+    let rectData = this.rectStagingBuffer;
+    let glyphData = this.glyphStagingBuffer;
+    let rectOffset = 0;
+    let glyphOffset = 0;
     const transformStack: { tx: number; ty: number; sx: number; sy: number }[] = [];
     let curTx = 0, curTy = 0, curSx = 1, curSy = 1;
     // Clip stack: pixel coordinates for scissor rects
@@ -197,8 +210,8 @@ export class WebGPURenderer {
     let currentScissor: DrawBatch["scissor"] = null;
 
     const flushBatch = () => {
-      const rc = (rects.length / RECT_FLOATS) - batchRectStart;
-      const gc = (glyphs.length / GLYPH_FLOATS) - batchGlyphStart;
+      const rc = (rectOffset / RECT_FLOATS) - batchRectStart;
+      const gc = (glyphOffset / GLYPH_FLOATS) - batchGlyphStart;
       if (rc > 0 || gc > 0) {
         batches.push({
           rectStart: batchRectStart, rectCount: rc,
@@ -206,12 +219,21 @@ export class WebGPURenderer {
           scissor: currentScissor,
         });
       }
-      batchRectStart = rects.length / RECT_FLOATS;
-      batchGlyphStart = glyphs.length / GLYPH_FLOATS;
+      batchRectStart = rectOffset / RECT_FLOATS;
+      batchGlyphStart = glyphOffset / GLYPH_FLOATS;
     };
 
     const pushRect = (x: number, y: number, w: number, h: number, c: { r: number; g: number; b: number; a: number }) => {
-      rects.push(x, y, w, h, c.r, c.g, c.b, c.a);
+      if (rectOffset + RECT_FLOATS > rectData.length) {
+        const newBuf = new Float32Array(rectData.length * 2);
+        newBuf.set(rectData);
+        rectData = newBuf;
+        this.rectStagingBuffer = newBuf;
+      }
+      rectData[rectOffset++] = x; rectData[rectOffset++] = y;
+      rectData[rectOffset++] = w; rectData[rectOffset++] = h;
+      rectData[rectOffset++] = c.r; rectData[rectOffset++] = c.g;
+      rectData[rectOffset++] = c.b; rectData[rectOffset++] = c.a;
     };
 
     const layoutText = (
@@ -261,7 +283,18 @@ export class WebGPURenderer {
         const gh = m.height * scale;
         const gx = ox + m.bearingX * scale;
         const gy = y - halfLineH + m.bearingY * scale;
-        glyphs.push(gx, gy, gw, gh, m.u0, m.v0, m.u1, m.v1, color.r, color.g, color.b, color.a);
+        if (glyphOffset + GLYPH_FLOATS > glyphData.length) {
+          const newBuf = new Float32Array(glyphData.length * 2);
+          newBuf.set(glyphData);
+          glyphData = newBuf;
+          this.glyphStagingBuffer = newBuf;
+        }
+        glyphData[glyphOffset++] = gx; glyphData[glyphOffset++] = gy;
+        glyphData[glyphOffset++] = gw; glyphData[glyphOffset++] = gh;
+        glyphData[glyphOffset++] = m.u0; glyphData[glyphOffset++] = m.v0;
+        glyphData[glyphOffset++] = m.u1; glyphData[glyphOffset++] = m.v1;
+        glyphData[glyphOffset++] = color.r; glyphData[glyphOffset++] = color.g;
+        glyphData[glyphOffset++] = color.b; glyphData[glyphOffset++] = color.a;
         ox += m.advance * scale;
       }
     };
@@ -361,8 +394,8 @@ export class WebGPURenderer {
     flushBatch();
 
     // --- Upload and draw ---
-    const totalRects = rects.length / RECT_FLOATS;
-    const totalGlyphs = glyphs.length / GLYPH_FLOATS;
+    const totalRects = rectOffset / RECT_FLOATS;
+    const totalGlyphs = glyphOffset / GLYPH_FLOATS;
 
     if (commands.length > 0 && totalRects === 0) {
       console.warn("WebGPU: got", commands.length, "commands but 0 rects");
@@ -370,11 +403,11 @@ export class WebGPURenderer {
 
     if (totalRects > 0) {
       this.ensureRectBuffer(totalRects);
-      this.device.queue.writeBuffer(this.rectInstanceBuffer, 0, new Float32Array(rects));
+      this.device.queue.writeBuffer(this.rectInstanceBuffer, 0, rectData.buffer, 0, rectOffset * 4);
     }
     if (totalGlyphs > 0) {
       this.ensureGlyphBuffer(totalGlyphs);
-      this.device.queue.writeBuffer(this.glyphInstanceBuffer, 0, new Float32Array(glyphs));
+      this.device.queue.writeBuffer(this.glyphInstanceBuffer, 0, glyphData.buffer, 0, glyphOffset * 4);
     }
 
     let texture: GPUTexture;
