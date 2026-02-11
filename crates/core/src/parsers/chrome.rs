@@ -1367,4 +1367,47 @@ mod tests {
             .collect();
         assert!(!nav_markers.is_empty(), "should have navigation markers");
     }
+
+    #[test]
+    fn parse_react_demo() {
+        let data = include_bytes!("../../../ui/assets/react-demo.json");
+        let profile = parse_chrome_trace(data).unwrap();
+        let vp = profile.into_visual_profile();
+        assert!(!vp.threads.is_empty(), "should have threads");
+        assert!(vp.cpu_samples.is_some(), "should have CPU samples");
+        let cpu = vp.cpu_samples.as_ref().unwrap();
+        assert_eq!(cpu.samples.len(), cpu.timestamps.len());
+    }
+
+    #[test]
+    fn render_react_demo_cpu_samples() {
+        let data = include_bytes!("../../../ui/assets/react-demo.json");
+        let profile = parse_chrome_trace(data).unwrap();
+        let vp = profile.into_visual_profile();
+        let samples = vp.cpu_samples.as_ref().expect("should have cpu samples");
+        println!(
+            "nodes: {}, samples: {}, timestamps: {}",
+            samples.nodes.len(),
+            samples.samples.len(),
+            samples.timestamps.len()
+        );
+        println!(
+            "ts range: {}..{}",
+            samples.timestamps.first().unwrap(),
+            samples.timestamps.last().unwrap()
+        );
+
+        let viewport = flame_cat_protocol::Viewport {
+            x: 0.0,
+            y: 0.0,
+            width: 1087.0,
+            height: 80.0,
+            dpr: 1.0,
+        };
+        let abs_start = *samples.timestamps.first().unwrap();
+        let abs_end = *samples.timestamps.last().unwrap();
+        let cmds =
+            crate::views::cpu_samples::render_cpu_samples(samples, &viewport, abs_start, abs_end);
+        println!("commands: {}", cmds.len());
+    }
 }

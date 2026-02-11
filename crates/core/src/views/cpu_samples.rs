@@ -11,9 +11,13 @@ fn build_stack(
 ) -> Vec<(u32, SharedStr)> {
     let mut stack = Vec::new();
     let mut cur = Some(node_id);
+    let mut depth = 0;
     while let Some(id) = cur {
+        depth += 1;
+        if depth > 128 {
+            break; // guard against cycles
+        }
         if let Some((parent, name)) = node_map.get(&id) {
-            // Skip root/idle nodes
             if !name.is_empty() && name.as_ref() != "(root)" && name.as_ref() != "(idle)" {
                 stack.push((id, name.clone()));
             }

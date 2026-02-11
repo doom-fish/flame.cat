@@ -110,19 +110,29 @@ impl FlameApp {
             let window = web_sys::window();
             if let Some(w) = window {
                 let hash = w.location().hash().unwrap_or_default();
-                if hash == "#demo" {
+                if hash == "#demo" || hash == "#react-demo" {
                     let pd = pending_data.clone();
                     let ctx = cc.egui_ctx.clone();
-                    web_sys::console::log_1(&"flame.cat: loading demo profile...".into());
+                    let asset = if hash == "#react-demo" {
+                        "/assets/react-demo.json"
+                    } else {
+                        "/assets/demo.json"
+                    };
+                    web_sys::console::log_1(&format!("flame.cat: loading {asset}...").into());
                     wasm_bindgen_futures::spawn_local(async move {
-                        // Try preloaded data from JS (fetched in parallel with WASM)
-                        let result = Self::get_preloaded_demo().await.or_else(|| {
-                            web_sys::console::log_1(&"flame.cat: preload miss, fetching...".into());
+                        let result = if asset == "/assets/demo.json" {
+                            Self::get_preloaded_demo().await.or_else(|| {
+                                web_sys::console::log_1(
+                                    &"flame.cat: preload miss, fetching...".into(),
+                                );
+                                None
+                            })
+                        } else {
                             None
-                        });
+                        };
                         let result = match result {
                             Some(data) => Ok(data),
-                            None => Self::fetch_bytes("/assets/demo.json").await,
+                            None => Self::fetch_bytes(asset).await,
                         };
                         match result {
                             Ok(resp) => {
