@@ -142,6 +142,82 @@ async function main() {
   emptyState.appendChild(shortcutsText);
   canvasContainer.appendChild(emptyState);
 
+  // Time cursor — vertical line following mouse
+  const timeCursor = document.createElement("div");
+  timeCursor.style.cssText = `
+    position: absolute;
+    top: 0;
+    width: 1px;
+    height: 100%;
+    pointer-events: none;
+    z-index: 5;
+    display: none;
+  `;
+  const timeCursorLabel = document.createElement("div");
+  timeCursorLabel.style.cssText = `
+    position: absolute;
+    top: 0;
+    transform: translateX(4px);
+    font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+    font-size: 10px;
+    padding: 1px 4px;
+    white-space: nowrap;
+    pointer-events: none;
+    border-radius: 2px;
+  `;
+  timeCursor.appendChild(timeCursorLabel);
+  canvasContainer.appendChild(timeCursor);
+
+  canvas.addEventListener("mousemove", (e) => {
+    if (!profileLoaded) return;
+    const x = e.offsetX;
+    const { viewStart, viewEnd } = laneManager.getViewWindow();
+    const frac = x / canvas.clientWidth;
+    const timeUs = (viewStart + frac * (viewEnd - viewStart)) * profileDuration;
+    timeCursor.style.left = `${x}px`;
+    timeCursor.style.display = "block";
+    timeCursorLabel.textContent = formatTime(timeUs);
+  });
+  canvas.addEventListener("mouseleave", () => {
+    timeCursor.style.display = "none";
+  });
+
+  // Status bar at bottom
+  const statusBar = document.createElement("div");
+  statusBar.style.cssText = `
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 20px;
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 8px;
+    font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+    font-size: 11px;
+    opacity: 0.7;
+    pointer-events: none;
+    z-index: 10;
+  `;
+  const statusLeft = document.createElement("span");
+  const statusRight = document.createElement("span");
+  statusBar.appendChild(statusLeft);
+  statusBar.appendChild(statusRight);
+  canvasContainer.appendChild(statusBar);
+
+  const updateStatusBar = () => {
+    if (!profileLoaded) {
+      statusBar.style.display = "none";
+      return;
+    }
+    statusBar.style.display = "flex";
+    const { viewStart, viewEnd } = laneManager.getViewWindow();
+    const visibleDuration = (viewEnd - viewStart) * profileDuration;
+    statusLeft.textContent = `${formatTime(viewStart * profileDuration)} – ${formatTime(viewEnd * profileDuration)}`;
+    statusRight.textContent = `Visible: ${formatTime(visibleDuration)} · ${laneManager.visibleLanes.length} lanes · ${(100 * (viewEnd - viewStart)).toFixed(1)}%`;
+  };
+
   // Detail panel
   const detailPanel = new DetailPanel(root);
 
@@ -414,6 +490,7 @@ async function main() {
     allCommands.push("ClearClip");
 
     renderer.render(allCommands, 0, 0);
+    updateStatusBar();
   };
 
   const switchView = (view: ViewType) => {
@@ -618,7 +695,14 @@ async function main() {
   // Empty state text color
   dropText.style.color = colorStr(resolveColor(theme, "TextPrimary"));
   shortcutsText.style.color = colorStr(resolveColor(theme, "TextPrimary"));
-
+  // Status bar theme
+  statusBar.style.color = colorStr(resolveColor(theme, "TextPrimary"));
+  statusBar.style.background = `linear-gradient(transparent, ${colorStr(resolveColor(theme, "Background"))})`;
+  // Time cursor theme
+  timeCursor.style.background = colorStr(resolveColor(theme, "TextPrimary"));
+  timeCursor.style.opacity = "0.3";
+  timeCursorLabel.style.color = colorStr(resolveColor(theme, "TextPrimary"));
+  timeCursorLabel.style.background = colorStr(resolveColor(theme, "Surface"));
   const { animateViewTo } = bindInteraction(
     canvas,
     laneManager,

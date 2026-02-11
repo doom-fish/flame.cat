@@ -534,6 +534,33 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
                 });
             }
 
+            // === Mark events (ph:"R") — Web Vitals and navigation timing ===
+            "R" => {
+                let category = match event.name.as_str() {
+                    "firstPaint" | "firstContentfulPaint" | "firstMeaningfulPaint"
+                    | "largestContentfulPaint::Candidate" => Some("web-vital"),
+                    "InteractiveTime" => Some("web-vital"),
+                    "LayoutShift" => Some("web-vital"),
+                    "navigationStart" | "fetchStart" | "responseEnd" | "domLoading"
+                    | "domInteractive" | "domContentLoadedEventStart"
+                    | "domContentLoadedEventEnd" | "domComplete" | "loadEventStart"
+                    | "loadEventEnd" => Some("navigation"),
+                    _ => None,
+                };
+                // Normalize LCP candidate name
+                let name = if event.name == "largestContentfulPaint::Candidate" {
+                    "LCP"
+                } else {
+                    &event.name
+                };
+                markers.push(Marker {
+                    ts: event.ts,
+                    name: SharedStr::from(name),
+                    scope: MarkerScope::Global,
+                    category: category.map(SharedStr::from),
+                });
+            }
+
             // === Counter events (ph:"C") ===
             "C" => {
                 if let Some(args) = &event.args {
@@ -679,15 +706,6 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
                     name: SharedStr::from(event.name.as_str()),
                     phase,
                     ts: event.ts,
-                });
-            }
-
-            // === Mark/navigation events (ph:"R") ===
-            "R" => {
-                markers.push(Marker {
-                    ts: event.ts,
-                    name: SharedStr::from(event.name.as_str()),
-                    scope: MarkerScope::Global,
                 });
             }
 

@@ -105,16 +105,19 @@ mod tests {
                 ts: 100.0,
                 name: SharedStr::from("navigationStart"),
                 scope: MarkerScope::Global,
+                category: None,
             },
             Marker {
                 ts: 500.0,
                 name: SharedStr::from("domInteractive"),
                 scope: MarkerScope::Global,
+                category: None,
             },
             Marker {
                 ts: 1000.0,
                 name: SharedStr::from("loadEventEnd"),
                 scope: MarkerScope::Global,
+                category: None,
             },
         ]
     }

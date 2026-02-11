@@ -340,10 +340,13 @@ pub struct FlowArrow {
 pub struct Marker {
     /// Timestamp.
     pub ts: f64,
-    /// Marker name (e.g. "navigationStart", "domInteractive").
+    /// Marker name (e.g. "firstContentfulPaint", "largestContentfulPaint").
     pub name: SharedStr,
     /// Scope: "global", "process", or "thread".
     pub scope: MarkerScope,
+    /// Category for grouping/coloring (e.g. "web-vital", "navigation", "gc").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<SharedStr>,
 }
 
 /// Scope of a marker event.

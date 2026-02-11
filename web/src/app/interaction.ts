@@ -405,6 +405,13 @@ export function bindInteraction(
         // Also reset zoom with 0 key (animated)
         animateViewTo(0, 1);
         break;
+      case "f":
+      case "F":
+        if (tag !== "INPUT" && tag !== "TEXTAREA") {
+          // Fit view to full profile
+          animateViewTo(0, 1);
+        }
+        break;
     }
   };
 
