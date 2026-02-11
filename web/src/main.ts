@@ -316,6 +316,7 @@ async function main() {
   const profileMetaCache = new Map<number, { start_time: number; end_time: number }>();
 
   const renderAll = () => {
+    const t0 = performance.now();
     const allCommands: RenderCommand[] = [];
     const laneYOffset = profileLoaded ? MINIMAP_HEIGHT + TIME_AXIS_HEIGHT : 0;
 
@@ -753,7 +754,10 @@ async function main() {
       });
     }
 
+    const t1 = performance.now();
     renderer.render(allCommands, 0, 0);
+    const t2 = performance.now();
+    if (t2 - t0 > 8) console.warn(`Frame: ${(t1-t0).toFixed(1)}ms build + ${(t2-t1).toFixed(1)}ms render = ${(t2-t0).toFixed(1)}ms (${allCommands.length} cmds)`);
 
     // Draw filmstrip screenshot images via a thin overlay (raster images need Canvas2D drawImage)
     if (profileLoaded) {

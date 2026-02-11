@@ -223,7 +223,21 @@ export class WebGPURenderer {
       batchGlyphStart = glyphOffset / GLYPH_FLOATS;
     };
 
+    // Cache resolved theme colors to avoid object allocations per-command
+    const colorCache = new Map<string, { r: number; g: number; b: number; a: number }>();
+    const resolveTokenCached = (token: ThemeToken) => {
+      let c = colorCache.get(token);
+      if (!c) {
+        const raw = resolveColor(this.theme, token);
+        c = { r: raw.r, g: raw.g, b: raw.b, a: raw.a };
+        colorCache.set(token, c);
+      }
+      return c;
+    };
+
     const pushRect = (x: number, y: number, w: number, h: number, c: { r: number; g: number; b: number; a: number }) => {
+      // Cull off-screen rects
+      if (x + w < 0 || x > width || y + h < 0 || y > height) return;
       if (rectOffset + RECT_FLOATS > rectData.length) {
         const newBuf = new Float32Array(rectData.length * 2);
         newBuf.set(rectData);
@@ -241,6 +255,8 @@ export class WebGPURenderer {
       color: { r: number; g: number; b: number; a: number },
       align: string, maxWidth?: number,
     ) => {
+      // Quick vertical cull
+      if (y - fontSize < 0 - fontSize || y + fontSize > height + fontSize) return;
       const scale = fontSize / this.atlas.atlasSize;
       // Measure total width
       let totalW = 0;
@@ -342,14 +358,14 @@ export class WebGPURenderer {
         currentScissor = clip;
       } else if ("DrawRect" in cmd) {
         const { rect, color, border_color, label } = cmd.DrawRect;
-        const c = this.resolveToken(color);
+        const c = resolveTokenCached(color);
         const x = rect.x * curSx + curTx;
         const y = rect.y * curSy + curTy;
         const w = rect.w * curSx;
         const h = rect.h * curSy;
         pushRect(x, y, w, h, c);
         if (border_color) {
-          const bc = this.resolveToken(border_color);
+          const bc = resolveTokenCached(border_color);
           const lw = 1 / dpr;
           pushRect(x, y, w, lw, bc);
           pushRect(x, y + h - lw, w, lw, bc);
@@ -357,18 +373,18 @@ export class WebGPURenderer {
           pushRect(x + w - lw, y, lw, h, bc);
         }
         if (label && w > 20) {
-          const tc = this.resolveToken("TextPrimary");
+          const tc = resolveTokenCached("TextPrimary");
           layoutText(label, x + 4, y + h / 2, 11, tc, "Left", w - 8);
         }
       } else if ("DrawText" in cmd) {
         const { position, text, color, font_size, align } = cmd.DrawText;
-        const c = this.resolveToken(color);
+        const c = resolveTokenCached(color);
         const px = position.x * curSx + curTx;
         const py = position.y * curSy + curTy;
         layoutText(text, px, py, font_size, c, align);
       } else if ("DrawLine" in cmd) {
         const { from, to, color, width: lineWidth } = cmd.DrawLine;
-        const c = this.resolveToken(color);
+        const c = resolveTokenCached(color);
         const fx = from.x * curSx + curTx;
         const fy = from.y * curSy + curTy;
         const tx = to.x * curSx + curTx;
