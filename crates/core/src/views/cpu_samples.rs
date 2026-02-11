@@ -1,12 +1,10 @@
 use flame_cat_protocol::{
-    CpuSamples, Point, Rect, RenderCommand, SharedStr, TextAlign, ThemeToken, Viewport,
+    CpuSamples, Rect, RenderCommand, SharedStr, ThemeToken, Viewport,
 };
 use std::collections::HashMap;
 
 const ROW_HEIGHT: f64 = 18.0;
 const ROW_GAP: f64 = 1.0;
-const FONT_SIZE: f64 = 10.0;
-const MIN_LABEL_WIDTH: f64 = 30.0;
 
 /// Build full stack for a node by walking parent pointers.
 fn build_stack(

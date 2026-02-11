@@ -1,13 +1,11 @@
 use flame_cat_protocol::{
-    ObjectEvent, ObjectPhase, Point, Rect, RenderCommand, SharedStr, TextAlign, ThemeToken,
+    ObjectEvent, ObjectPhase, Rect, RenderCommand, SharedStr, ThemeToken,
     Viewport,
 };
 use std::collections::HashMap;
 
 const ROW_HEIGHT: f64 = 14.0;
 const ROW_GAP: f64 = 2.0;
-const FONT_SIZE: f64 = 9.0;
-const MIN_LABEL_WIDTH: f64 = 40.0;
 const SNAPSHOT_MARKER_R: f64 = 3.0;
 
 /// Render object lifecycle events as horizontal bars from create→destroy.

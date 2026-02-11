@@ -191,7 +191,7 @@ impl FlameApp {
     fn setup_lanes(&mut self, profile: &VisualProfile) {
         self.lanes.clear();
 
-        // Collect and sort by span count (densest first)
+        // Collect threads sorted by span count (densest first)
         let mut thread_info: Vec<_> = profile
             .threads
             .iter()
@@ -203,22 +203,29 @@ impl FlameApp {
             .collect();
         thread_info.sort_by(|a, b| b.1.cmp(&a.1));
 
-        for (thread, span_count, max_depth) in thread_info {
-            let content_height = if max_depth == 0 {
-                24.0_f32
+        // Split threads: dense (≥100 spans) go first, sparse go after specialty tracks
+        let dense_threshold = 100;
+        let (dense_threads, sparse_threads): (Vec<_>, Vec<_>) = thread_info
+            .into_iter()
+            .partition(|(_, count, _)| *count >= dense_threshold);
+
+        // Dense threads first
+        for (thread, span_count, max_depth) in &dense_threads {
+            let content_height = if *max_depth == 0 {
+                20.0_f32
             } else {
-                ((max_depth + 1) as f32 * 20.0 + 4.0).min(300.0)
+                ((*max_depth + 1) as f32 * 18.0 + 4.0).min(250.0)
             };
             self.lanes.push(LaneState {
                 kind: LaneKind::Thread(thread.id),
                 name: format!("{} ({span_count} spans)", thread.name),
                 height: content_height,
                 scroll_y: 0.0,
-                visible: span_count >= 3,
+                visible: true,
             });
         }
 
-        // Async spans lane
+        // Specialty tracks (between dense and sparse threads)
         if !profile.async_spans.is_empty() {
             self.lanes.push(LaneState {
                 kind: LaneKind::AsyncSpans,
@@ -229,7 +236,6 @@ impl FlameApp {
             });
         }
 
-        // Counter tracks
         for (i, counter) in profile.counters.iter().enumerate() {
             self.lanes.push(LaneState {
                 kind: LaneKind::Counter(i),
@@ -240,18 +246,16 @@ impl FlameApp {
             });
         }
 
-        // Markers lane
         if !profile.markers.is_empty() {
             self.lanes.push(LaneState {
                 kind: LaneKind::Markers,
                 name: format!("Markers ({})", profile.markers.len()),
-                height: 24.0,
+                height: 30.0,
                 scroll_y: 0.0,
                 visible: true,
             });
         }
 
-        // CPU samples lane
         if profile.cpu_samples.is_some() {
             self.lanes.push(LaneState {
                 kind: LaneKind::CpuSamples,
@@ -262,7 +266,6 @@ impl FlameApp {
             });
         }
 
-        // Frame track (if frames data exists)
         if !profile.frames.is_empty() {
             self.lanes.push(LaneState {
                 kind: LaneKind::FrameTrack,
@@ -273,7 +276,6 @@ impl FlameApp {
             });
         }
 
-        // Object lifecycle track
         if !profile.object_events.is_empty() {
             self.lanes.push(LaneState {
                 kind: LaneKind::ObjectTrack,
@@ -284,7 +286,23 @@ impl FlameApp {
             });
         }
 
-        // Minimap (always last, always visible)
+        // Sparse threads after specialty tracks
+        for (thread, span_count, max_depth) in &sparse_threads {
+            let content_height = if *max_depth == 0 {
+                16.0_f32
+            } else {
+                ((*max_depth + 1) as f32 * 18.0 + 4.0).min(120.0)
+            };
+            self.lanes.push(LaneState {
+                kind: LaneKind::Thread(thread.id),
+                name: format!("{} ({span_count} spans)", thread.name),
+                height: content_height,
+                scroll_y: 0.0,
+                visible: *span_count >= 3,
+            });
+        }
+
+        // Minimap (always last)
         self.lanes.push(LaneState {
             kind: LaneKind::Minimap,
             name: "Overview".to_string(),
@@ -546,6 +564,19 @@ impl eframe::App for FlameApp {
                                 }
                             }
                         }
+                    }
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        let pd = self.pending_data.clone();
+                        let ctx_clone = ctx.clone();
+                        wasm_bindgen_futures::spawn_local(async move {
+                            if let Ok(data) = pick_file_wasm().await {
+                                if let Ok(mut lock) = pd.lock() {
+                                    *lock = Some(data);
+                                }
+                                ctx_clone.request_repaint();
+                            }
+                        });
                     }
                 }
 
@@ -843,6 +874,9 @@ impl eframe::App for FlameApp {
                     self.scroll_y = 0.0;
                     self.invalidate_commands();
                 }
+                if i.key_pressed(egui::Key::Escape) {
+                    self.selected_span = None;
+                }
             });
 
             // Render lanes
@@ -854,7 +888,6 @@ impl eframe::App for FlameApp {
             painter.rect_filled(available, egui::CornerRadius::ZERO, bg);
 
             let mut y_offset = available.top() - self.scroll_y;
-            let header_height = 24.0_f32;
 
             for (i, lane) in self.lanes.iter().enumerate() {
                 if !lane.visible {
@@ -862,43 +895,20 @@ impl eframe::App for FlameApp {
                 }
 
                 let lane_top = y_offset;
-                let total_height = header_height + lane.height;
+                let total_height = lane.height;
 
                 // Skip if completely off-screen
                 if lane_top > available.bottom() {
                     break;
                 }
                 if lane_top + total_height < available.top() {
-                    y_offset += total_height + 2.0;
+                    y_offset += total_height + 1.0;
                     continue;
                 }
 
-                // Lane header
-                let header_rect = egui::Rect::from_min_size(
-                    egui::pos2(available.left(), lane_top),
-                    egui::vec2(available.width(), header_height),
-                );
-                let header_bg = crate::theme::resolve(
-                    flame_cat_protocol::ThemeToken::LaneHeaderBackground,
-                    self.theme_mode,
-                );
-                let header_text_color = crate::theme::resolve(
-                    flame_cat_protocol::ThemeToken::LaneHeaderText,
-                    self.theme_mode,
-                );
-                painter.rect_filled(header_rect, egui::CornerRadius::ZERO, header_bg);
-                painter.text(
-                    egui::pos2(available.left() + 6.0, lane_top + header_height / 2.0),
-                    egui::Align2::LEFT_CENTER,
-                    &lane.name,
-                    egui::FontId::proportional(11.0),
-                    header_text_color,
-                );
-
-                // Lane content
-                let content_top = lane_top + header_height;
+                // Lane content (no header — sidebar identifies lanes)
                 let content_rect = egui::Rect::from_min_size(
-                    egui::pos2(available.left(), content_top),
+                    egui::pos2(available.left(), lane_top),
                     egui::vec2(available.width(), lane.height),
                 );
 
@@ -917,7 +927,7 @@ impl eframe::App for FlameApp {
                     let result = renderer::render_commands(
                         &mut painter,
                         cmds,
-                        egui::pos2(available.left(), content_top),
+                        egui::pos2(available.left(), lane_top),
                         self.theme_mode,
                         &self.search_query,
                     );
@@ -968,7 +978,7 @@ impl eframe::App for FlameApp {
                     egui::Stroke::new(1.0, border_color),
                 );
 
-                y_offset += total_height + 2.0;
+                y_offset += total_height + 1.0;
             }
         });
 
@@ -1082,4 +1092,62 @@ fn compute_auto_zoom(profile: &VisualProfile) -> Option<(f64, f64)> {
         }
     }
     Some((best_lo, best_hi))
+}
+
+/// WASM file picker using the browser's File API.
+#[cfg(target_arch = "wasm32")]
+async fn pick_file_wasm() -> Result<Vec<u8>, String> {
+    use wasm_bindgen::prelude::*;
+    use wasm_bindgen::JsCast;
+
+    let document = web_sys::window()
+        .ok_or("no window")?
+        .document()
+        .ok_or("no document")?;
+
+    let input: web_sys::HtmlInputElement = document
+        .create_element("input")
+        .map_err(|e| format!("{e:?}"))?
+        .dyn_into()
+        .map_err(|_| "not an input")?;
+    input.set_type("file");
+    input.set_accept(".json,.cpuprofile,.speedscope,.pprof,.tracy");
+
+    // Create a promise that resolves when a file is selected
+    let (tx, rx) = futures_channel::oneshot::channel::<Vec<u8>>();
+    let tx = std::rc::Rc::new(std::cell::RefCell::new(Some(tx)));
+
+    let tx_clone = tx.clone();
+    let input_clone = input.clone();
+    let closure = Closure::wrap(Box::new(move || {
+        let files = input_clone.files();
+        if let Some(files) = files {
+            if let Some(file) = files.get(0) {
+                let reader = web_sys::FileReader::new().unwrap();
+                let reader_clone = reader.clone();
+                let tx_inner = tx_clone.clone();
+                let onload = Closure::wrap(Box::new(move || {
+                    if let Ok(result) = reader_clone.result() {
+                        let buffer = js_sys::Uint8Array::new(&result);
+                        let data = buffer.to_vec();
+                        if let Some(sender) = tx_inner.borrow_mut().take() {
+                            let _ = sender.send(data);
+                        }
+                    }
+                }) as Box<dyn FnMut()>);
+                reader.set_onload(Some(onload.as_ref().unchecked_ref()));
+                onload.forget();
+                let _ = reader.read_as_array_buffer(&file);
+            }
+        }
+    }) as Box<dyn FnMut()>);
+
+    input
+        .add_event_listener_with_callback("change", closure.as_ref().unchecked_ref())
+        .map_err(|e| format!("{e:?}"))?;
+    closure.forget();
+
+    input.click();
+
+    rx.await.map_err(|_| "file pick cancelled".to_string())
 }

@@ -1039,6 +1039,7 @@ dependencies = [
  "egui",
  "flame-cat-core",
  "flame-cat-protocol",
+ "futures-channel",
  "js-sys",
  "rfd",
  "serde",

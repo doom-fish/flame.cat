@@ -6,7 +6,6 @@ use std::collections::HashMap;
 const ROW_HEIGHT: f64 = 18.0;
 const ROW_GAP: f64 = 2.0;
 const FONT_SIZE: f64 = 10.0;
-const MIN_LABEL_WIDTH: f64 = 30.0;
 
 /// Render async spans as horizontal bars grouped by category.
 ///
