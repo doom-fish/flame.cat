@@ -26,6 +26,8 @@ struct TraceEvent {
     pid: u64,
     #[serde(default)]
     tid: u64,
+    #[serde(default)]
+    args: Option<serde_json::Value>,
 }
 
 /// Top-level Chrome trace JSON — supports both array format and object format.
@@ -47,6 +49,22 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
         TraceFile::Array(events) => events,
     };
 
+    // Collect thread name metadata
+    let mut thread_names: std::collections::HashMap<(u64, u64), String> =
+        std::collections::HashMap::new();
+    for event in &events {
+        if event.ph == "M"
+            && event.name == "thread_name"
+            && let Some(name) = event
+                .args
+                .as_ref()
+                .and_then(|a| a.get("name"))
+                .and_then(|n| n.as_str())
+        {
+            thread_names.insert((event.pid, event.tid), name.to_string());
+        }
+    }
+
     let mut frames: Vec<Frame> = Vec::new();
     let mut next_id: u64 = 0;
 
@@ -63,6 +81,7 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
 
     for event in &sorted_events {
         let key = (event.pid, event.tid);
+        let thread_name = thread_names.get(&key).cloned();
 
         // Pop completed X events from the stack before processing the next event.
         if let Some(stack) = stacks.get_mut(&key) {
@@ -102,6 +121,7 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
                     },
                     parent: parent_id,
                     self_time: 0.0, // computed below
+                    thread: thread_name,
                 });
                 // Keep X events on stack so nested children get correct depth
                 stacks.entry(key).or_default().push(frame_idx);
@@ -129,6 +149,7 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
                     },
                     parent: parent_id,
                     self_time: 0.0,
+                    thread: thread_name,
                 });
                 stacks.entry(key).or_default().push(frame_idx);
             }

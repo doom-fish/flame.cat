@@ -87,6 +87,7 @@ pub fn parse_react_profile(data: &[u8]) -> Result<Profile, ReactParseError> {
                     category: Some("react".to_string()),
                     parent: None, // simplified — full tree reconstruction requires the fiber tree
                     self_time,
+                    thread: None,
                 });
 
                 offset += actual_duration;

@@ -59,17 +59,26 @@ pub fn render_tui(profile: &VisualProfile, _commands: &[RenderCommand]) -> Resul
 
     let mut scroll_x: f64 = 0.0;
     let mut scroll_y: f64 = 0.0;
+    let mut zoom: f64 = 1.0;
+
+    let duration = profile.duration();
 
     loop {
         let term_size = terminal.size()?;
         let viewport = flame_cat_protocol::Viewport {
-            x: scroll_x,
+            x: 0.0,
             y: scroll_y,
             width: f64::from(term_size.width),
             height: f64::from(term_size.height.saturating_sub(2)),
             dpr: 1.0,
         };
-        let cmds = flame_cat_core::views::time_order::render_time_order(profile, &viewport);
+
+        let visible_duration = duration / zoom;
+        let view_start = profile.meta.start_time + scroll_x;
+        let view_end = (view_start + visible_duration).min(profile.meta.end_time);
+
+        let cmds =
+            flame_cat_core::views::time_order::render_time_order(profile, &viewport, view_start, view_end);
 
         terminal.draw(|frame| {
             let area = frame.area();
@@ -100,8 +109,8 @@ pub fn render_tui(profile: &VisualProfile, _commands: &[RenderCommand]) -> Resul
                     let col_scale = f64::from(content_area.width) / viewport.width;
                     let _row_scale = 1.0; // 1 depth level = 1 row
 
-                    let col = ((rect.x - scroll_x) * col_scale) as u16;
-                    let row = (rect.y / 20.0) as u16; // FRAME_HEIGHT=20 in views
+                    let col = (rect.x * col_scale) as u16;
+                    let row = (rect.y / 20.0) as u16;
                     let width = ((rect.w * col_scale) as u16).max(1);
 
                     if row >= content_area.height || col >= content_area.width {
@@ -136,12 +145,23 @@ pub fn render_tui(profile: &VisualProfile, _commands: &[RenderCommand]) -> Resul
             match event::read()? {
                 Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
                     KeyCode::Char('q') | KeyCode::Esc => break,
-                    KeyCode::Left => scroll_x -= 10.0,
-                    KeyCode::Right => scroll_x += 10.0,
+                    KeyCode::Left => {
+                        let step = (duration / zoom) * 0.1;
+                        scroll_x = (scroll_x - step).max(0.0);
+                    }
+                    KeyCode::Right => {
+                        let step = (duration / zoom) * 0.1;
+                        scroll_x = (scroll_x + step)
+                            .min(duration - duration / zoom)
+                            .max(0.0);
+                    }
                     KeyCode::Up => scroll_y = (scroll_y - 20.0).max(0.0),
                     KeyCode::Down => scroll_y += 20.0,
                     KeyCode::Char('+') | KeyCode::Char('=') => {
-                        // zoom not yet implemented in TUI
+                        zoom *= 1.3;
+                    }
+                    KeyCode::Char('-') => {
+                        zoom = (zoom / 1.3).max(1.0);
                     }
                     _ => {}
                 },

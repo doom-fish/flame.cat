@@ -33,9 +33,9 @@ export function bindInteraction(
     e.preventDefault();
     if (e.ctrlKey || e.metaKey) {
       const factor = e.deltaY > 0 ? 0.9 : 1.1;
-      laneManager.zoomAt(factor, e.offsetX);
+      laneManager.zoomAt(factor, e.offsetX, canvas.clientWidth);
     } else if (e.shiftKey) {
-      laneManager.scrollBy(e.deltaY, 0);
+      laneManager.scrollBy(e.deltaY, 0, canvas.clientWidth);
     } else {
       const laneIdx = laneManager.laneAtY(e.offsetY);
       if (laneIdx >= 0) {
@@ -73,20 +73,20 @@ export function bindInteraction(
     const step = 40;
     switch (e.key) {
       case "ArrowLeft":
-        laneManager.scrollBy(-step, 0);
+        laneManager.scrollBy(-step, 0, canvas.clientWidth);
         onRender();
         break;
       case "ArrowRight":
-        laneManager.scrollBy(step, 0);
+        laneManager.scrollBy(step, 0, canvas.clientWidth);
         onRender();
         break;
       case "+":
       case "=":
-        laneManager.zoomAt(1.2, canvas.clientWidth / 2);
+        laneManager.zoomAt(1.2, canvas.clientWidth / 2, canvas.clientWidth);
         onRender();
         break;
       case "-":
-        laneManager.zoomAt(0.8, canvas.clientWidth / 2);
+        laneManager.zoomAt(0.8, canvas.clientWidth / 2, canvas.clientWidth);
         onRender();
         break;
     }
@@ -150,7 +150,7 @@ export function bindInteraction(
       const newDist = touchDistance(t0, t1);
       const factor = newDist / touchState.pinchDist;
       const focalX = touchMidX(t0, t1, canvas);
-      laneManager.zoomAt(factor, focalX);
+      laneManager.zoomAt(factor, focalX, canvas.clientWidth);
       touchState.pinchDist = newDist;
       onRender();
     } else if (e.touches.length === 1 && touchState.isSingleFinger) {
@@ -160,7 +160,7 @@ export function bindInteraction(
       const pos = touchOffset(t, canvas);
       const dx = touchState.lastX - pos.x;
       const dy = touchState.lastY - pos.y;
-      laneManager.scrollBy(dx, 0);
+      laneManager.scrollBy(dx, 0, canvas.clientWidth);
       const laneIdx = laneManager.laneAtY(pos.y);
       if (laneIdx >= 0) {
         laneManager.scrollLane(laneIdx, dy);

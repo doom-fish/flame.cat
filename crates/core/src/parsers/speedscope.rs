@@ -136,6 +136,7 @@ pub fn parse_speedscope(data: &[u8]) -> Result<Profile, SpeedscopeParseError> {
                                 category,
                                 parent: parent_id,
                                 self_time: 0.0,
+                    thread: None,
                             });
 
                             stack.push(frame_idx);
@@ -186,7 +187,8 @@ pub fn parse_speedscope(data: &[u8]) -> Result<Profile, SpeedscopeParseError> {
                             category,
                             parent: parent_id,
                             self_time: if is_leaf { weight } else { 0.0 },
-                        });
+                        thread: None,
+                    });
 
                         parent_id = Some(id);
                     }

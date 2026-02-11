@@ -1,17 +1,28 @@
-use flame_cat_protocol::{Rect, RenderCommand, ThemeToken, Viewport, VisualProfile};
+use flame_cat_protocol::{
+    Point, Rect, RenderCommand, TextAlign, ThemeToken, Viewport, VisualProfile,
+};
 
 const FRAME_HEIGHT: f64 = 20.0;
+const THREAD_HEADER_HEIGHT: f64 = 22.0;
+const THREAD_GAP: f64 = 4.0;
 
 /// Render a profile in time-order view: frames are laid out chronologically,
 /// X-axis = wall time, Y-axis = stack depth.
-pub fn render_time_order(profile: &VisualProfile, viewport: &Viewport) -> Vec<RenderCommand> {
-    let duration = profile.duration();
-    if duration <= 0.0 {
+///
+/// `view_start` / `view_end` define the visible time window (absolute µs).
+/// The canvas pixel width comes from `viewport.width`.
+pub fn render_time_order(
+    profile: &VisualProfile,
+    viewport: &Viewport,
+    view_start: f64,
+    view_end: f64,
+) -> Vec<RenderCommand> {
+    let visible_duration = view_end - view_start;
+    if visible_duration <= 0.0 {
         return Vec::new();
     }
 
-    let start = profile.meta.start_time;
-    let x_scale = viewport.width / duration;
+    let x_scale = viewport.width / visible_duration;
 
     let mut commands = Vec::with_capacity(profile.span_count() + 2);
 
@@ -20,33 +31,65 @@ pub fn render_time_order(profile: &VisualProfile, viewport: &Viewport) -> Vec<Re
         label: Some("Time Order".to_string()),
     });
 
-    for span in profile.all_spans() {
-        let x = (span.start - start) * x_scale;
-        let w = span.duration() * x_scale;
-        let y = f64::from(span.depth) * FRAME_HEIGHT;
+    let mut y_offset: f64 = 0.0;
 
-        // Skip frames outside the viewport
-        if x + w < viewport.x || x > viewport.x + viewport.width {
-            continue;
+    for thread in &profile.threads {
+        // Thread header
+        let header_y = y_offset - viewport.y;
+        if header_y + THREAD_HEADER_HEIGHT >= 0.0 && header_y <= viewport.height {
+            commands.push(RenderCommand::DrawRect {
+                rect: Rect::new(0.0, header_y, viewport.width, THREAD_HEADER_HEIGHT - 1.0),
+                color: ThemeToken::LaneHeaderBackground,
+                border_color: Some(ThemeToken::LaneBorder),
+                label: None,
+                frame_id: None,
+            });
+            commands.push(RenderCommand::DrawText {
+                position: Point {
+                    x: 6.0,
+                    y: header_y + THREAD_HEADER_HEIGHT / 2.0 + 3.0,
+                },
+                text: format!("{} ({} spans)", thread.name, thread.spans.len()),
+                color: ThemeToken::LaneHeaderText,
+                font_size: 11.0,
+                align: TextAlign::Left,
+            });
         }
-        if y + FRAME_HEIGHT < viewport.y || y > viewport.y + viewport.height {
-            continue;
+        y_offset += THREAD_HEADER_HEIGHT;
+
+        // Find the max depth in this thread for vertical sizing
+        let max_depth = thread.spans.iter().map(|s| s.depth).max().unwrap_or(0);
+
+        for span in &thread.spans {
+            let x = (span.start - view_start) * x_scale;
+            let w = span.duration() * x_scale;
+            let y = y_offset + f64::from(span.depth) * FRAME_HEIGHT - viewport.y;
+
+            // Skip frames outside the visible area
+            if x + w < 0.0 || x > viewport.width {
+                continue;
+            }
+            if y + FRAME_HEIGHT < 0.0 || y > viewport.height {
+                continue;
+            }
+
+            // Skip sub-pixel frames
+            if w < 0.5 {
+                continue;
+            }
+
+            let color = color_for_depth(span.depth);
+
+            commands.push(RenderCommand::DrawRect {
+                rect: Rect::new(x, y, w, FRAME_HEIGHT - 1.0),
+                color,
+                border_color: Some(ThemeToken::Border),
+                label: Some(span.name.clone()),
+                frame_id: Some(span.id),
+            });
         }
 
-        // Skip sub-pixel frames
-        if w < 0.5 {
-            continue;
-        }
-
-        let color = color_for_depth(span.depth);
-
-        commands.push(RenderCommand::DrawRect {
-            rect: Rect::new(x, y, w, FRAME_HEIGHT - 1.0),
-            color,
-            border_color: Some(ThemeToken::Border),
-            label: Some(span.name.clone()),
-            frame_id: Some(span.id),
-        });
+        y_offset += f64::from(max_depth + 1) * FRAME_HEIGHT + THREAD_GAP;
     }
 
     commands.push(RenderCommand::EndGroup);
@@ -118,10 +161,18 @@ mod tests {
             height: 600.0,
             dpr: 1.0,
         };
-        let cmds = render_time_order(&test_profile(), &vp);
+        let profile = test_profile();
+        let cmds = render_time_order(
+            &profile,
+            &vp,
+            profile.meta.start_time,
+            profile.meta.end_time,
+        );
         let rects: Vec<_> = cmds
             .iter()
-            .filter(|c| matches!(c, RenderCommand::DrawRect { .. }))
+            .filter(|c| {
+                matches!(c, RenderCommand::DrawRect { frame_id, .. } if frame_id.is_some())
+            })
             .collect();
         assert_eq!(rects.len(), 2);
     }
@@ -146,6 +197,6 @@ mod tests {
             height: 600.0,
             dpr: 1.0,
         };
-        assert!(render_time_order(&profile, &vp).is_empty());
+        assert!(render_time_order(&profile, &vp, 0.0, 0.0).is_empty());
     }
 }

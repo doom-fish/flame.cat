@@ -125,13 +125,14 @@ async function main() {
     // Minimap
     if (profileLoaded && laneManager.lanes[0]) {
       try {
+        const { viewStart, viewEnd } = laneManager.getViewWindow();
         const minimapJson = wasm.render_minimap(
           laneManager.lanes[0].profileIndex,
           canvas.clientWidth,
           MINIMAP_HEIGHT,
           window.devicePixelRatio,
-          0,
-          1,
+          viewStart,
+          viewEnd,
         );
         const minimapCmds: RenderCommand[] = JSON.parse(minimapJson) as RenderCommand[];
         allCommands.push(...minimapCmds);
@@ -144,20 +145,32 @@ async function main() {
     allCommands.push(...laneManager.renderHeaders(canvas.clientWidth, laneYOffset));
 
     // Lane content
+    const { viewStart, viewEnd } = laneManager.getViewWindow();
     for (let i = 0; i < laneManager.lanes.length; i++) {
       const lane = laneManager.lanes[i];
       if (!lane) continue;
       const laneY = laneManager.laneY(i) + laneManager.headerHeight + laneYOffset;
       try {
+        // Compute absolute time window from fractional view window + profile metadata
+        const meta = JSON.parse(wasm.get_profile_metadata(lane.profileIndex)) as {
+          start_time: number;
+          end_time: number;
+        };
+        const duration = meta.end_time - meta.start_time;
+        const absViewStart = meta.start_time + viewStart * duration;
+        const absViewEnd = meta.start_time + viewEnd * duration;
+
         const commandsJson = wasm.render_view(
           lane.profileIndex,
           lane.viewType,
           0,
-          0,
+          lane.scrollY,
           canvas.clientWidth,
           lane.height,
           window.devicePixelRatio,
           lane.selectedFrameId != null ? BigInt(lane.selectedFrameId) : undefined,
+          absViewStart,
+          absViewEnd,
         );
         const laneCmds: RenderCommand[] = JSON.parse(commandsJson) as RenderCommand[];
 
@@ -197,8 +210,7 @@ async function main() {
       }
     }
 
-    const { scrollX } = laneManager.getTransform();
-    renderer.render(allCommands, scrollX, 0);
+    renderer.render(allCommands, 0, 0);
   };
 
   const switchView = (view: ViewType) => {
@@ -228,21 +240,32 @@ async function main() {
   // Hit test: find frame at mouse position
   const hitTest = (mx: number, my: number): { name: string; frameId: number } | null => {
     const laneYOffset = profileLoaded ? MINIMAP_HEIGHT : 0;
+    const { viewStart, viewEnd } = laneManager.getViewWindow();
     for (let i = 0; i < laneManager.lanes.length; i++) {
       const lane = laneManager.lanes[i];
       if (!lane) continue;
       const laneY = laneManager.laneY(i) + laneManager.headerHeight + laneYOffset;
       if (my < laneY || my > laneY + lane.height) continue;
       try {
+        const meta = JSON.parse(wasm.get_profile_metadata(lane.profileIndex)) as {
+          start_time: number;
+          end_time: number;
+        };
+        const duration = meta.end_time - meta.start_time;
+        const absViewStart = meta.start_time + viewStart * duration;
+        const absViewEnd = meta.start_time + viewEnd * duration;
+
         const json = wasm.render_view(
           lane.profileIndex,
           lane.viewType,
           0,
-          0,
+          lane.scrollY,
           canvas.clientWidth,
           lane.height,
           window.devicePixelRatio,
           lane.selectedFrameId != null ? BigInt(lane.selectedFrameId) : undefined,
+          absViewStart,
+          absViewEnd,
         );
         const cmds: RenderCommand[] = JSON.parse(json) as RenderCommand[];
         const localY = my - laneY;

@@ -18,11 +18,16 @@ const DRAG_HANDLE_SIZE = 6;
 /**
  * Manages multiple vertical lanes with shared time axis.
  * Each lane displays a view of a profile.
+ *
+ * viewStart / viewEnd are fractions [0,1] of the profile duration representing
+ * the visible time window.
  */
 export class LaneManager {
   lanes: LaneConfig[] = [];
-  private scrollX = 0;
-  private zoom = 1;
+  /** Visible time window start as a fraction of total duration (0 = beginning). */
+  viewStart = 0;
+  /** Visible time window end as a fraction of total duration (1 = end). */
+  viewEnd = 1;
   private dragState: { laneIndex: number; startY: number; startHeight: number } | null = null;
 
   addLane(config: Omit<LaneConfig, "scrollY"> & { scrollY?: number }): void {
@@ -98,20 +103,37 @@ export class LaneManager {
     return this.dragState !== null;
   }
 
-  /** Scroll the shared time axis. */
-  scrollBy(dx: number, _dy: number): void {
-    this.scrollX += dx;
+  /** Scroll the shared time axis by pixel delta. */
+  scrollBy(dx: number, _dy: number, canvasWidth: number): void {
+    const viewSpan = this.viewEnd - this.viewStart;
+    // Convert pixel delta to fractional time delta
+    const timeDelta = (dx / canvasWidth) * viewSpan;
+    this.viewStart = Math.max(0, Math.min(1 - viewSpan, this.viewStart + timeDelta));
+    this.viewEnd = this.viewStart + viewSpan;
   }
 
-  /** Zoom in/out around a focal point. */
-  zoomAt(factor: number, _focalX: number): void {
-    this.zoom = Math.max(0.001, this.zoom * factor);
+  /** Zoom in/out around a focal point (in pixels). */
+  zoomAt(factor: number, focalX: number, canvasWidth: number): void {
+    const viewSpan = this.viewEnd - this.viewStart;
+    // Focal point as fraction of the visible window
+    const focalFrac = focalX / canvasWidth;
+    // Time position under the focal point
+    const focalTime = this.viewStart + focalFrac * viewSpan;
+    // New span after zoom
+    const newSpan = Math.max(0.0001, Math.min(1, viewSpan / factor));
+    // Keep the focal point stationary
+    this.viewStart = Math.max(0, focalTime - focalFrac * newSpan);
+    this.viewEnd = Math.min(1, this.viewStart + newSpan);
+    // Re-clamp start if end hit the boundary
+    if (this.viewEnd >= 1) {
+      this.viewStart = Math.max(0, 1 - newSpan);
+    }
   }
 
   /** Scroll a specific lane vertically. */
   scrollLane(laneIndex: number, dy: number): void {
     const lane = this.lanes[laneIndex];
-    if (lane) lane.scrollY += dy;
+    if (lane) lane.scrollY = Math.max(0, lane.scrollY + dy);
   }
 
   /** Generate lane header render commands. */
@@ -143,9 +165,9 @@ export class LaneManager {
     return commands;
   }
 
-  /** Get shared transform state for the renderer. */
-  getTransform(): { scrollX: number; zoom: number } {
-    return { scrollX: this.scrollX, zoom: this.zoom };
+  /** Get the visible time window. */
+  getViewWindow(): { viewStart: number; viewEnd: number } {
+    return { viewStart: this.viewStart, viewEnd: this.viewEnd };
   }
 
   get headerHeight(): number {

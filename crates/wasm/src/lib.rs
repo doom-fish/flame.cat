@@ -24,6 +24,10 @@ pub fn parse_profile(data: &[u8]) -> Result<usize, JsError> {
 }
 
 /// Render a view for a profile, returning render commands as JSON.
+///
+/// For time-order views, `view_start` / `view_end` define the visible time
+/// window (absolute µs).  Pass `NaN` or negative values to auto-fit the full
+/// profile range.
 #[wasm_bindgen]
 #[allow(clippy::too_many_arguments)]
 pub fn render_view(
@@ -35,6 +39,8 @@ pub fn render_view(
     height: f64,
     dpr: f64,
     selected_frame_id: Option<u64>,
+    view_start: Option<f64>,
+    view_end: Option<f64>,
 ) -> Result<String, JsError> {
     let profiles = lock_profiles()?;
     let profile = profiles
@@ -49,8 +55,11 @@ pub fn render_view(
         dpr,
     };
 
+    let vs = view_start.unwrap_or(profile.meta.start_time);
+    let ve = view_end.unwrap_or(profile.meta.end_time);
+
     let commands = match view_type {
-        "time-order" => time_order::render_time_order(profile, &viewport),
+        "time-order" => time_order::render_time_order(profile, &viewport, vs, ve),
         "left-heavy" => left_heavy::render_left_heavy(profile, &viewport),
         "sandwich" => {
             let frame_id = selected_frame_id

@@ -69,7 +69,8 @@ pub fn parse_collapsed(data: &[u8]) -> Result<Profile, CollapsedParseError> {
                 category: None,
                 parent: parent_id,
                 self_time: if is_leaf { count } else { 0.0 },
-            });
+            thread: None,
+                    });
 
             parent_id = Some(id);
         }

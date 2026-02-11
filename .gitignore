@@ -4,3 +4,7 @@ web/dist/
 web/node_modules/
 *.wasm
 pkg/
+
+# Test profile artifacts
+chrome-profile.json
+*.cpuprofile

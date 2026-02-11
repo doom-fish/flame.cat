@@ -201,6 +201,7 @@ pub fn parse_firefox(data: &[u8]) -> Result<Profile, FirefoxParseError> {
                     category: thread.name.clone(),
                     parent: parent_id,
                     self_time: 0.0,
+                    thread: None,
                 });
 
                 active_stacks.push(ActiveFrame {

@@ -149,6 +149,7 @@ pub fn parse_cpuprofile(data: &[u8]) -> Result<Profile, CpuProfileParseError> {
             category: node.call_frame.url.clone(),
             parent: parent_frame_id,
             self_time: 0.0,
+                    thread: None,
         });
 
         // Leaf nodes get 1.0 unit of time.
@@ -299,6 +300,7 @@ fn parse_from_samples(
                 category: node.call_frame.url.clone(),
                 parent: parent_frame_id,
                 self_time: 0.0,
+                    thread: None,
             });
 
             active_stacks.push(ActiveFrame {

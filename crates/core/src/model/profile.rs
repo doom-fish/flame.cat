@@ -22,6 +22,8 @@ pub struct Frame {
     pub parent: Option<u64>,
     /// Self time (exclusive of children).
     pub self_time: f64,
+    /// Thread or group name (for multi-thread traces).
+    pub thread: Option<String>,
 }
 
 impl Frame {
@@ -82,10 +84,25 @@ impl Profile {
             _ => ValueUnit::Microseconds,
         };
 
-        let spans: Vec<Span> = self
-            .frames
-            .iter()
-            .map(|f| Span {
+        let span_kind = match &source_format {
+            SourceFormat::CollapsedStacks | SourceFormat::Ebpf | SourceFormat::Pprof => {
+                SpanKind::Sample
+            }
+            _ => SpanKind::Event,
+        };
+
+        // Group frames by thread name
+        let mut thread_groups: std::collections::BTreeMap<String, Vec<Span>> =
+            std::collections::BTreeMap::new();
+
+        for f in &self.frames {
+            let thread_name = f
+                .thread
+                .as_deref()
+                .unwrap_or("Main")
+                .to_string();
+
+            let span = Span {
                 id: f.id,
                 name: f.name.clone(),
                 start: f.start,
@@ -93,25 +110,31 @@ impl Profile {
                 depth: f.depth,
                 parent: f.parent,
                 self_value: f.self_time,
-                kind: match &source_format {
-                    SourceFormat::CollapsedStacks | SourceFormat::Ebpf | SourceFormat::Pprof => {
-                        SpanKind::Sample
-                    }
-                    _ => SpanKind::Event,
-                },
+                kind: span_kind,
                 category: f.category.as_ref().map(|name| SpanCategory {
                     name: name.clone(),
                     source: None,
                 }),
+            };
+
+            thread_groups
+                .entry(thread_name)
+                .or_default()
+                .push(span);
+        }
+
+        // Sort thread groups: put "CrRendererMain" or "Main" first, then by event count
+        let mut threads: Vec<ThreadGroup> = thread_groups
+            .into_iter()
+            .enumerate()
+            .map(|(i, (name, spans))| ThreadGroup {
+                id: i as u32,
+                name: name.clone(),
+                sort_key: thread_sort_key(&name),
+                spans,
             })
             .collect();
-
-        let thread = ThreadGroup {
-            id: 0,
-            name: "Main".to_string(),
-            sort_key: 0,
-            spans,
-        };
+        threads.sort_by_key(|t| t.sort_key);
 
         VisualProfile {
             meta: ProfileMeta {
@@ -122,8 +145,21 @@ impl Profile {
                 start_time: self.metadata.start_time,
                 end_time: self.metadata.end_time,
             },
-            threads: vec![thread],
+            threads,
         }
+    }
+}
+
+/// Assign priority for thread sorting: main threads first, then by name.
+fn thread_sort_key(name: &str) -> i64 {
+    match name {
+        "CrRendererMain" => 0,
+        "Main" => 1,
+        n if n.contains("Main") => 2,
+        "Compositor" => 10,
+        n if n.contains("Worker") => 20,
+        n if n.contains("IO") => 30,
+        _ => 50,
     }
 }
 
@@ -149,6 +185,7 @@ mod tests {
                     category: Some("js".into()),
                     parent: None,
                     self_time: 80.0,
+                    thread: None,
                 },
                 Frame {
                     id: 1,
@@ -159,6 +196,7 @@ mod tests {
                     category: None,
                     parent: Some(0),
                     self_time: 120.0,
+                    thread: None,
                 },
             ],
         }
