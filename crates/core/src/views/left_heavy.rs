@@ -15,13 +15,36 @@ struct MergedNode {
 
 /// Render a profile in left-heavy view: identical call stacks are merged
 /// and sorted heaviest-first (left).
-pub fn render_left_heavy(profile: &VisualProfile, viewport: &Viewport) -> Vec<RenderCommand> {
-    let spans: Vec<&Span> = profile.all_spans().collect();
+pub fn render_left_heavy(
+    profile: &VisualProfile,
+    viewport: &Viewport,
+    thread_id: Option<u32>,
+) -> Vec<RenderCommand> {
+    let spans: Vec<&Span> = if let Some(tid) = thread_id {
+        profile
+            .threads
+            .iter()
+            .filter(|t| t.id == tid)
+            .flat_map(|t| t.spans.iter())
+            .collect()
+    } else {
+        profile.all_spans().collect()
+    };
     if spans.is_empty() {
         return Vec::new();
     }
 
-    let roots = merge_children(&spans, None);
+    // Build parent → children index for O(1) lookup
+    let mut children_index: HashMap<Option<u64>, Vec<usize>> =
+        HashMap::with_capacity(spans.len());
+    for (i, span) in spans.iter().enumerate() {
+        children_index
+            .entry(span.parent)
+            .or_default()
+            .push(i);
+    }
+
+    let roots = merge_children(&spans, &children_index, None);
     let total_time: f64 = roots.iter().map(|n| n.total_time).sum();
     if total_time <= 0.0 {
         return Vec::new();
@@ -41,11 +64,18 @@ pub fn render_left_heavy(profile: &VisualProfile, viewport: &Viewport) -> Vec<Re
     commands
 }
 
-fn merge_children(spans: &[&Span], parent: Option<u64>) -> Vec<MergedNode> {
-    let children: Vec<&&Span> = spans.iter().filter(|s| s.parent == parent).collect();
+fn merge_children(
+    spans: &[&Span],
+    children_index: &HashMap<Option<u64>, Vec<usize>>,
+    parent: Option<u64>,
+) -> Vec<MergedNode> {
+    let Some(child_indices) = children_index.get(&parent) else {
+        return Vec::new();
+    };
 
     let mut groups: HashMap<&str, (SharedStr, f64, Vec<u64>)> = HashMap::new();
-    for child in &children {
+    for &idx in child_indices {
+        let child = spans[idx];
         let entry = groups
             .entry(&child.name)
             .or_insert_with(|| (child.name.clone(), 0.0, Vec::new()));
@@ -58,7 +88,7 @@ fn merge_children(spans: &[&Span], parent: Option<u64>) -> Vec<MergedNode> {
         .map(|(_, (name, total_time, ids))| {
             let mut merged_children = Vec::new();
             for id in &ids {
-                let mut sub = merge_children(spans, Some(*id));
+                let mut sub = merge_children(spans, children_index, Some(*id));
                 merged_children.append(&mut sub);
             }
             let merged_children = re_merge(merged_children);
@@ -187,7 +217,7 @@ mod tests {
             height: 600.0,
             dpr: 1.0,
         };
-        let cmds = render_left_heavy(&profile, &vp);
+        let cmds = render_left_heavy(&profile, &vp, None);
         let rects: Vec<_> = cmds
             .iter()
             .filter(|c| matches!(c, RenderCommand::DrawRect { .. }))
@@ -217,6 +247,6 @@ mod tests {
             height: 600.0,
             dpr: 1.0,
         };
-        assert!(render_left_heavy(&profile, &vp).is_empty());
+        assert!(render_left_heavy(&profile, &vp, None).is_empty());
     }
 }

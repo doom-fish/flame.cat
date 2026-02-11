@@ -63,7 +63,7 @@ pub fn render_view(
 
     let commands = match view_type {
         "time-order" => time_order::render_time_order(profile, &viewport, vs, ve, thread_id),
-        "left-heavy" => left_heavy::render_left_heavy(profile, &viewport),
+        "left-heavy" => left_heavy::render_left_heavy(profile, &viewport, thread_id),
         "sandwich" => {
             let frame_id = selected_frame_id
                 .ok_or_else(|| JsError::new("sandwich requires selected_frame_id"))?;

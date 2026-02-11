@@ -630,6 +630,19 @@ async function main() {
 
   renderer.render([], 0, 0);
   console.log("flame.cat ready — drop or open a Chrome trace JSON file to visualize");
+
+  // Auto-load test profile in development
+  if (import.meta.env.DEV) {
+    try {
+      const resp = await fetch("/chrome-profile.json");
+      if (resp.ok) {
+        const blob = await resp.blob();
+        await loadFile(new File([blob], "chrome-profile.json", { type: "application/json" }));
+      }
+    } catch {
+      // no test profile available
+    }
+  }
 }
 
 main().catch(console.error);
