@@ -66,8 +66,13 @@ fn resolve_dark(token: ThemeToken) -> ResolvedColor {
         ToolbarTabActive => ResolvedColor::rgb(66, 135, 245),
         ToolbarTabHover => ResolvedColor::rgba(255, 255, 255, 20),
 
-        MinimapBackground => ResolvedColor::rgb(18, 18, 22),
-        MinimapViewport => ResolvedColor::rgba(100, 160, 255, 30),
+        MinimapBackground => ResolvedColor::rgb(25, 25, 32),
+        MinimapViewport => ResolvedColor::rgba(100, 160, 255, 25),
+        MinimapDensity => ResolvedColor::rgb(100, 170, 255),
+        MinimapHandle => ResolvedColor::rgb(180, 200, 255),
+
+        InlineLabelText => ResolvedColor::rgba(200, 200, 210, 180),
+        InlineLabelBackground => ResolvedColor::rgba(30, 30, 40, 180),
 
         TableRowEven => ResolvedColor::rgb(30, 30, 35),
         TableRowOdd => ResolvedColor::rgb(35, 35, 42),
@@ -121,8 +126,13 @@ fn resolve_light(token: ThemeToken) -> ResolvedColor {
         ToolbarTabActive => ResolvedColor::rgb(50, 110, 220),
         ToolbarTabHover => ResolvedColor::rgba(0, 0, 0, 10),
 
-        MinimapBackground => ResolvedColor::rgb(245, 245, 248),
-        MinimapViewport => ResolvedColor::rgba(50, 110, 220, 40),
+        MinimapBackground => ResolvedColor::rgb(240, 240, 245),
+        MinimapViewport => ResolvedColor::rgba(50, 110, 220, 30),
+        MinimapDensity => ResolvedColor::rgb(50, 110, 220),
+        MinimapHandle => ResolvedColor::rgb(40, 80, 180),
+
+        InlineLabelText => ResolvedColor::rgba(40, 40, 50, 200),
+        InlineLabelBackground => ResolvedColor::rgba(240, 240, 245, 200),
 
         TableRowEven => ResolvedColor::rgb(255, 255, 255),
         TableRowOdd => ResolvedColor::rgb(245, 245, 248),

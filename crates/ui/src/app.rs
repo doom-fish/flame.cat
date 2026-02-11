@@ -41,6 +41,8 @@ pub struct FlameApp {
     pending_data: std::sync::Arc<std::sync::Mutex<Option<Vec<u8>>>>,
     /// Loading state.
     loading: bool,
+    /// Cached minimap density (invalidated on profile load only).
+    minimap_density: Option<Vec<u32>>,
 }
 
 #[derive(Clone)]
@@ -141,6 +143,7 @@ impl FlameApp {
             error: None,
             pending_data,
             loading: false,
+            minimap_density: None,
         }
     }
 
@@ -199,6 +202,7 @@ impl FlameApp {
                 self.scroll_y = 0.0;
                 self.error = None;
                 self.selected_span = None;
+                self.minimap_density = None;
                 self.invalidate_commands();
             }
             Err(e) => {
@@ -567,37 +571,54 @@ impl FlameApp {
         // Draw directly on the panel painter (same layer, no clipping issues)
         let painter = ui.painter();
 
-        // Dark background (slightly lighter than panel to differentiate)
-        let bg = egui::Color32::from_rgb(25, 25, 32);
+        // Dark background (themed)
+        let bg = crate::theme::resolve(
+            flame_cat_protocol::ThemeToken::MinimapBackground,
+            self.theme_mode,
+        );
         painter.rect_filled(rect, egui::CornerRadius::ZERO, bg);
 
         // Top border
+        let border_color = crate::theme::resolve(
+            flame_cat_protocol::ThemeToken::LaneBorder,
+            self.theme_mode,
+        );
         painter.line_segment(
             [rect.left_top(), egui::pos2(rect.right(), rect.top())],
-            egui::Stroke::new(1.0, egui::Color32::from_rgb(50, 50, 60)),
+            egui::Stroke::new(1.0, border_color),
         );
 
-        // Build density per column (bucket spans across all threads)
+        // Build or reuse cached density per column
         let cols = (rect.width() as usize).max(1);
-        let start = profile.meta.start_time;
-        let col_dur = duration / cols as f64;
-        let mut density = vec![0u32; cols];
-        for span in profile.all_spans() {
-            let rel_start = (span.start - start) / col_dur;
-            let rel_end = (span.end - start) / col_dur;
-            if rel_end < 0.0 || rel_start >= cols as f64 {
-                continue;
+        let density = match &self.minimap_density {
+            Some(cached) if cached.len() == cols => cached,
+            _ => {
+                let start = profile.meta.start_time;
+                let col_dur = duration / cols as f64;
+                let mut d = vec![0u32; cols];
+                for span in profile.all_spans() {
+                    let rel_start = (span.start - start) / col_dur;
+                    let rel_end = (span.end - start) / col_dur;
+                    if rel_end < 0.0 || rel_start >= cols as f64 {
+                        continue;
+                    }
+                    let c0 = (rel_start.max(0.0) as usize).min(cols);
+                    let c1 = (rel_end.ceil() as usize).min(cols);
+                    for c in c0..c1 {
+                        d[c] += 1;
+                    }
+                }
+                self.minimap_density = Some(d);
+                self.minimap_density.as_ref().unwrap()
             }
-            let c0 = (rel_start.max(0.0) as usize).min(cols);
-            let c1 = (rel_end.ceil() as usize).min(cols);
-            for c in c0..c1 {
-                density[c] += 1;
-            }
-        }
+        };
         let max_d = *density.iter().max().unwrap_or(&1).max(&1);
 
         // Draw density bars (batch adjacent columns into rects for performance)
-        let bar_color = egui::Color32::from_rgb(100, 170, 255);
+        let bar_color = crate::theme::resolve(
+            flame_cat_protocol::ThemeToken::MinimapDensity,
+            self.theme_mode,
+        );
         let mut c = 0;
         while c < cols {
             if density[c] == 0 {
@@ -627,22 +648,28 @@ impl FlameApp {
             );
         }
 
-        // Viewport highlight — bright the viewport area instead of dimming outside
+        // Viewport highlight
         let vp_left = rect.left() + (self.view_start as f32) * rect.width();
         let vp_right = rect.left() + (self.view_end as f32) * rect.width();
         let viewport_rect = egui::Rect::from_min_max(
             egui::pos2(vp_left, rect.top()),
             egui::pos2(vp_right, rect.bottom()),
         );
-        // Subtle bright overlay on viewport region
+        let vp_color = crate::theme::resolve(
+            flame_cat_protocol::ThemeToken::MinimapViewport,
+            self.theme_mode,
+        );
         painter.rect_filled(
             viewport_rect,
             egui::CornerRadius::ZERO,
-            egui::Color32::from_rgba_unmultiplied(100, 160, 255, 25),
+            vp_color,
         );
 
         // Viewport border lines
-        let handle_color = egui::Color32::from_rgb(180, 200, 255);
+        let handle_color = crate::theme::resolve(
+            flame_cat_protocol::ThemeToken::MinimapHandle,
+            self.theme_mode,
+        );
         painter.line_segment(
             [egui::pos2(vp_left, rect.top()), egui::pos2(vp_left, rect.bottom())],
             egui::Stroke::new(2.0, handle_color),
@@ -664,7 +691,7 @@ impl FlameApp {
         // Bottom border of minimap strip
         painter.line_segment(
             [egui::pos2(rect.left(), rect.bottom()), egui::pos2(rect.right(), rect.bottom())],
-            egui::Stroke::new(1.0, egui::Color32::from_rgb(50, 50, 60)),
+            egui::Stroke::new(1.0, border_color),
         );
 
         // Interactive: drag to pan/resize viewport
@@ -721,20 +748,27 @@ impl FlameApp {
             }
         }
     }
-}
 
-impl eframe::App for FlameApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Check for async-loaded profile data
-        let pending = {
-            let mut lock = self.pending_data.lock().unwrap_or_else(|e| e.into_inner());
-            lock.take()
-        };
-        if let Some(data) = pending {
-            self.load_profile(&data);
-            self.loading = false;
-        }
+    /// Pan the viewport by a fractional amount, preserving the view span.
+    fn pan_viewport(&mut self, dx_frac: f64) {
+        let span = self.view_end - self.view_start;
+        let new_start = (self.view_start + dx_frac).clamp(0.0, 1.0 - span);
+        self.view_start = new_start;
+        self.view_end = new_start + span;
+        self.invalidate_commands();
+    }
 
+    /// Zoom the viewport by a factor, centered at a fractional position.
+    fn zoom_viewport(&mut self, factor: f64, center_frac: f64) {
+        let view_span = self.view_end - self.view_start;
+        let cursor_time = self.view_start + center_frac * view_span;
+        let new_span = (view_span * factor).clamp(1e-12, 1.0);
+        self.view_start = (cursor_time - center_frac * new_span).max(0.0);
+        self.view_end = (self.view_start + new_span).min(1.0);
+        self.invalidate_commands();
+    }
+
+    fn render_toolbar(&mut self, ctx: &egui::Context) {
         // Top toolbar
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -808,7 +842,9 @@ impl eframe::App for FlameApp {
                 });
             });
         });
+    }
 
+    fn render_status_bar(&self, ctx: &egui::Context) {
         // Status bar
         egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -831,7 +867,9 @@ impl eframe::App for FlameApp {
                 }
             });
         });
+    }
 
+    fn render_detail_panel(&mut self, ctx: &egui::Context) {
         // Detail panel: show selected span info
         if let Some(selected) = &self.selected_span {
             let selected_clone = selected.clone();
@@ -899,7 +937,9 @@ impl eframe::App for FlameApp {
                     }
                 });
         }
+    }
 
+    fn render_sidebar(&mut self, ctx: &egui::Context) {
         // Sidebar: lane visibility toggles
         if self.session.is_some() {
             egui::SidePanel::left("lane_sidebar")
@@ -938,7 +978,9 @@ impl eframe::App for FlameApp {
                     });
                 });
         }
+    }
 
+    fn render_central_panel(&mut self, ctx: &egui::Context) {
         // Central panel: flame chart
         egui::CentralPanel::default().show(ctx, |ui| {
             if self.session.is_none() {
@@ -1187,10 +1229,14 @@ impl eframe::App for FlameApp {
                 // Inline lane label (subtle, top-left corner with background pill)
                 let label_text = &lane.name;
                 let label_font = egui::FontId::proportional(10.0);
+                let label_text_color = crate::theme::resolve(
+                    flame_cat_protocol::ThemeToken::InlineLabelText,
+                    self.theme_mode,
+                );
                 let label_galley = painter.layout_no_wrap(
                     label_text.clone(),
                     label_font,
-                    egui::Color32::from_rgba_unmultiplied(200, 200, 210, 180),
+                    label_text_color,
                 );
                 let label_w = label_galley.size().x + 8.0;
                 let label_h = label_galley.size().y + 4.0;
@@ -1199,10 +1245,14 @@ impl eframe::App for FlameApp {
                     egui::vec2(label_w, label_h),
                 );
                 if label_rect.intersects(available) {
+                    let label_bg_color = crate::theme::resolve(
+                        flame_cat_protocol::ThemeToken::InlineLabelBackground,
+                        self.theme_mode,
+                    );
                     painter.rect_filled(
                         label_rect,
                         egui::CornerRadius::same(3),
-                        egui::Color32::from_rgba_unmultiplied(30, 30, 40, 180),
+                        label_bg_color,
                     );
                     painter.galley(
                         egui::pos2(available.left() + 6.0, lane_top + 4.0),
@@ -1227,7 +1277,9 @@ impl eframe::App for FlameApp {
                 y_offset += total_height + 1.0;
             }
         });
+    }
 
+    fn handle_file_drop(&mut self, ctx: &egui::Context) {
         // Handle file drop
         ctx.input(|i| {
             if !i.raw.dropped_files.is_empty() {
@@ -1256,6 +1308,28 @@ impl eframe::App for FlameApp {
         }
     }
 }
+
+impl eframe::App for FlameApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Check for async-loaded profile data
+        let pending = {
+            let mut lock = self.pending_data.lock().unwrap_or_else(|e| e.into_inner());
+            lock.take()
+        };
+        if let Some(data) = pending {
+            self.load_profile(&data);
+            self.loading = false;
+        }
+
+        self.render_toolbar(ctx);
+        self.render_status_bar(ctx);
+        self.render_detail_panel(ctx);
+        self.render_sidebar(ctx);
+        self.render_central_panel(ctx);
+        self.handle_file_drop(ctx);
+    }
+}
+
 
 /// Find the label for a span by its frame_id in the render commands.
 fn find_span_label(cmds: &[RenderCommand], frame_id: u64) -> Option<String> {

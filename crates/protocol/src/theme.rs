@@ -33,6 +33,12 @@ pub enum ThemeToken {
     // Minimap
     MinimapBackground,
     MinimapViewport,
+    MinimapDensity,
+    MinimapHandle,
+
+    // Inline lane labels
+    InlineLabelText,
+    InlineLabelBackground,
 
     // Table / Ranked view
     TableRowEven,
