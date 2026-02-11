@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use flame_cat_protocol::{
-    Point, Rect, RenderCommand, TextAlign, ThemeToken, Viewport, VisualProfile,
+    Point, Rect, RenderCommand, SharedStr, TextAlign, ThemeToken, Viewport, VisualProfile,
 };
 
 const ROW_HEIGHT: f64 = 24.0;
@@ -10,7 +10,7 @@ const HEADER_ROW_HEIGHT: f64 = 28.0;
 /// A single row in the ranked table.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RankedEntry {
-    pub name: String,
+    pub name: SharedStr,
     pub self_time: f64,
     pub total_time: f64,
     pub count: u32,
@@ -35,10 +35,10 @@ pub fn render_ranked(
     let entries = aggregate_spans(profile, sort, ascending);
     let total_duration = profile.duration().max(1.0);
 
-    let mut commands = Vec::new();
+    let mut commands = Vec::with_capacity(entries.len() * 6 + 4);
     commands.push(RenderCommand::BeginGroup {
-        id: "ranked".to_string(),
-        label: Some("Ranked".to_string()),
+        id: "ranked".into(),
+        label: Some("Ranked".into()),
     });
 
     // Column layout: Symbol Name | Self | Total | Count
@@ -64,7 +64,7 @@ pub fn render_ranked(
     ] {
         commands.push(RenderCommand::DrawText {
             position: Point { x, y: header_y },
-            text: text.to_string(),
+            text: text.into(),
             color: ThemeToken::TextPrimary,
             font_size: 12.0,
             align: TextAlign::Left,
@@ -127,7 +127,7 @@ pub fn render_ranked(
                 x: col_self_x + 4.0,
                 y: text_y,
             },
-            text: format_time(entry.self_time),
+            text: format_time(entry.self_time).into(),
             color: ThemeToken::TextSecondary,
             font_size: 11.0,
             align: TextAlign::Left,
@@ -152,7 +152,7 @@ pub fn render_ranked(
                 x: col_total_x + 4.0,
                 y: text_y,
             },
-            text: format_time(entry.total_time),
+            text: format_time(entry.total_time).into(),
             color: ThemeToken::TextSecondary,
             font_size: 11.0,
             align: TextAlign::Left,
@@ -164,7 +164,7 @@ pub fn render_ranked(
                 x: col_count_x + 4.0,
                 y: text_y,
             },
-            text: entry.count.to_string(),
+            text: SharedStr::from(entry.count.to_string()),
             color: ThemeToken::TextMuted,
             font_size: 11.0,
             align: TextAlign::Left,
@@ -185,24 +185,26 @@ pub fn get_ranked_entries(
 }
 
 fn aggregate_spans(profile: &VisualProfile, sort: RankedSort, ascending: bool) -> Vec<RankedEntry> {
-    let mut by_name: HashMap<&str, (f64, f64, u32)> = HashMap::new();
+    let mut by_name: HashMap<&str, (SharedStr, f64, f64, u32)> = HashMap::new();
 
     for span in profile.all_spans() {
-        let entry = by_name.entry(&span.name).or_default();
-        entry.0 += span.self_value;
-        entry.1 += span.duration();
-        entry.2 += 1;
+        let entry = by_name
+            .entry(&span.name)
+            .or_insert_with(|| (span.name.clone(), 0.0, 0.0, 0));
+        entry.1 += span.self_value;
+        entry.2 += span.duration();
+        entry.3 += 1;
     }
 
-    let mut entries: Vec<RankedEntry> = by_name
-        .into_iter()
-        .map(|(name, (self_time, total_time, count))| RankedEntry {
-            name: name.to_string(),
+    let mut entries: Vec<RankedEntry> = Vec::with_capacity(by_name.len());
+    entries.extend(by_name.into_values().map(|(name, self_time, total_time, count)| {
+        RankedEntry {
+            name,
             self_time,
             total_time,
             count,
-        })
-        .collect();
+        }
+    }));
 
     match sort {
         RankedSort::SelfTime => entries.sort_by(|a, b| b.self_time.total_cmp(&a.self_time)),
@@ -232,7 +234,7 @@ fn format_time(us: f64) -> String {
 mod tests {
     use super::*;
     use flame_cat_protocol::{
-        ProfileMeta, SourceFormat, Span, SpanKind, ThreadGroup, ValueUnit, Viewport,
+        ProfileMeta, SharedStr, SourceFormat, Span, SpanKind, ThreadGroup, ValueUnit, Viewport,
     };
 
     #[test]
@@ -313,7 +315,7 @@ mod tests {
                 }
             })
             .collect();
-        assert!(texts.contains(&"foo".to_string()));
-        assert!(texts.contains(&"bar".to_string()));
+        assert!(texts.contains(&SharedStr::from("foo")));
+        assert!(texts.contains(&SharedStr::from("bar")));
     }
 }

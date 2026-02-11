@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::shared_str::SharedStr;
 use crate::theme::ThemeToken;
 use crate::types::{Point, Rect};
 
@@ -15,14 +16,14 @@ pub enum RenderCommand {
         rect: Rect,
         color: ThemeToken,
         border_color: Option<ThemeToken>,
-        label: Option<String>,
+        label: Option<SharedStr>,
         frame_id: Option<u64>,
     },
 
     /// Draw a text string at a position.
     DrawText {
         position: Point,
-        text: String,
+        text: SharedStr,
         color: ThemeToken,
         font_size: f64,
         align: TextAlign,
@@ -51,7 +52,10 @@ pub enum RenderCommand {
 
     /// Begin a logical group (e.g. a lane). Renderers may use this for
     /// batching, layer separation, or accessibility.
-    BeginGroup { id: String, label: Option<String> },
+    BeginGroup {
+        id: SharedStr,
+        label: Option<SharedStr>,
+    },
 
     /// End the current group.
     EndGroup,

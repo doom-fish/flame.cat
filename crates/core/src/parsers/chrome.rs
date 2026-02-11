@@ -65,7 +65,7 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
         }
     }
 
-    let mut frames: Vec<Frame> = Vec::new();
+    let mut frames: Vec<Frame> = Vec::with_capacity(events.len());
     let mut next_id: u64 = 0;
 
     // Stack of (frame_index, event) for matching B/E pairs per thread.

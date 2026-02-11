@@ -1,9 +1,11 @@
 pub mod commands;
+pub mod shared_str;
 pub mod theme;
 pub mod types;
 pub mod visual_profile;
 
 pub use commands::{RenderCommand, TextAlign};
+pub use shared_str::SharedStr;
 pub use theme::ThemeToken;
 pub use types::{Color, Point, Rect};
 pub use visual_profile::{

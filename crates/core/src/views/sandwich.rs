@@ -1,4 +1,4 @@
-use flame_cat_protocol::{Rect, RenderCommand, ThemeToken, Viewport, VisualProfile};
+use flame_cat_protocol::{Rect, RenderCommand, SharedStr, ThemeToken, Viewport, VisualProfile};
 
 const FRAME_HEIGHT: f64 = 20.0;
 const SEPARATOR_HEIGHT: f64 = 4.0;
@@ -10,14 +10,18 @@ pub fn render_sandwich(
     selected_frame_id: u64,
     viewport: &Viewport,
 ) -> Vec<RenderCommand> {
-    let mut commands = Vec::new();
+    let mut commands = Vec::with_capacity(32);
     commands.push(RenderCommand::BeginGroup {
-        id: "sandwich".to_string(),
-        label: Some("Sandwich".to_string()),
+        id: "sandwich".into(),
+        label: Some("Sandwich".into()),
     });
 
+    // Build O(1) span index for parent-chain traversal.
+    let span_index: std::collections::HashMap<u64, &flame_cat_protocol::Span> =
+        profile.all_spans().map(|s| (s.id, s)).collect();
+
     // Find all spans matching the selected name.
-    let selected_name = match profile.span(selected_frame_id) {
+    let selected_name = match span_index.get(&selected_frame_id) {
         Some(s) => s.name.clone(),
         None => {
             commands.push(RenderCommand::EndGroup);
@@ -41,11 +45,11 @@ pub fn render_sandwich(
     // === Callers section (walk upward) ===
     let caller_y_base = 0.0;
 
-    let mut caller_time: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
+    let mut caller_time: std::collections::HashMap<SharedStr, f64> = std::collections::HashMap::new();
     for m in &matching {
         let mut current = m.parent;
         while let Some(pid) = current {
-            if let Some(parent_span) = profile.span(pid) {
+            if let Some(parent_span) = span_index.get(&pid) {
                 *caller_time.entry(parent_span.name.clone()).or_default() += m.duration();
                 current = parent_span.parent;
             } else {
@@ -90,10 +94,20 @@ pub fn render_sandwich(
     // === Callees section (walk downward) ===
     let callee_y_base = center_y + FRAME_HEIGHT + SEPARATOR_HEIGHT;
 
-    let mut callee_time: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
+    let mut callee_time: std::collections::HashMap<SharedStr, f64> = std::collections::HashMap::new();
+    // Build children lookup for O(1) per matching span.
+    let mut children_of: std::collections::HashMap<u64, Vec<&flame_cat_protocol::Span>> =
+        std::collections::HashMap::new();
+    for span in profile.all_spans() {
+        if let Some(pid) = span.parent {
+            children_of.entry(pid).or_default().push(span);
+        }
+    }
     for m in &matching {
-        for child in profile.children(Some(m.id)) {
-            *callee_time.entry(child.name.clone()).or_default() += child.duration();
+        if let Some(kids) = children_of.get(&m.id) {
+            for child in kids {
+                *callee_time.entry(child.name.clone()).or_default() += child.duration();
+            }
         }
     }
 
@@ -126,7 +140,9 @@ pub fn render_sandwich(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use flame_cat_protocol::{ProfileMeta, SourceFormat, Span, SpanKind, ThreadGroup, ValueUnit};
+    use flame_cat_protocol::{
+        ProfileMeta, SharedStr, SourceFormat, Span, SpanKind, ThreadGroup, ValueUnit,
+    };
 
     #[test]
     fn shows_callers_and_callees() {
@@ -202,15 +218,15 @@ mod tests {
             .collect();
 
         assert!(
-            rects.contains(&"root".to_string()),
+            rects.contains(&SharedStr::from("root")),
             "should have caller 'root'"
         );
         assert!(
-            rects.contains(&"middle".to_string()),
+            rects.contains(&SharedStr::from("middle")),
             "should have selected 'middle'"
         );
         assert!(
-            rects.contains(&"leaf".to_string()),
+            rects.contains(&SharedStr::from("leaf")),
             "should have callee 'leaf'"
         );
     }

@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
-use flame_cat_protocol::{Rect, RenderCommand, Span, ThemeToken, Viewport, VisualProfile};
+use flame_cat_protocol::{Rect, RenderCommand, SharedStr, Span, ThemeToken, Viewport, VisualProfile};
 
 const FRAME_HEIGHT: f64 = 20.0;
 
 /// Merged node for left-heavy aggregation.
 struct MergedNode {
-    name: String,
+    name: SharedStr,
     total_time: f64,
     children: Vec<MergedNode>,
 }
@@ -27,10 +27,10 @@ pub fn render_left_heavy(profile: &VisualProfile, viewport: &Viewport) -> Vec<Re
 
     let x_scale = viewport.width / total_time;
 
-    let mut commands = Vec::new();
+    let mut commands = Vec::with_capacity(profile.span_count());
     commands.push(RenderCommand::BeginGroup {
-        id: "left-heavy".to_string(),
-        label: Some("Left Heavy".to_string()),
+        id: "left-heavy".into(),
+        label: Some("Left Heavy".into()),
     });
 
     layout_nodes(&roots, 0, 0.0, x_scale, viewport, &mut commands);
@@ -42,16 +42,18 @@ pub fn render_left_heavy(profile: &VisualProfile, viewport: &Viewport) -> Vec<Re
 fn merge_children(spans: &[&Span], parent: Option<u64>) -> Vec<MergedNode> {
     let children: Vec<&&Span> = spans.iter().filter(|s| s.parent == parent).collect();
 
-    let mut groups: HashMap<&str, (f64, Vec<u64>)> = HashMap::new();
+    let mut groups: HashMap<&str, (SharedStr, f64, Vec<u64>)> = HashMap::new();
     for child in &children {
-        let entry = groups.entry(&child.name).or_insert((0.0, Vec::new()));
-        entry.0 += child.duration();
-        entry.1.push(child.id);
+        let entry = groups
+            .entry(&child.name)
+            .or_insert_with(|| (child.name.clone(), 0.0, Vec::new()));
+        entry.1 += child.duration();
+        entry.2.push(child.id);
     }
 
     let mut nodes: Vec<MergedNode> = groups
         .into_iter()
-        .map(|(name, (total_time, ids))| {
+        .map(|(_, (name, total_time, ids))| {
             let mut merged_children = Vec::new();
             for id in &ids {
                 let mut sub = merge_children(spans, Some(*id));
@@ -60,7 +62,7 @@ fn merge_children(spans: &[&Span], parent: Option<u64>) -> Vec<MergedNode> {
             let merged_children = re_merge(merged_children);
 
             MergedNode {
-                name: name.to_string(),
+                name,
                 total_time,
                 children: merged_children,
             }
@@ -72,7 +74,7 @@ fn merge_children(spans: &[&Span], parent: Option<u64>) -> Vec<MergedNode> {
 }
 
 fn re_merge(nodes: Vec<MergedNode>) -> Vec<MergedNode> {
-    let mut groups: HashMap<String, MergedNode> = HashMap::new();
+    let mut groups: HashMap<SharedStr, MergedNode> = HashMap::with_capacity(nodes.len());
     for node in nodes {
         let entry = groups.entry(node.name.clone()).or_insert(MergedNode {
             name: node.name.clone(),

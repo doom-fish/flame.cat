@@ -1,3 +1,4 @@
+use crate::shared_str::SharedStr;
 use serde::{Deserialize, Serialize};
 
 /// The canonical visual profile IR that every profiling format compiles into.
@@ -33,7 +34,7 @@ pub struct VisualProfile {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProfileMeta {
     /// Human-readable name (filename, app name, etc.).
-    pub name: Option<String>,
+    pub name: Option<SharedStr>,
     /// Source format (for display, not for branching logic).
     pub source_format: SourceFormat,
     /// What the span values represent.
@@ -151,7 +152,7 @@ pub struct ThreadGroup {
     /// Unique id within this profile.
     pub id: u32,
     /// Display name ("Main Thread", "Renderer", "GC", etc.).
-    pub name: String,
+    pub name: SharedStr,
     /// Process/thread identifiers from the source format.
     pub sort_key: i64,
     /// All spans in this thread, ordered by start time.
@@ -170,7 +171,7 @@ pub struct Span {
     /// Unique id within this profile.
     pub id: u64,
     /// Display name (function name, component, zone, etc.).
-    pub name: String,
+    pub name: SharedStr,
     /// Start position in the profile's value unit.
     pub start: f64,
     /// End position in the profile's value unit.
@@ -209,9 +210,9 @@ pub enum SpanKind {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpanCategory {
     /// Category name ("js", "gc", "layout", "paint", "gpu", "react", etc.).
-    pub name: String,
+    pub name: SharedStr,
     /// Optional source location (file path, module name).
-    pub source: Option<String>,
+    pub source: Option<SharedStr>,
 }
 
 // --- Conversions from the old Profile model ---

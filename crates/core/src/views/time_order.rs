@@ -1,5 +1,5 @@
 use flame_cat_protocol::{
-    Point, Rect, RenderCommand, TextAlign, ThemeToken, Viewport, VisualProfile,
+    Point, Rect, RenderCommand, SharedStr, TextAlign, ThemeToken, Viewport, VisualProfile,
 };
 
 const FRAME_HEIGHT: f64 = 20.0;
@@ -27,8 +27,8 @@ pub fn render_time_order(
     let mut commands = Vec::with_capacity(profile.span_count() + 2);
 
     commands.push(RenderCommand::BeginGroup {
-        id: "time-order".to_string(),
-        label: Some("Time Order".to_string()),
+        id: "time-order".into(),
+        label: Some("Time Order".into()),
     });
 
     let mut y_offset: f64 = 0.0;
@@ -49,7 +49,7 @@ pub fn render_time_order(
                     x: 6.0,
                     y: header_y + THREAD_HEADER_HEIGHT / 2.0 + 3.0,
                 },
-                text: format!("{} ({} spans)", thread.name, thread.spans.len()),
+                text: SharedStr::from(format!("{} ({} spans)", thread.name, thread.spans.len())),
                 color: ThemeToken::LaneHeaderText,
                 font_size: 11.0,
                 align: TextAlign::Left,

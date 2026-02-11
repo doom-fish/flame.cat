@@ -19,10 +19,10 @@ pub fn render_minimap(
     let start = profile.meta.start_time;
     let x_scale = viewport.width / duration;
 
-    let mut commands = Vec::new();
+    let mut commands = Vec::with_capacity(profile.span_count() + 4);
     commands.push(RenderCommand::BeginGroup {
-        id: "minimap".to_string(),
-        label: Some("Minimap".to_string()),
+        id: "minimap".into(),
+        label: Some("Minimap".into()),
     });
 
     // Background

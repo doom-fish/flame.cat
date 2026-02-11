@@ -1,5 +1,6 @@
 use flame_cat_protocol::{
-    ProfileMeta, SourceFormat, Span, SpanCategory, SpanKind, ThreadGroup, ValueUnit, VisualProfile,
+    ProfileMeta, SharedStr, SourceFormat, Span, SpanCategory, SpanKind, ThreadGroup, ValueUnit,
+    VisualProfile,
 };
 use serde::{Deserialize, Serialize};
 
@@ -91,30 +92,55 @@ impl Profile {
             _ => SpanKind::Event,
         };
 
+        // String interning caches — each unique string is allocated once as
+        // an Arc<str> (via SharedStr), subsequent occurrences just bump the
+        // reference count (zero-cost clone).
+        let mut name_cache: std::collections::HashMap<String, SharedStr> =
+            std::collections::HashMap::new();
+        let mut cat_cache: std::collections::HashMap<String, SharedStr> =
+            std::collections::HashMap::new();
+        let mut thread_cache: std::collections::HashMap<String, SharedStr> =
+            std::collections::HashMap::new();
+
         // Group frames by thread name
-        let mut thread_groups: std::collections::BTreeMap<String, Vec<Span>> =
+        let mut thread_groups: std::collections::BTreeMap<SharedStr, Vec<Span>> =
             std::collections::BTreeMap::new();
 
-        for f in &self.frames {
-            let thread_name = f
-                .thread
-                .as_deref()
-                .unwrap_or("Main")
-                .to_string();
+        for f in self.frames {
+            let name = name_cache
+                .entry(f.name)
+                .or_insert_with_key(|k| SharedStr::from(k.as_str()))
+                .clone();
+
+            let category = f.category.map(|c| {
+                let cat_name = cat_cache
+                    .entry(c)
+                    .or_insert_with_key(|k| SharedStr::from(k.as_str()))
+                    .clone();
+                SpanCategory {
+                    name: cat_name,
+                    source: None,
+                }
+            });
+
+            let thread_name = {
+                let raw = f.thread.unwrap_or_else(|| "Main".to_string());
+                thread_cache
+                    .entry(raw)
+                    .or_insert_with_key(|k| SharedStr::from(k.as_str()))
+                    .clone()
+            };
 
             let span = Span {
                 id: f.id,
-                name: f.name.clone(),
+                name,
                 start: f.start,
                 end: f.end,
                 depth: f.depth,
                 parent: f.parent,
                 self_value: f.self_time,
                 kind: span_kind,
-                category: f.category.as_ref().map(|name| SpanCategory {
-                    name: name.clone(),
-                    source: None,
-                }),
+                category,
             };
 
             thread_groups
@@ -138,7 +164,7 @@ impl Profile {
 
         VisualProfile {
             meta: ProfileMeta {
-                name: self.metadata.name,
+                name: self.metadata.name.map(SharedStr::from),
                 source_format,
                 value_unit,
                 total_value: self.metadata.end_time - self.metadata.start_time,
