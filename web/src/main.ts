@@ -313,6 +313,7 @@ async function main() {
 
   const MINIMAP_HEIGHT = 40;
   const TIME_AXIS_HEIGHT = 24;
+  const profileMetaCache = new Map<number, { start_time: number; end_time: number }>();
 
   const renderAll = () => {
     const allCommands: RenderCommand[] = [];
@@ -385,10 +386,14 @@ async function main() {
       const laneY = laneManager.laneY(i) + laneManager.headerHeight + laneYOffset + scrollOffset;
       try {
         // Compute absolute time window from fractional view window + profile metadata
-        const meta = JSON.parse(wasm.get_profile_metadata(lane.profileIndex)) as {
-          start_time: number;
-          end_time: number;
-        };
+        let meta = profileMetaCache.get(lane.profileIndex);
+        if (!meta) {
+          meta = JSON.parse(wasm.get_profile_metadata(lane.profileIndex)) as {
+            start_time: number;
+            end_time: number;
+          };
+          profileMetaCache.set(lane.profileIndex, meta);
+        }
         const duration = meta.end_time - meta.start_time;
         const absViewStart = meta.start_time + viewStart * duration;
         const absViewEnd = meta.start_time + viewEnd * duration;
@@ -1035,10 +1040,21 @@ async function main() {
   timeCursor.style.opacity = "0.3";
   timeCursorLabel.style.color = colorStr(resolveColor(theme, "TextPrimary"));
   timeCursorLabel.style.background = colorStr(resolveColor(theme, "Surface"));
+  // rAF-batched render: multiple events per frame → single render
+  let renderPending = false;
+  const scheduleRender = () => {
+    if (renderPending) return;
+    renderPending = true;
+    requestAnimationFrame(() => {
+      renderPending = false;
+      renderAll();
+    });
+  };
+
   const { animateViewTo, getTimeSelection } = bindInteraction(
     canvas,
     laneManager,
-    renderAll,
+    scheduleRender,
     () => (profileLoaded ? MINIMAP_HEIGHT + TIME_AXIS_HEIGHT : 0),
     () => profileLoaded,
     (_from, _to) => {
