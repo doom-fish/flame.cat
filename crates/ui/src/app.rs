@@ -123,14 +123,23 @@ impl FlameApp {
                 self.setup_lanes(&profile);
 
                 // Find content bounds to auto-zoom
-                let mut content_min = f64::INFINITY;
-                let mut content_max = f64::NEG_INFINITY;
-                for thread in &profile.threads {
+                // Focus on the thread with the most spans (usually the main thread)
+                let densest_thread = profile
+                    .threads
+                    .iter()
+                    .max_by_key(|t| t.spans.len());
+
+                let (content_min, content_max) = if let Some(thread) = densest_thread {
+                    let mut cmin = f64::INFINITY;
+                    let mut cmax = f64::NEG_INFINITY;
                     for span in &thread.spans {
-                        content_min = content_min.min(span.start);
-                        content_max = content_max.max(span.end);
+                        cmin = cmin.min(span.start);
+                        cmax = cmax.max(span.end);
                     }
-                }
+                    (cmin, cmax)
+                } else {
+                    (f64::INFINITY, f64::NEG_INFINITY)
+                };
 
                 let session = Session::from_profile(profile, "Profile");
                 let session_start = session.start_time();

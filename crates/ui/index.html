@@ -22,5 +22,17 @@
 </head>
 <body>
     <canvas id="flame_cat_canvas"></canvas>
+    <script>
+        // Prevent browser zoom/scroll on the canvas
+        const canvas = document.getElementById('flame_cat_canvas');
+        canvas.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
+        canvas.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+        // Prevent Ctrl+scroll browser zoom
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '-' || e.key === '=')) {
+                e.preventDefault();
+            }
+        });
+    </script>
 </body>
 </html>
