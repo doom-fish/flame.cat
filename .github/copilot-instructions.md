@@ -125,6 +125,21 @@ npm test -- --grep "pattern"   # run a single test by name
 cargo fmt --check && cargo clippy -- -D warnings && cargo test && npm run lint && npm test
 ```
 
+## Quality Standards
+
+**No quick hacks.** Every change must be production-quality. Specifically:
+
+- **No `overflow: hidden` as a layout band-aid.** If content overflows, fix the layout properly — use correct sizing, flex/grid constraints, or explicit scroll containers with intent.
+- **No magic numbers for positioning.** Use layout primitives (flexbox, grid, proper coordinate math) instead of hardcoded pixel offsets that "happen to work."
+- **No inline styles or one-off CSS overrides** to paper over structural problems. If a component needs different styling, update its proper style definition.
+- **No `z-index` stacking hacks.** Establish a clear stacking context hierarchy and document it.
+- **No `!important` in CSS.** Fix specificity issues at the source.
+- **No suppressing errors or warnings** (`@ts-ignore`, `#[allow(...)]`, `eslint-disable`) without a comment explaining exactly why it's necessary.
+- **Layout must be intentional.** Every element's size, position, and overflow behavior should be explicitly defined and understandable from the code. If you can't explain why an element is where it is, the layout is wrong.
+- **Style changes must be systematic.** When adjusting spacing, colors, or typography, update the theme/design tokens — don't patch individual components.
+
+If a proper fix takes longer, that's fine — do it properly anyway. Technical debt from layout hacks compounds fast in a visualization tool where pixel precision matters.
+
 ## Code Conventions
 
 ### Rust
