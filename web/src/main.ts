@@ -535,11 +535,10 @@ async function main() {
                 laneCmds.push({
                   DrawText: {
                     text: shortUrl,
-                    pos: { x: x0 + 3, y: y + ROW_H / 2 },
+                    position: { x: x0 + 3, y: y + ROW_H / 2 },
                     color: "TextPrimary",
-                    size: 10,
-                    align: "Left",
-                    frame_id: null,
+                    font_size: 10,
+                    align: "Left" as const,
                   },
                 });
               }

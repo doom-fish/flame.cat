@@ -378,12 +378,14 @@ export class WebGPURenderer {
         }
       } else if ("DrawText" in cmd) {
         const { position, text, color, font_size, align } = cmd.DrawText;
+        if (!position) continue;
         const c = resolveTokenCached(color);
         const px = position.x * curSx + curTx;
         const py = position.y * curSy + curTy;
         layoutText(text, px, py, font_size, c, align);
       } else if ("DrawLine" in cmd) {
         const { from, to, color, width: lineWidth } = cmd.DrawLine;
+        if (!from || !to) continue;
         const c = resolveTokenCached(color);
         const fx = from.x * curSx + curTx;
         const fy = from.y * curSy + curTy;
