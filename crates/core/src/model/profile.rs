@@ -1,6 +1,6 @@
 use flame_cat_protocol::{
     AsyncSpan, CounterTrack, CpuSamples, FlowArrow, InstantEvent, Marker, NetworkRequest,
-    ObjectEvent, ProfileMeta, SharedStr, SourceFormat, Span, SpanCategory, SpanKind, ThreadGroup,
+    ObjectEvent, ProfileMeta, Screenshot, SharedStr, SourceFormat, Span, SpanCategory, SpanKind, ThreadGroup,
     TimeDomain, ValueUnit, VisualProfile,
 };
 use serde::{Deserialize, Serialize};
@@ -74,6 +74,9 @@ pub struct Profile {
     /// Network requests.
     #[serde(default)]
     pub network_requests: Vec<NetworkRequest>,
+    /// Screenshots for filmstrip.
+    #[serde(default)]
+    pub screenshots: Vec<Screenshot>,
 }
 
 impl Profile {
@@ -90,6 +93,7 @@ impl Profile {
             object_events: vec![],
             cpu_samples: None,
             network_requests: vec![],
+            screenshots: vec![],
         }
     }
 
@@ -223,6 +227,7 @@ impl Profile {
             object_events: self.object_events,
             cpu_samples: self.cpu_samples,
             network_requests: self.network_requests,
+            screenshots: self.screenshots,
         }
     }
 }

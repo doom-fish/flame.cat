@@ -300,6 +300,7 @@ mod tests {
             object_events: vec![],
             cpu_samples: None,
             network_requests: vec![],
+            screenshots: vec![],
         };
 
         let entries = get_ranked_entries(&profile, RankedSort::SelfTime, false);

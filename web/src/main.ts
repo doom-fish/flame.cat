@@ -264,6 +264,9 @@ async function main() {
 
   const laneManager = new LaneManager();
 
+  // Screenshot filmstrip cache
+  const screenshotImages: Map<number, { ts: number; img: HTMLImageElement }[]> = new Map();
+
   // Lane sidebar
   const laneSidebar = new LaneSidebar(canvasContainer, {
     onToggle: (laneId, visible) => {
@@ -444,6 +447,11 @@ async function main() {
         } else if (trackType === "network") {
           // Network waterfall rendered in JS from get_network_requests
           commandsJson = "[]";
+        } else if (trackType === "filmstrip") {
+          // Filmstrip rendered as positioned images — emit background rect only
+          commandsJson = JSON.stringify([{
+            DrawRect: { rect: { x: 0, y: 0, w: canvas.clientWidth, h: lane.height }, color: "LaneBackground", border_color: "LaneBorder", label: null, frame_id: null }
+          }]);
         } else {
           commandsJson = wasm.render_view(
             lane.profileIndex,
@@ -734,6 +742,56 @@ async function main() {
     }
 
     renderer.render(allCommands, 0, 0);
+
+    // Draw filmstrip thumbnails after render (on overlay canvas if WebGPU, else main canvas)
+    if (profileLoaded) {
+      const overlayEl = canvasContainer.querySelector("canvas:not(#canvas)") as HTMLCanvasElement | null;
+      const filmCtx = overlayEl?.getContext("2d") ?? canvas.getContext("2d");
+      if (filmCtx) {
+        const dpr = window.devicePixelRatio;
+        const { viewStart, viewEnd } = laneManager.getViewWindow();
+        const firstLane = laneManager.lanes[0];
+        if (firstLane) {
+          const meta = JSON.parse(wasm.get_profile_metadata(firstLane.profileIndex)) as { start_time: number; end_time: number };
+          const absVS = meta.start_time + viewStart * (meta.end_time - meta.start_time);
+          const absVE = meta.start_time + viewEnd * (meta.end_time - meta.start_time);
+          const viewRange = absVE - absVS;
+
+          const laneYOffset = MINIMAP_HEIGHT + TIME_AXIS_HEIGHT;
+          const scrollOffset = -laneManager.globalScrollY;
+          const visible = laneManager.visibleLanes;
+
+          for (let i = 0; i < visible.length; i++) {
+            const lane = visible[i];
+            if (lane.trackType !== "filmstrip") continue;
+            const imgs = screenshotImages.get(lane.profileIndex);
+            if (!imgs || imgs.length === 0) continue;
+
+            const laneY = laneManager.laneY(i) + laneManager.headerHeight + laneYOffset + scrollOffset;
+            const thumbH = lane.height - 4;
+            const thumbW = Math.round(thumbH * 1.6);
+
+            filmCtx.save();
+            filmCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            filmCtx.beginPath();
+            filmCtx.rect(0, laneY, canvas.clientWidth, lane.height);
+            filmCtx.clip();
+
+            for (const shot of imgs) {
+              if (shot.ts < absVS || shot.ts > absVE) continue;
+              const x = ((shot.ts - absVS) / viewRange) * canvas.clientWidth;
+              if (shot.img.complete && shot.img.naturalWidth > 0) {
+                filmCtx.drawImage(shot.img, x, laneY + 2, thumbW, thumbH);
+                filmCtx.strokeStyle = "rgba(128,128,128,0.5)";
+                filmCtx.strokeRect(x, laneY + 2, thumbW, thumbH);
+              }
+            }
+            filmCtx.restore();
+          }
+        }
+      }
+    }
+
     updateStatusBar();
   };
 
@@ -1039,9 +1097,35 @@ async function main() {
           object_event_count: number;
           has_frames: boolean;
           has_cpu_samples: boolean;
+          screenshot_count: number;
           counter_names: string[];
           marker_names: string[];
         };
+
+        // Filmstrip track (screenshots, inserted at top)
+        if (extra.screenshot_count > 0) {
+          laneManager.addLane({
+            id: `filmstrip-${handle}`,
+            viewType: activeView,
+            profileIndex: handle,
+            height: 60,
+            trackType: "filmstrip",
+            threadName: `📸 Filmstrip (${extra.screenshot_count})`,
+          });
+          // Load screenshot images into cache
+          try {
+            const shotsJson = wasm.get_screenshots(handle);
+            const shots = JSON.parse(shotsJson) as { ts: number; data: string }[];
+            const imgs: { ts: number; img: HTMLImageElement }[] = [];
+            for (const s of shots) {
+              const img = new Image();
+              img.src = `data:image/jpeg;base64,${s.data}`;
+              img.onload = () => renderAll();
+              imgs.push({ ts: s.ts, img });
+            }
+            screenshotImages.set(handle, imgs);
+          } catch { /* screenshots optional */ }
+        }
 
         // Frame cost track (inserted at top)
         if (extra.has_frames) {

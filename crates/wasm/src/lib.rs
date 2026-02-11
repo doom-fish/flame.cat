@@ -620,6 +620,7 @@ pub fn get_extra_tracks(profile_index: usize) -> Result<String, JsError> {
             instant_event_count: usize,
             object_event_count: usize,
             has_cpu_samples: bool,
+            screenshot_count: usize,
             has_frames: bool,
             counter_names: Vec<String>,
             marker_names: Vec<String>,
@@ -633,6 +634,7 @@ pub fn get_extra_tracks(profile_index: usize) -> Result<String, JsError> {
             instant_event_count: profile.instant_events.len(),
             object_event_count: profile.object_events.len(),
             has_cpu_samples: profile.cpu_samples.is_some(),
+            screenshot_count: profile.screenshots.len(),
             has_frames: !profile.frames.is_empty(),
             counter_names: profile
                 .counters
@@ -757,5 +759,26 @@ pub fn get_network_requests(
             .collect();
 
         serde_json::to_string(&reqs).map_err(|e| JsError::new(&e.to_string()))
+    })
+}
+
+/// Get screenshots for a profile as JSON array of {ts, data}.
+#[wasm_bindgen]
+pub fn get_screenshots(profile_index: usize) -> Result<String, JsError> {
+    with_profile(profile_index, |profile| {
+        #[derive(serde::Serialize)]
+        struct ScreenshotOut {
+            ts: f64,
+            data: String,
+        }
+        let shots: Vec<ScreenshotOut> = profile
+            .screenshots
+            .iter()
+            .map(|s| ScreenshotOut {
+                ts: s.ts,
+                data: s.data.clone(),
+            })
+            .collect();
+        serde_json::to_string(&shots).map_err(|e| JsError::new(&e.to_string()))
     })
 }

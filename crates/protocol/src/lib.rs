@@ -10,7 +10,7 @@ pub use theme::ThemeToken;
 pub use types::{ClockKind, Color, Point, Rect, TimeDomain};
 pub use visual_profile::{
     AsyncSpan, CounterSample, CounterTrack, CounterUnit, CpuNode, CpuSamples, FlowArrow,
-    FrameTiming, InstantEvent, Marker, MarkerScope, NetworkRequest, ObjectEvent, ObjectPhase,
+    FrameTiming, InstantEvent, Marker, MarkerScope, NetworkRequest, ObjectEvent, ObjectPhase, Screenshot,
     ProfileMeta, SourceFormat, Span, SpanCategory, SpanKind, ThreadGroup, ValueUnit, VisualProfile,
 };
 

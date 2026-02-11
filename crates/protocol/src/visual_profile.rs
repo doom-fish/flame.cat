@@ -56,6 +56,9 @@ pub struct VisualProfile {
     /// Network requests (waterfall data).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub network_requests: Vec<NetworkRequest>,
+    /// Screenshot snapshots for filmstrip view.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub screenshots: Vec<Screenshot>,
 }
 
 /// Top-level metadata about the profile.
@@ -445,6 +448,15 @@ pub struct NetworkRequest {
     pub from_cache: bool,
 }
 
+/// A screenshot snapshot captured during profiling.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Screenshot {
+    /// Timestamp of the screenshot.
+    pub ts: f64,
+    /// Base64-encoded image data (typically JPEG).
+    pub data: String,
+}
+
 // --- Conversions from the old Profile model ---
 
 impl VisualProfile {
@@ -552,6 +564,7 @@ mod tests {
             object_events: vec![],
             cpu_samples: None,
             network_requests: vec![],
+            screenshots: vec![],
         }
     }
 

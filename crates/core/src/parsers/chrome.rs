@@ -1,7 +1,7 @@
 use flame_cat_protocol::{
     AsyncSpan, ClockKind, CounterSample, CounterTrack, CounterUnit, CpuNode, CpuSamples,
     FlowArrow, InstantEvent, Marker, MarkerScope, NetworkRequest, ObjectEvent, ObjectPhase,
-    SharedStr, TimeDomain,
+    Screenshot, SharedStr, TimeDomain,
 };
 use serde::Deserialize;
 use thiserror::Error;
@@ -372,6 +372,8 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
         std::collections::HashMap::new();
     let mut network_requests: Vec<NetworkRequest> = Vec::new();
 
+    let mut screenshots: Vec<Screenshot> = Vec::new();
+
     // Counter state: name → (unit, samples)
     let mut counter_map: std::collections::HashMap<String, (CounterUnit, Vec<CounterSample>)> =
         std::collections::HashMap::new();
@@ -571,6 +573,16 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
                             }
                         }
                         _ => {}
+                    }
+                }
+
+                // Screenshot extraction
+                if event.name == "Screenshot" {
+                    if let Some(snap) = event.args.as_ref().and_then(|a| a.get("snapshot")).and_then(|v| v.as_str()) {
+                        screenshots.push(Screenshot {
+                            ts: event.ts,
+                            data: snap.to_string(),
+                        });
                     }
                 }
 
@@ -847,6 +859,7 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
     profile.object_events = object_events;
     profile.cpu_samples = cpu_sample_data;
     profile.network_requests = network_requests;
+    profile.screenshots = screenshots;
 
     Ok(profile)
 }
