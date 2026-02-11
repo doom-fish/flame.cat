@@ -86,6 +86,83 @@ export function bindInteraction(
     animationId = requestAnimationFrame(step);
   };
 
+  // ── WASD Navigation (Perfetto-style spring-animated) ──────────────
+
+  const wasdState = {
+    panVelocity: 0,    // fractional units per second (positive = right)
+    zoomVelocity: 0,   // zoom factor per second (positive = zoom in)
+    keys: new Set<string>(),
+    mouseX: canvas.clientWidth / 2,
+    active: false,
+    lastFrame: 0,
+  };
+
+  const WASD_PAN_ACCEL = 1.5;   // fractional units/s² (at current zoom)
+  const WASD_ZOOM_ACCEL = 3.0;  // zoom factor/s²
+  const WASD_SNAP = 0.4;        // velocity snap-to-zero threshold
+  const WASD_FRICTION = 6.0;    // velocity decay rate
+
+  let wasdAnimId: number | null = null;
+
+  canvas.addEventListener("mousemove", (e) => {
+    wasdState.mouseX = e.offsetX;
+  });
+
+  const wasdTick = (now: number) => {
+    if (!wasdState.active && Math.abs(wasdState.panVelocity) < 0.0001 && Math.abs(wasdState.zoomVelocity) < 0.001) {
+      wasdAnimId = null;
+      return;
+    }
+
+    const dt = wasdState.lastFrame > 0 ? Math.min((now - wasdState.lastFrame) / 1000, 0.05) : 0.016;
+    wasdState.lastFrame = now;
+
+    // Apply acceleration from held keys
+    let panInput = 0;
+    let zoomInput = 0;
+    if (wasdState.keys.has("a") || wasdState.keys.has("A")) panInput -= 1;
+    if (wasdState.keys.has("d") || wasdState.keys.has("D")) panInput += 1;
+    if (wasdState.keys.has("w") || wasdState.keys.has("W")) zoomInput += 1;
+    if (wasdState.keys.has("s") || wasdState.keys.has("S")) zoomInput -= 1;
+
+    const viewSpan = laneManager.viewEnd - laneManager.viewStart;
+
+    // Acceleration scales with current zoom level
+    wasdState.panVelocity += panInput * WASD_PAN_ACCEL * viewSpan * dt;
+    wasdState.zoomVelocity += zoomInput * WASD_ZOOM_ACCEL * dt;
+
+    // Friction / decay
+    wasdState.panVelocity *= Math.exp(-WASD_FRICTION * dt);
+    wasdState.zoomVelocity *= Math.exp(-WASD_FRICTION * dt);
+
+    // Snap to zero
+    if (Math.abs(wasdState.panVelocity) < 0.0001 * viewSpan) wasdState.panVelocity = 0;
+    if (Math.abs(wasdState.zoomVelocity) < 0.001) wasdState.zoomVelocity = 0;
+
+    // Apply pan
+    if (wasdState.panVelocity !== 0) {
+      const panDelta = wasdState.panVelocity * dt;
+      laneManager.viewStart = Math.max(0, Math.min(1 - viewSpan, laneManager.viewStart + panDelta));
+      laneManager.viewEnd = laneManager.viewStart + viewSpan;
+    }
+
+    // Apply zoom at mouse cursor
+    if (wasdState.zoomVelocity !== 0) {
+      const zoomFactor = Math.pow(2, wasdState.zoomVelocity * dt);
+      laneManager.zoomAt(zoomFactor, wasdState.mouseX, canvas.clientWidth);
+    }
+
+    onRender();
+    wasdAnimId = requestAnimationFrame(wasdTick);
+  };
+
+  const startWasd = () => {
+    if (wasdAnimId == null) {
+      wasdState.lastFrame = 0;
+      wasdAnimId = requestAnimationFrame(wasdTick);
+    }
+  };
+
   // ── Mouse ──────────────────────────────────────────────────────────
 
   const onWheel = (e: WheelEvent) => {
@@ -277,6 +354,16 @@ export function bindInteraction(
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
+    // WASD navigation (skip if typing in an input)
+    const tag = (document.activeElement as HTMLElement)?.tagName;
+    if ("wasdWASD".includes(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey && tag !== "INPUT" && tag !== "TEXTAREA") {
+      wasdState.keys.add(e.key);
+      wasdState.active = true;
+      startWasd();
+      e.preventDefault();
+      return;
+    }
+
     const step = 40;
     switch (e.key) {
       case "ArrowLeft":
@@ -318,6 +405,15 @@ export function bindInteraction(
         // Also reset zoom with 0 key (animated)
         animateViewTo(0, 1);
         break;
+    }
+  };
+
+  const onKeyUp = (e: KeyboardEvent) => {
+    if ("wasdWASD".includes(e.key)) {
+      wasdState.keys.delete(e.key);
+      if (wasdState.keys.size === 0) {
+        wasdState.active = false;
+      }
     }
   };
 
@@ -450,6 +546,7 @@ export function bindInteraction(
   window.addEventListener("mousemove", onMouseMove);
   window.addEventListener("mouseup", onMouseUp);
   window.addEventListener("keydown", onKeyDown);
+  window.addEventListener("keyup", onKeyUp);
   canvas.addEventListener("touchstart", onTouchStart, { passive: false });
   canvas.addEventListener("touchmove", onTouchMove, { passive: false });
   canvas.addEventListener("touchend", onTouchEnd);
@@ -460,6 +557,7 @@ export function bindInteraction(
     window.removeEventListener("mousemove", onMouseMove);
     window.removeEventListener("mouseup", onMouseUp);
     window.removeEventListener("keydown", onKeyDown);
+    window.removeEventListener("keyup", onKeyUp);
     canvas.removeEventListener("touchstart", onTouchStart);
     canvas.removeEventListener("touchmove", onTouchMove);
     canvas.removeEventListener("touchend", onTouchEnd);
