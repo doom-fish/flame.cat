@@ -12,7 +12,7 @@ import {
   SearchBar,
   LaneSidebar,
 } from "./app";
-import type { ViewType } from "./app";
+import type { ViewType, ProfileInfo } from "./app";
 import { bindInteraction } from "./app/interaction";
 
 interface Renderer {
@@ -183,7 +183,28 @@ async function main() {
       laneSidebar.update(laneManager.lanes);
       renderAll();
     },
+    onOffsetChange: (profileIndex, offsetUs) => {
+      try {
+        wasm.set_profile_offset(profileIndex, offsetUs);
+        renderAll();
+      } catch (err) {
+        console.error("Failed to set profile offset:", err);
+      }
+    },
   });
+
+  /** Refresh the profile alignment section in the sidebar. */
+  const updateSidebarProfiles = () => {
+    try {
+      const info = JSON.parse(wasm.get_session_info()) as {
+        profile_count: number;
+        profiles: ProfileInfo[];
+      };
+      laneSidebar.updateProfiles(info.profiles);
+    } catch {
+      // no session yet
+    }
+  };
 
   const MINIMAP_HEIGHT = 40;
 
@@ -565,6 +586,7 @@ async function main() {
       }
 
       laneSidebar.update(laneManager.lanes);
+      updateSidebarProfiles();
 
       // Update profileDuration from session info for multi-profile
       if (additive) {

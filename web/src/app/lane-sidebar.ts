@@ -1,8 +1,15 @@
 import type { LaneConfig } from "./lane-manager";
 
+export interface ProfileInfo {
+  index: number;
+  label: string;
+  offset_us: number;
+}
+
 export interface LaneSidebarCallbacks {
   onToggle: (laneId: string, visible: boolean) => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
+  onOffsetChange?: (profileIndex: number, offsetUs: number) => void;
 }
 
 /**
@@ -11,6 +18,7 @@ export interface LaneSidebarCallbacks {
  */
 export class LaneSidebar {
   private el: HTMLElement;
+  private profilesEl: HTMLElement;
   private listEl: HTMLElement;
   private callbacks: LaneSidebarCallbacks;
   private visible = false;
@@ -60,6 +68,13 @@ export class LaneSidebar {
     closeBtn.addEventListener("click", () => this.hide());
     header.appendChild(closeBtn);
 
+    this.profilesEl = document.createElement("div");
+    this.profilesEl.style.cssText = `
+      flex-shrink: 0;
+      padding: 0;
+      display: none;
+    `;
+
     this.listEl = document.createElement("div");
     this.listEl.style.cssText = `
       flex: 1;
@@ -68,8 +83,89 @@ export class LaneSidebar {
     `;
 
     this.el.appendChild(header);
+    this.el.appendChild(this.profilesEl);
     this.el.appendChild(this.listEl);
     parent.appendChild(this.el);
+  }
+
+  /** Update the profiles alignment section. Only shown when multiple profiles are loaded. */
+  updateProfiles(profiles: ProfileInfo[]): void {
+    this.profilesEl.innerHTML = "";
+    if (profiles.length <= 1) {
+      this.profilesEl.style.display = "none";
+      return;
+    }
+    this.profilesEl.style.display = "block";
+
+    const sectionHeader = document.createElement("div");
+    sectionHeader.style.cssText = `
+      padding: 6px 12px 4px;
+      font-size: 11px;
+      font-weight: 600;
+      opacity: 0.6;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    `;
+    sectionHeader.textContent = "Profile Alignment";
+    this.profilesEl.appendChild(sectionHeader);
+
+    for (const profile of profiles) {
+      const row = document.createElement("div");
+      row.style.cssText = `
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 12px;
+        font-size: 11px;
+      `;
+
+      const label = document.createElement("span");
+      label.textContent = profile.label;
+      label.style.cssText = `
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      `;
+
+      const offsetInput = document.createElement("input");
+      offsetInput.type = "number";
+      offsetInput.value = String(Math.round(profile.offset_us));
+      offsetInput.title = "Offset in µs";
+      offsetInput.style.cssText = `
+        width: 80px;
+        font-size: 11px;
+        padding: 2px 4px;
+        text-align: right;
+        border: 1px solid;
+        border-radius: 3px;
+        background: transparent;
+        color: inherit;
+      `;
+      offsetInput.addEventListener("change", () => {
+        const val = parseFloat(offsetInput.value);
+        if (!isNaN(val) && this.callbacks.onOffsetChange) {
+          this.callbacks.onOffsetChange(profile.index, val);
+        }
+      });
+
+      const unit = document.createElement("span");
+      unit.textContent = "µs";
+      unit.style.opacity = "0.5";
+
+      row.appendChild(label);
+      row.appendChild(offsetInput);
+      row.appendChild(unit);
+      this.profilesEl.appendChild(row);
+    }
+
+    const divider = document.createElement("div");
+    divider.style.cssText = `
+      margin: 4px 12px;
+      border-bottom: 1px solid;
+      opacity: 0.2;
+    `;
+    this.profilesEl.appendChild(divider);
   }
 
   /** Update the sidebar with the current lane list. */
