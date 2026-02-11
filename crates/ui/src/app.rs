@@ -801,7 +801,6 @@ impl eframe::App for FlameApp {
             self.draw_time_axis(ui, time_rect);
 
             let available = ui.available_rect_before_wrap();
-            self.ensure_commands(available.width());
 
             // Handle zoom/pan input
             let response = ui.allocate_rect(available, egui::Sense::click_and_drag());
@@ -916,6 +915,9 @@ impl eframe::App for FlameApp {
                     self.selected_span = None;
                 }
             });
+
+            // Generate render commands AFTER all input (so invalidations are resolved)
+            self.ensure_commands(available.width());
 
             // Render lanes
             let mut painter = ui.painter_at(available);
