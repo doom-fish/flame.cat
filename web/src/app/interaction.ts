@@ -25,7 +25,14 @@ type DragMode =
   | { kind: "minimap-slide"; startFrac: number }
   | { kind: "minimap-select"; anchorFrac: number }
   | { kind: "canvas-pan"; lastX: number; lastY: number; laneIndex: number }
-  | { kind: "lane-reorder"; visibleIndex: number; startY: number; currentY: number };
+  | { kind: "lane-reorder"; visibleIndex: number; startY: number; currentY: number }
+  | { kind: "time-select"; anchorFrac: number };
+
+/** Time selection range in view-fractional coordinates [0,1]. */
+export interface TimeSelection {
+  start: number;
+  end: number;
+}
 
 /**
  * Binds mouse/keyboard/touch events to the LaneManager and triggers re-renders.
@@ -41,14 +48,29 @@ export function bindInteraction(
   minimapHeight: () => number,
   isProfileLoaded: () => boolean,
   onLaneReorder?: (fromVisible: number, toVisible: number) => void,
-): { cleanup: () => void; animateViewTo: (start: number, end: number, durationMs?: number) => void } {
+): { cleanup: () => void; animateViewTo: (start: number, end: number, durationMs?: number) => void; getTimeSelection: () => TimeSelection | null; clearTimeSelection: () => void } {
   let drag: DragMode = { kind: "none" };
+  let timeSelection: TimeSelection | null = null;
 
   /** Convert a canvas X to a fractional position [0,1] across the full timeline. */
   const xToFrac = (x: number): number => Math.max(0, Math.min(1, x / canvas.clientWidth));
 
-  /** Is the Y coordinate inside the minimap area? */
-  const isInMinimap = (y: number): boolean => isProfileLoaded() && y < minimapHeight();
+  /** Convert a canvas X to a view-fractional position (fraction within the visible window). */
+  const xToViewFrac = (x: number): number => {
+    const { viewStart, viewEnd } = laneManager.getViewWindow();
+    const frac = x / canvas.clientWidth;
+    return viewStart + frac * (viewEnd - viewStart);
+  };
+
+  /** Is the Y coordinate inside the minimap area? (excludes time axis) */
+  const isInMinimap = (y: number): boolean => isProfileLoaded() && y < minimapHeight() - 24;
+
+  /** Is the Y coordinate inside the time axis area? (between minimap and lanes) */
+  const isInTimeAxis = (y: number): boolean => {
+    if (!isProfileLoaded()) return false;
+    const mmH = minimapHeight(); // This is MINIMAP_HEIGHT + TIME_AXIS_HEIGHT
+    return y >= mmH - 24 && y < mmH;
+  };
 
   /** Is the Y coordinate over the minimap's viewport indicator? */
   const isOnMinimapViewport = (x: number, y: number): boolean => {
@@ -200,6 +222,15 @@ export function bindInteraction(
       return;
     }
 
+    // 1b. Time axis drag-to-select
+    if (isInTimeAxis(e.offsetY)) {
+      const frac = xToViewFrac(e.offsetX);
+      drag = { kind: "time-select", anchorFrac: frac };
+      timeSelection = { start: frac, end: frac };
+      e.preventDefault();
+      return;
+    }
+
     // 2. Lane resize handles
     const handleIdx = laneManager.isOnDragHandle(localY);
     if (handleIdx >= 0) {
@@ -264,6 +295,14 @@ export function bindInteraction(
         }
         return;
       }
+      case "time-select": {
+        const frac = xToViewFrac(e.offsetX);
+        const lo = Math.min(drag.anchorFrac, frac);
+        const hi = Math.max(drag.anchorFrac, frac);
+        timeSelection = { start: lo, end: hi };
+        onRender();
+        return;
+      }
       case "lane-resize": {
         const lane = laneManager.visibleLanes[drag.laneIndex];
         if (lane) {
@@ -298,6 +337,8 @@ export function bindInteraction(
           canvas.style.cursor = isOnMinimapViewport(e.offsetX, e.offsetY)
             ? "ew-resize"
             : "crosshair";
+        } else if (isInTimeAxis(e.offsetY)) {
+          canvas.style.cursor = "text";
         } else {
           const localY = e.offsetY - mmH;
           const handleIdx = laneManager.isOnDragHandle(localY);
@@ -333,6 +374,13 @@ export function bindInteraction(
         laneManager.viewEnd = laneManager.viewStart + viewSpan;
         onRender();
       }
+    }
+    if (drag.kind === "time-select") {
+      // Clear tiny selections (just a click)
+      if (timeSelection && timeSelection.end - timeSelection.start < 0.0005) {
+        timeSelection = null;
+      }
+      onRender();
     }
     if (drag.kind === "lane-reorder") {
       // Determine target visible lane based on Y displacement
@@ -410,6 +458,23 @@ export function bindInteraction(
         if (tag !== "INPUT" && tag !== "TEXTAREA") {
           // Fit view to full profile
           animateViewTo(0, 1);
+        }
+        break;
+      case "z":
+      case "Z":
+        if (tag !== "INPUT" && tag !== "TEXTAREA" && timeSelection) {
+          // Zoom to time selection
+          const padding = (timeSelection.end - timeSelection.start) * 0.05;
+          animateViewTo(
+            Math.max(0, timeSelection.start - padding),
+            Math.min(1, timeSelection.end + padding),
+          );
+        }
+        break;
+      case "Escape":
+        if (timeSelection) {
+          timeSelection = null;
+          onRender();
         }
         break;
     }
@@ -570,5 +635,10 @@ export function bindInteraction(
     canvas.removeEventListener("touchend", onTouchEnd);
   };
 
-  return { cleanup, animateViewTo };
+  return {
+    cleanup,
+    animateViewTo,
+    getTimeSelection: () => timeSelection,
+    clearTimeSelection: () => { timeSelection = null; },
+  };
 }

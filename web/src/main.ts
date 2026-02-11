@@ -207,6 +207,8 @@ async function main() {
   statusBar.appendChild(statusRight);
   canvasContainer.appendChild(statusBar);
 
+  let _getTimeSelection: (() => { start: number; end: number } | null) | null = null;
+
   const updateStatusBar = () => {
     if (!profileLoaded) {
       statusBar.style.display = "none";
@@ -215,8 +217,10 @@ async function main() {
     statusBar.style.display = "flex";
     const { viewStart, viewEnd } = laneManager.getViewWindow();
     const visibleDuration = (viewEnd - viewStart) * profileDuration;
+    const timeSel = _getTimeSelection?.();
+    const selInfo = timeSel ? ` · Selection: ${formatTime((timeSel.end - timeSel.start) * profileDuration)}` : "";
     statusLeft.textContent = `${formatTime(viewStart * profileDuration)} – ${formatTime(viewEnd * profileDuration)}`;
-    statusRight.textContent = `Visible: ${formatTime(visibleDuration)} · ${laneManager.visibleLanes.length} lanes · ${(100 * (viewEnd - viewStart)).toFixed(1)}%`;
+    statusRight.textContent = `Visible: ${formatTime(visibleDuration)} · ${laneManager.visibleLanes.length} lanes${selInfo}`;
   };
 
   // Detail panel
@@ -519,6 +523,42 @@ async function main() {
     // Clear the global lane area clip
     allCommands.push("ClearClip");
 
+    // Time selection overlay
+    const timeSel = _getTimeSelection?.();
+    if (timeSel && timeSel.end - timeSel.start > 0.0001) {
+      const { viewStart, viewEnd } = laneManager.getViewWindow();
+      const viewSpan = viewEnd - viewStart;
+      const selLeft = ((timeSel.start - viewStart) / viewSpan) * canvas.clientWidth;
+      const selRight = ((timeSel.end - viewStart) / viewSpan) * canvas.clientWidth;
+      const selW = selRight - selLeft;
+      const selTop = laneYOffset;
+      const selH = canvas.clientHeight - selTop;
+      // Dim areas outside selection
+      if (selLeft > 0) {
+        allCommands.push({
+          DrawRect: { rect: { x: 0, y: selTop, w: selLeft, h: selH }, color: "FlameNeutral", border_color: null, label: null, frame_id: null },
+        });
+      }
+      if (selRight < canvas.clientWidth) {
+        allCommands.push({
+          DrawRect: { rect: { x: selRight, y: selTop, w: canvas.clientWidth - selRight, h: selH }, color: "FlameNeutral", border_color: null, label: null, frame_id: null },
+        });
+      }
+      // Selection border lines
+      allCommands.push({
+        DrawLine: { from: { x: selLeft, y: selTop }, to: { x: selLeft, y: selTop + selH }, color: "SearchHighlight", width: 2 },
+      });
+      allCommands.push({
+        DrawLine: { from: { x: selRight, y: selTop }, to: { x: selRight, y: selTop + selH }, color: "SearchHighlight", width: 2 },
+      });
+      // Duration label on time axis
+      const selDuration = (timeSel.end - timeSel.start) * profileDuration;
+      const labelX = selLeft + selW / 2;
+      allCommands.push({
+        DrawText: { text: formatTime(selDuration), position: { x: labelX, y: selTop - 4 }, color: "SearchHighlight", font_size: 11, align: "Center" },
+      });
+    }
+
     renderer.render(allCommands, 0, 0);
     updateStatusBar();
   };
@@ -729,7 +769,7 @@ async function main() {
   timeCursor.style.opacity = "0.3";
   timeCursorLabel.style.color = colorStr(resolveColor(theme, "TextPrimary"));
   timeCursorLabel.style.background = colorStr(resolveColor(theme, "Surface"));
-  const { animateViewTo } = bindInteraction(
+  const { animateViewTo, getTimeSelection } = bindInteraction(
     canvas,
     laneManager,
     renderAll,
@@ -739,6 +779,7 @@ async function main() {
       laneSidebar.update(laneManager.lanes);
     },
   );
+  _getTimeSelection = getTimeSelection;
 
   // Shared file-loading logic
   const loadFile = async (file: File, additive = false) => {

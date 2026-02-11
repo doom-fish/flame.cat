@@ -1,6 +1,4 @@
-use flame_cat_protocol::{
-    Marker, Point, RenderCommand, SharedStr, TextAlign, ThemeToken, Viewport,
-};
+use flame_cat_protocol::{Marker, Point, RenderCommand, TextAlign, ThemeToken, Viewport};
 
 const FONT_SIZE: f64 = 10.0;
 const LABEL_OFFSET_Y: f64 = 12.0;
@@ -97,7 +95,7 @@ pub fn render_markers_minimap(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use flame_cat_protocol::MarkerScope;
+    use flame_cat_protocol::{MarkerScope, SharedStr};
 
     fn sample_markers() -> Vec<Marker> {
         vec![

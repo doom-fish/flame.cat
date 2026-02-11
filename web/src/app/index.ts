@@ -6,3 +6,4 @@ export { DetailPanel, DETAIL_HEIGHT } from "./detail-panel";
 export { SearchBar } from "./search-bar";
 export { LaneSidebar } from "./lane-sidebar";
 export type { ProfileInfo } from "./lane-sidebar";
+export type { TimeSelection } from "./interaction";

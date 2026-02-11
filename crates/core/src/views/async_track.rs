@@ -57,7 +57,9 @@ pub fn render_async_track(
     let mut current_y = 2.0;
 
     for key in &group_keys {
-        let group_spans = groups.get(key).unwrap();
+        let Some(group_spans) = groups.get(key) else {
+            continue;
+        };
 
         // Category label
         commands.push(RenderCommand::DrawText {

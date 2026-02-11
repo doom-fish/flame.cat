@@ -221,7 +221,7 @@ fn extract_update_counters(
         ),
     ];
     for (key, name, unit) in &fields {
-        if let Some(v) = data.get(key).and_then(|v| v.as_f64()) {
+        if let Some(v) = data.get(key).and_then(serde_json::Value::as_f64) {
             let entry = counter_map
                 .entry(name.to_string())
                 .or_insert((*unit, Vec::new()));
@@ -247,9 +247,12 @@ fn extract_cpu_profile_chunk(
         for node in profile_nodes {
             let id = node
                 .get("id")
-                .and_then(|v| v.as_u64())
+                .and_then(serde_json::Value::as_u64)
                 .unwrap_or(0) as u32;
-            let parent = node.get("parent").and_then(|v| v.as_u64()).map(|v| v as u32);
+            let parent = node
+                .get("parent")
+                .and_then(serde_json::Value::as_u64)
+                .map(|v| v as u32);
             let call_frame = node.get("callFrame");
             let function_name = call_frame
                 .and_then(|cf| cf.get("functionName"))
@@ -512,12 +515,10 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
                 };
 
                 // Extract UpdateCounters → counter tracks
-                if event.name == "UpdateCounters" {
-                    if let Some(args) = &event.args {
-                        if let Some(data) = args.get("data") {
-                            extract_update_counters(data, event.ts, &mut counter_map);
-                        }
-                    }
+                if event.name == "UpdateCounters"
+                    && let Some(data) = event.args.as_ref().and_then(|a| a.get("data"))
+                {
+                    extract_update_counters(data, event.ts, &mut counter_map);
                 }
 
                 instant_events.push(InstantEvent {
@@ -563,23 +564,21 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
 
             // === Counter events (ph:"C") ===
             "C" => {
-                if let Some(args) = &event.args {
-                    if let Some(obj) = args.as_object() {
-                        for (counter_name, value) in obj {
-                            if let Some(v) = value.as_f64() {
-                                let full_name = if event.name.is_empty() {
-                                    counter_name.clone()
-                                } else {
-                                    format!("{} — {}", event.name, counter_name)
-                                };
-                                let unit = guess_counter_unit(&full_name);
-                                let entry =
-                                    counter_map.entry(full_name).or_insert((unit, Vec::new()));
-                                entry.1.push(CounterSample {
-                                    ts: event.ts,
-                                    value: v,
-                                });
-                            }
+                if let Some(obj) = event.args.as_ref().and_then(|a| a.as_object()) {
+                    for (counter_name, value) in obj {
+                        if let Some(v) = value.as_f64() {
+                            let full_name = if event.name.is_empty() {
+                                counter_name.clone()
+                            } else {
+                                format!("{} — {}", event.name, counter_name)
+                            };
+                            let unit = guess_counter_unit(&full_name);
+                            let entry =
+                                counter_map.entry(full_name).or_insert((unit, Vec::new()));
+                            entry.1.push(CounterSample {
+                                ts: event.ts,
+                                value: v,
+                            });
                         }
                     }
                 }
@@ -643,17 +642,17 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
                 }
             }
             "f" => {
-                if let Some(id) = event.effective_id() {
-                    if let Some((from_ts, from_tid, name)) = flow_starts.remove(&id) {
-                        flow_arrows.push(FlowArrow {
-                            name: SharedStr::from(name.as_str()),
-                            id: SharedStr::from(id.as_str()),
-                            from_ts,
-                            from_tid,
-                            to_ts: event.ts,
-                            to_tid: event.tid,
-                        });
-                    }
+                if let Some(id) = event.effective_id()
+                    && let Some((from_ts, from_tid, name)) = flow_starts.remove(&id)
+                {
+                    flow_arrows.push(FlowArrow {
+                        name: SharedStr::from(name.as_str()),
+                        id: SharedStr::from(id.as_str()),
+                        from_ts,
+                        from_tid,
+                        to_ts: event.ts,
+                        to_tid: event.tid,
+                    });
                 }
             }
             "t" => {
@@ -678,16 +677,14 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
 
             // === CPU profiler samples (ph:"P") ===
             "P" => {
-                if let Some(args) = &event.args {
-                    if let Some(data) = args.get("data") {
-                        extract_cpu_profile_chunk(
-                            data,
-                            event.ts,
-                            &mut cpu_nodes,
-                            &mut cpu_samples,
-                            &mut cpu_timestamps,
-                        );
-                    }
+                if let Some(data) = event.args.as_ref().and_then(|a| a.get("data")) {
+                    extract_cpu_profile_chunk(
+                        data,
+                        event.ts,
+                        &mut cpu_nodes,
+                        &mut cpu_samples,
+                        &mut cpu_timestamps,
+                    );
                 }
             }
 
