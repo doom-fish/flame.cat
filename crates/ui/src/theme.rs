@@ -66,8 +66,8 @@ fn resolve_dark(token: ThemeToken) -> ResolvedColor {
         ToolbarTabActive => ResolvedColor::rgb(66, 135, 245),
         ToolbarTabHover => ResolvedColor::rgba(255, 255, 255, 20),
 
-        MinimapBackground => ResolvedColor::rgb(25, 25, 30),
-        MinimapViewport => ResolvedColor::rgba(66, 135, 245, 60),
+        MinimapBackground => ResolvedColor::rgb(18, 18, 22),
+        MinimapViewport => ResolvedColor::rgba(100, 160, 255, 30),
 
         TableRowEven => ResolvedColor::rgb(30, 30, 35),
         TableRowOdd => ResolvedColor::rgb(35, 35, 42),

@@ -156,7 +156,7 @@ impl FlameApp {
             &format!("flame.cat: parsing {} bytes...", data.len()).into(),
         );
         match parsers::parse_auto_visual(data) {
-            Ok(profile) => {
+            Ok(mut profile) => {
                 #[cfg(target_arch = "wasm32")]
                 web_sys::console::log_1(
                     &format!(
@@ -165,6 +165,19 @@ impl FlameApp {
                     )
                     .into(),
                 );
+
+                // Crop profile time bounds to actual span data range
+                let mut data_start = f64::INFINITY;
+                let mut data_end = f64::NEG_INFINITY;
+                for span in profile.all_spans() {
+                    data_start = data_start.min(span.start);
+                    data_end = data_end.max(span.end);
+                }
+                if data_start.is_finite() && data_end.is_finite() && data_start < data_end {
+                    profile.meta.start_time = data_start;
+                    profile.meta.end_time = data_end;
+                }
+
                 self.setup_lanes(&profile);
 
                 // Compute auto-zoom bounds before consuming profile
@@ -313,15 +326,6 @@ impl FlameApp {
                 visible: *span_count >= 3,
             });
         }
-
-        // Minimap (always last)
-        self.lanes.push(LaneState {
-            kind: LaneKind::Minimap,
-            name: "Overview".to_string(),
-            height: 40.0,
-            scroll_y: 0.0,
-            visible: true,
-        });
     }
 
     fn invalidate_commands(&mut self) {
@@ -424,12 +428,8 @@ impl FlameApp {
                     )
                 }
                 LaneKind::Minimap => {
-                    flame_cat_core::views::minimap::render_minimap(
-                        &entry.profile,
-                        &viewport,
-                        self.view_start,
-                        self.view_end,
-                    )
+                    // Minimap is rendered separately as a fixed strip
+                    Vec::new()
                 }
             };
             self.lane_commands.push(cmds);
@@ -561,6 +561,179 @@ impl FlameApp {
             ],
             egui::Stroke::new(1.0, tick_color),
         );
+    }
+
+    /// Draw an interactive minimap with density heatmap and draggable viewport.
+    fn draw_minimap(&mut self, ui: &egui::Ui, rect: egui::Rect, resp: &egui::Response) {
+        let Some(session) = &self.session else {
+            return;
+        };
+        let Some(entry) = session.profiles().first() else {
+            return;
+        };
+
+        let profile = &entry.profile;
+        let duration = profile.duration();
+        if duration <= 0.0 {
+            return;
+        }
+
+        // Draw directly on the panel painter (same layer, no clipping issues)
+        let painter = ui.painter();
+
+        // Dark background (slightly lighter than panel to differentiate)
+        let bg = egui::Color32::from_rgb(25, 25, 32);
+        painter.rect_filled(rect, egui::CornerRadius::ZERO, bg);
+
+        // Top border
+        painter.line_segment(
+            [rect.left_top(), egui::pos2(rect.right(), rect.top())],
+            egui::Stroke::new(1.0, egui::Color32::from_rgb(50, 50, 60)),
+        );
+
+        // Build density per column (bucket spans across all threads)
+        let cols = (rect.width() as usize).max(1);
+        let start = profile.meta.start_time;
+        let col_dur = duration / cols as f64;
+        let mut density = vec![0u32; cols];
+        for span in profile.all_spans() {
+            let rel_start = (span.start - start) / col_dur;
+            let rel_end = (span.end - start) / col_dur;
+            if rel_end < 0.0 || rel_start >= cols as f64 {
+                continue;
+            }
+            let c0 = (rel_start.max(0.0) as usize).min(cols);
+            let c1 = (rel_end.ceil() as usize).min(cols);
+            for c in c0..c1 {
+                density[c] += 1;
+            }
+        }
+        let max_d = *density.iter().max().unwrap_or(&1).max(&1);
+
+        // Draw density bars (batch adjacent columns into rects for performance)
+        let bar_color = egui::Color32::from_rgb(100, 170, 255);
+        let mut c = 0;
+        while c < cols {
+            if density[c] == 0 {
+                c += 1;
+                continue;
+            }
+            // Find run of non-zero columns
+            let run_start = c;
+            let mut run_max = density[c];
+            while c < cols && density[c] > 0 {
+                run_max = run_max.max(density[c]);
+                c += 1;
+            }
+            // Use sqrt scaling so low-density regions are still visible
+            let frac = (run_max as f32).sqrt() / (max_d as f32).sqrt();
+            let h = (frac * rect.height()).max(2.0);
+            let x = rect.left() + run_start as f32;
+            let w = (c - run_start) as f32;
+            let bar_rect = egui::Rect::from_min_size(
+                egui::pos2(x, rect.bottom() - h),
+                egui::vec2(w, h),
+            );
+            painter.rect_filled(
+                bar_rect,
+                egui::CornerRadius::ZERO,
+                bar_color.gamma_multiply(0.4 + 0.6 * frac),
+            );
+        }
+
+        // Viewport highlight — bright the viewport area instead of dimming outside
+        let vp_left = rect.left() + (self.view_start as f32) * rect.width();
+        let vp_right = rect.left() + (self.view_end as f32) * rect.width();
+        let viewport_rect = egui::Rect::from_min_max(
+            egui::pos2(vp_left, rect.top()),
+            egui::pos2(vp_right, rect.bottom()),
+        );
+        // Subtle bright overlay on viewport region
+        painter.rect_filled(
+            viewport_rect,
+            egui::CornerRadius::ZERO,
+            egui::Color32::from_rgba_unmultiplied(100, 160, 255, 25),
+        );
+
+        // Viewport border lines
+        let handle_color = egui::Color32::from_rgb(180, 200, 255);
+        painter.line_segment(
+            [egui::pos2(vp_left, rect.top()), egui::pos2(vp_left, rect.bottom())],
+            egui::Stroke::new(2.0, handle_color),
+        );
+        painter.line_segment(
+            [egui::pos2(vp_right, rect.top()), egui::pos2(vp_right, rect.bottom())],
+            egui::Stroke::new(2.0, handle_color),
+        );
+        // Top/bottom edges of viewport
+        painter.line_segment(
+            [egui::pos2(vp_left, rect.top()), egui::pos2(vp_right, rect.top())],
+            egui::Stroke::new(1.0, handle_color.gamma_multiply(0.5)),
+        );
+        painter.line_segment(
+            [egui::pos2(vp_left, rect.bottom()), egui::pos2(vp_right, rect.bottom())],
+            egui::Stroke::new(1.0, handle_color.gamma_multiply(0.5)),
+        );
+
+        // Bottom border of minimap strip
+        painter.line_segment(
+            [egui::pos2(rect.left(), rect.bottom()), egui::pos2(rect.right(), rect.bottom())],
+            egui::Stroke::new(1.0, egui::Color32::from_rgb(50, 50, 60)),
+        );
+
+        // Interactive: drag to pan/resize viewport
+        let handle_w = 6.0_f32;
+
+        if resp.dragged() {
+            if let Some(pos) = resp.interact_pointer_pos() {
+                let frac = ((pos.x - rect.left()) / rect.width()) as f64;
+                let frac = frac.clamp(0.0, 1.0);
+                let delta_x = resp.drag_delta().x;
+
+                let drag_start = pos.x - delta_x;
+                let on_left_handle = (drag_start - vp_left).abs() < handle_w * 2.0;
+                let on_right_handle = (drag_start - vp_right).abs() < handle_w * 2.0;
+
+                if on_left_handle {
+                    self.view_start = frac.min(self.view_end - 0.001);
+                } else if on_right_handle {
+                    self.view_end = frac.max(self.view_start + 0.001);
+                } else {
+                    let dx_frac = (delta_x as f64) / rect.width() as f64;
+                    let span = self.view_end - self.view_start;
+                    self.view_start = (self.view_start + dx_frac).clamp(0.0, 1.0 - span);
+                    self.view_end = self.view_start + span;
+                }
+                self.invalidate_commands();
+            }
+        }
+
+        // Click outside viewport: center viewport on click
+        if resp.clicked() {
+            if let Some(pos) = resp.interact_pointer_pos() {
+                let frac = ((pos.x - rect.left()) / rect.width()) as f64;
+                let frac = frac.clamp(0.0, 1.0);
+                if frac < self.view_start || frac > self.view_end {
+                    let span = self.view_end - self.view_start;
+                    self.view_start = (frac - span / 2.0).clamp(0.0, 1.0 - span);
+                    self.view_end = self.view_start + span;
+                    self.invalidate_commands();
+                }
+            }
+        }
+
+        // Cursor hint
+        if resp.hovered() {
+            if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+                let on_left = (pos.x - vp_left).abs() < handle_w * 2.0;
+                let on_right = (pos.x - vp_right).abs() < handle_w * 2.0;
+                if on_left || on_right {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+                } else if pos.x > vp_left && pos.x < vp_right {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+                }
+            }
+        }
     }
 }
 
@@ -799,6 +972,14 @@ impl eframe::App for FlameApp {
                 egui::Sense::hover(),
             );
             self.draw_time_axis(ui, time_rect);
+
+            // Minimap overview strip (interactive range slider)
+            let minimap_height = 40.0_f32;
+            let (minimap_rect, minimap_resp) = ui.allocate_exact_size(
+                egui::vec2(ui.available_width(), minimap_height),
+                egui::Sense::click_and_drag(),
+            );
+            self.draw_minimap(ui, minimap_rect, &minimap_resp);
 
             let available = ui.available_rect_before_wrap();
 
