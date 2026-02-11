@@ -501,7 +501,7 @@ async function main() {
             const ROW_H = 18;
             const GAP = 2;
             for (let ri = 0; ri < reqs.length; ri++) {
-              const req = reqs[ri];
+              const req = reqs[ri]!;
               const end = req.finish_ts ?? req.response_ts ?? req.send_ts;
               const x0 = ((req.send_ts - absViewStart) / viewRange) * w;
               const x1 = ((end - absViewStart) / viewRange) * w;

@@ -164,12 +164,14 @@ export class WebGPURenderer {
   }
 
   render(commands: RenderCommand[], scrollX: number, scrollY: number): void {
-    const dpr = window.devicePixelRatio;
+    if (!this.device || !this.gpuContext) return;
+    const dpr = window.devicePixelRatio || 1;
     const width = this.canvas.clientWidth;
     const height = this.canvas.clientHeight;
     if (width === 0 || height === 0) return;
     const pxW = Math.round(width * dpr);
     const pxH = Math.round(height * dpr);
+    if (pxW === 0 || pxH === 0) return;
     if (this.canvas.width !== pxW || this.canvas.height !== pxH) {
       this.canvas.width = pxW;
       this.canvas.height = pxH;
@@ -181,13 +183,13 @@ export class WebGPURenderer {
 
     // --- Collect all geometry in a single pass ---
     // Pre-allocated typed arrays to avoid GC pressure
-    const maxRects = commands.length * 6; // worst case: rect + 4 borders + label bg
-    const maxGlyphs = commands.length * 40; // rough estimate
-    if (!this.rectStagingBuffer || this.rectStagingBuffer.length < maxRects * RECT_FLOATS) {
-      this.rectStagingBuffer = new Float32Array(maxRects * RECT_FLOATS);
+    const initialRects = Math.max(commands.length * 6, 2048);
+    const initialGlyphs = Math.max(commands.length * 20, 4096);
+    if (!this.rectStagingBuffer || this.rectStagingBuffer.length < initialRects * RECT_FLOATS) {
+      this.rectStagingBuffer = new Float32Array(initialRects * RECT_FLOATS);
     }
-    if (!this.glyphStagingBuffer || this.glyphStagingBuffer.length < maxGlyphs * GLYPH_FLOATS) {
-      this.glyphStagingBuffer = new Float32Array(maxGlyphs * GLYPH_FLOATS);
+    if (!this.glyphStagingBuffer || this.glyphStagingBuffer.length < initialGlyphs * GLYPH_FLOATS) {
+      this.glyphStagingBuffer = new Float32Array(initialGlyphs * GLYPH_FLOATS);
     }
     let rectData = this.rectStagingBuffer;
     let glyphData = this.glyphStagingBuffer;
@@ -236,8 +238,10 @@ export class WebGPURenderer {
     };
 
     const pushRect = (x: number, y: number, w: number, h: number, c: { r: number; g: number; b: number; a: number }) => {
-      // Cull off-screen rects
+      // Skip degenerate or off-screen rects
+      if (!(w > 0.01) || !(h > 0.01)) return;
       if (x + w < 0 || x > width || y + h < 0 || y > height) return;
+      if (!isFinite(x) || !isFinite(y)) return;
       if (rectOffset + RECT_FLOATS > rectData.length) {
         const newBuf = new Float32Array(rectData.length * 2);
         newBuf.set(rectData);
@@ -255,8 +259,9 @@ export class WebGPURenderer {
       color: { r: number; g: number; b: number; a: number },
       align: string, maxWidth?: number,
     ) => {
+      if (!text || fontSize < 1 || !isFinite(x) || !isFinite(y)) return;
       // Quick vertical cull
-      if (y - fontSize < 0 - fontSize || y + fontSize > height + fontSize) return;
+      if (y + fontSize < 0 || y - fontSize > height) return;
       const scale = fontSize / this.atlas.atlasSize;
       // Measure total width
       let totalW = 0;
@@ -289,6 +294,9 @@ export class WebGPURenderer {
       let ox = x;
       if (align === "Center") ox -= totalW / 2;
       else if (align === "Right") ox -= totalW;
+
+      // Horizontal cull
+      if (ox + totalW < 0 || ox > width) return;
 
       // Emit glyph instances
       const halfLineH = (this.atlas.lineHeight * scale) / 2;
@@ -353,7 +361,12 @@ export class WebGPURenderer {
           sh = Math.min(sy + sh, currentScissor.y + currentScissor.h) - ny;
           sx = nx; sy = ny;
         }
-        const clip = { x: Math.round(sx), y: Math.round(sy), w: Math.max(0, Math.round(sw)), h: Math.max(0, Math.round(sh)) };
+        const clip = {
+          x: Math.max(0, Math.round(sx)),
+          y: Math.max(0, Math.round(sy)),
+          w: Math.max(0, Math.min(Math.round(sw), pxW - Math.max(0, Math.round(sx)))),
+          h: Math.max(0, Math.min(Math.round(sh), pxH - Math.max(0, Math.round(sy)))),
+        };
         clipStack.push(clip);
         currentScissor = clip;
       } else if ("DrawRect" in cmd) {
@@ -372,9 +385,10 @@ export class WebGPURenderer {
           pushRect(x, y, lw, h, bc);
           pushRect(x + w - lw, y, lw, h, bc);
         }
-        if (label && w > 20) {
+        if (label && w > 20 && h > 8) {
           const tc = resolveTokenCached("TextPrimary");
-          layoutText(label, x + 4, y + h / 2, 11, tc, "Left", w - 8);
+          const fs = Math.min(11, h - 4);
+          layoutText(label, x + 4, y + h / 2, fs, tc, "Left", w - 8);
         }
       } else if ("DrawText" in cmd) {
         const { position, text, color, font_size, align } = cmd.DrawText;
@@ -479,12 +493,11 @@ export class WebGPURenderer {
     }
 
     pass.end();
-    this.device.queue.submit([encoder.finish()]);
-  }
-
-  private resolveToken(token: ThemeToken): { r: number; g: number; b: number; a: number } {
-    const c = resolveColor(this.theme, token);
-    return { r: c.r, g: c.g, b: c.b, a: c.a };
+    try {
+      this.device.queue.submit([encoder.finish()]);
+    } catch (e) {
+      console.error("WebGPU submit failed:", e);
+    }
   }
 
   private bgColor(): GPUColor {
