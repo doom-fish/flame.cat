@@ -965,6 +965,33 @@ impl eframe::App for FlameApp {
 
                 painter.set_clip_rect(prev_clip);
 
+                // Inline lane label (subtle, top-left corner with background pill)
+                let label_text = &lane.name;
+                let label_font = egui::FontId::proportional(10.0);
+                let label_galley = painter.layout_no_wrap(
+                    label_text.clone(),
+                    label_font,
+                    egui::Color32::from_rgba_unmultiplied(200, 200, 210, 180),
+                );
+                let label_w = label_galley.size().x + 8.0;
+                let label_h = label_galley.size().y + 4.0;
+                let label_rect = egui::Rect::from_min_size(
+                    egui::pos2(available.left() + 2.0, lane_top + 2.0),
+                    egui::vec2(label_w, label_h),
+                );
+                if label_rect.intersects(available) {
+                    painter.rect_filled(
+                        label_rect,
+                        egui::CornerRadius::same(3),
+                        egui::Color32::from_rgba_unmultiplied(30, 30, 40, 180),
+                    );
+                    painter.galley(
+                        egui::pos2(available.left() + 6.0, lane_top + 4.0),
+                        label_galley,
+                        egui::Color32::TRANSPARENT, // color already in galley
+                    );
+                }
+
                 // Lane border
                 let border_color = crate::theme::resolve(
                     flame_cat_protocol::ThemeToken::LaneBorder,
