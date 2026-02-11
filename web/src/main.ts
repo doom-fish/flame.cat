@@ -2,7 +2,6 @@ import { darkTheme, lightTheme, resolveColor } from "./themes";
 import type { Theme, Color } from "./themes";
 import type { RenderCommand } from "./protocol";
 import { WebGPURenderer } from "./renderers/webgpu";
-import { CanvasRenderer } from "./renderers/canvas";
 import {
   LaneManager,
   createToolbar,
@@ -24,16 +23,9 @@ async function createRenderer(
   canvas: HTMLCanvasElement,
   theme: Theme,
 ): Promise<{ renderer: Renderer; backend: string }> {
-  if (navigator.gpu) {
-    try {
-      const r = new WebGPURenderer(canvas, theme);
-      await r.init();
-      return { renderer: r, backend: "webgpu" };
-    } catch {
-      console.warn("WebGPU init failed, falling back to Canvas2D");
-    }
-  }
-  return { renderer: new CanvasRenderer(canvas, theme), backend: "canvas2d" };
+  const r = new WebGPURenderer(canvas, theme);
+  await r.init();
+  return { renderer: r, backend: "webgpu" };
 }
 
 function colorStr(c: Color): string {
@@ -743,12 +735,26 @@ async function main() {
 
     renderer.render(allCommands, 0, 0);
 
-    // Draw filmstrip thumbnails after render (on overlay canvas if WebGPU, else main canvas)
+    // Draw filmstrip screenshot images via a thin overlay (raster images need Canvas2D drawImage)
     if (profileLoaded) {
-      const overlayEl = canvasContainer.querySelector("canvas:not(#canvas)") as HTMLCanvasElement | null;
-      const filmCtx = overlayEl?.getContext("2d") ?? canvas.getContext("2d");
+      let filmOverlay = canvasContainer.querySelector(".filmstrip-overlay") as HTMLCanvasElement | null;
+      if (!filmOverlay) {
+        filmOverlay = document.createElement("canvas");
+        filmOverlay.className = "filmstrip-overlay";
+        filmOverlay.style.position = "absolute";
+        filmOverlay.style.top = "0";
+        filmOverlay.style.left = "0";
+        filmOverlay.style.width = "100%";
+        filmOverlay.style.height = "100%";
+        filmOverlay.style.pointerEvents = "none";
+        canvasContainer.appendChild(filmOverlay);
+      }
+      const dpr = window.devicePixelRatio;
+      filmOverlay.width = Math.round(canvas.clientWidth * dpr);
+      filmOverlay.height = Math.round(canvas.clientHeight * dpr);
+      const filmCtx = filmOverlay.getContext("2d");
       if (filmCtx) {
-        const dpr = window.devicePixelRatio;
+        filmCtx.clearRect(0, 0, filmOverlay.width, filmOverlay.height);
         const { viewStart, viewEnd } = laneManager.getViewWindow();
         const firstLane = laneManager.lanes[0];
         if (firstLane) {
@@ -762,7 +768,7 @@ async function main() {
           const visible = laneManager.visibleLanes;
 
           for (let i = 0; i < visible.length; i++) {
-            const lane = visible[i];
+            const lane = visible[i]!;
             if (lane.trackType !== "filmstrip") continue;
             const imgs = screenshotImages.get(lane.profileIndex);
             if (!imgs || imgs.length === 0) continue;
