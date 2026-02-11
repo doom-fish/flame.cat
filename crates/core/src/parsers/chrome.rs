@@ -1287,5 +1287,26 @@ mod tests {
             profile.cpu_samples.is_some(),
             "should have CPU samples"
         );
+
+        // Verify Web Vital markers have categories
+        let web_vitals: Vec<_> = profile
+            .markers
+            .iter()
+            .filter(|m| m.category.as_ref().is_some_and(|c| c.as_ref() == "web-vital"))
+            .collect();
+        assert!(
+            !web_vitals.is_empty(),
+            "should have web vital markers"
+        );
+
+        let nav_markers: Vec<_> = profile
+            .markers
+            .iter()
+            .filter(|m| m.category.as_ref().is_some_and(|c| c.as_ref() == "navigation"))
+            .collect();
+        assert!(
+            !nav_markers.is_empty(),
+            "should have navigation markers"
+        );
     }
 }
