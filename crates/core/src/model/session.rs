@@ -125,31 +125,37 @@ impl Session {
 
     /// Compute the offset for a new profile based on clock domain compatibility.
     ///
-    /// If the new profile and an existing profile both have time domains
-    /// on the same clock (e.g. both `CLOCK_MONOTONIC`), timestamps are
-    /// already comparable — the offset accounts only for unit differences.
-    ///
-    /// If clocks are incompatible or unknown, offset is 0.0 (profiles
-    /// overlap at their raw timestamp positions until manually adjusted).
+    /// Three cases:
+    /// 1. Compatible clocks (e.g. both `CLOCK_MONOTONIC`): timestamps are
+    ///    already comparable — offset accounts only for unit differences (0.0
+    ///    since `to_session_time` handles normalization).
+    /// 2. New profile has no time domain (e.g. React DevTools export with
+    ///    relative timestamps): align its start to the first existing
+    ///    profile's start on the session timeline.
+    /// 3. Incompatible or unknown clocks: same as case 2 — place at session
+    ///    start so profiles are visible together (user can adjust manually).
     fn compute_offset(&self, profile: &VisualProfile) -> f64 {
         if self.profiles.is_empty() {
             return 0.0;
         }
 
-        let Some(new_td) = &profile.meta.time_domain else {
-            return 0.0;
-        };
-
-        // Find first existing profile with a compatible time domain.
-        for existing in &self.profiles {
-            if let Some(ref existing_td) = existing.profile.meta.time_domain
-                && new_td.is_compatible(existing_td)
-            {
-                return 0.0;
+        // Compatible clocks: no offset needed, unit normalization is enough.
+        if let Some(ref new_td) = profile.meta.time_domain {
+            for existing in &self.profiles {
+                if let Some(ref existing_td) = existing.profile.meta.time_domain
+                    && new_td.is_compatible(existing_td)
+                {
+                    return 0.0;
+                }
             }
         }
 
-        0.0
+        // No compatible clock found (or no time domain at all).
+        // Align new profile's start to the existing session's start.
+        let session_start = self.start_time();
+        let new_factor = profile.meta.value_unit.to_microseconds_factor().unwrap_or(1.0);
+        let new_start_us = profile.meta.start_time * new_factor;
+        session_start - new_start_us
     }
 }
 
@@ -213,14 +219,16 @@ mod tests {
     }
 
     #[test]
-    fn multi_profile_expands_range() {
+    fn multi_profile_auto_aligns_no_time_domain() {
         let p1 = make_profile(100.0, 200.0, ValueUnit::Microseconds, None);
         let p2 = make_profile(300.0, 500.0, ValueUnit::Microseconds, None);
         let mut session = Session::from_profile(p1, "p1");
         session.add_profile(p2, "p2");
         assert_eq!(session.len(), 2);
+        // p2 is auto-aligned: offset = 100 - 300 = -200
+        // p2 session range: 300 + (-200) = 100, 500 + (-200) = 300
         assert!((session.start_time() - 100.0).abs() < f64::EPSILON);
-        assert!((session.end_time() - 500.0).abs() < f64::EPSILON);
+        assert!((session.end_time() - 300.0).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -265,5 +273,39 @@ mod tests {
         let session = Session::new();
         assert!(session.is_empty());
         assert_eq!(session.duration(), 0.0);
+    }
+
+    #[test]
+    fn auto_align_relative_onto_absolute() {
+        // Chrome trace with absolute monotonic timestamps (µs)
+        let chrome = make_profile(
+            325_186_766_678.0,
+            325_191_926_889.0,
+            ValueUnit::Microseconds,
+            Some(TimeDomain {
+                clock_kind: ClockKind::LinuxMonotonic,
+                origin_label: None,
+            }),
+        );
+        // React DevTools with relative timestamps (µs from profiling start)
+        let react = make_profile(2836.0, 2846.0, ValueUnit::Microseconds, None);
+
+        let mut session = Session::from_profile(chrome, "chrome");
+        session.add_profile(react, "react");
+
+        // React should be aligned to Chrome's start
+        let react_entry = &session.profiles()[1];
+        let expected_offset = 325_186_766_678.0 - 2836.0;
+        assert!(
+            (react_entry.offset_us - expected_offset).abs() < 1.0,
+            "React offset should align to Chrome start: got {}, expected {}",
+            react_entry.offset_us,
+            expected_offset,
+        );
+        // React session start should match Chrome session start
+        assert!(
+            (react_entry.session_start() - 325_186_766_678.0).abs() < 1.0,
+            "React session start should equal Chrome start",
+        );
     }
 }

@@ -93,14 +93,27 @@ fn load_chrome_and_react_into_session() {
         react_entry.session_end(),
     );
 
+    // React profile (no time domain) should be auto-aligned to Chrome's start
+    assert!(
+        react_entry.offset_us.abs() > 1.0,
+        "React offset should be non-zero (auto-aligned): got {}",
+        react_entry.offset_us,
+    );
+    assert!(
+        (react_entry.session_start() - chrome_entry.session_start()).abs() < 1.0,
+        "React session start should match Chrome start after auto-alignment: React={:.0}, Chrome={:.0}",
+        react_entry.session_start(),
+        chrome_entry.session_start(),
+    );
+
     // Manual offset adjustment should work
     let original_react_start = react_entry.session_start();
-    session.profiles_mut()[1].offset_us = 1000.0; // shift React profile by 1ms
+    session.profiles_mut()[1].offset_us += 1000.0; // shift React profile by 1ms
     let adjusted_react_start = session.profiles()[1].session_start();
     assert!(
         (adjusted_react_start - original_react_start - 1000.0).abs() < 1.0,
         "Manual offset should shift session time by 1000µs"
     );
 
-    println!("\n✅ Multi-profile session works: Chrome trace + React DevTools loaded, aligned, and offset-adjustable");
+    println!("\n✅ Multi-profile session works: Chrome trace + React DevTools auto-aligned and offset-adjustable");
 }
