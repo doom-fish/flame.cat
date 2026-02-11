@@ -592,3 +592,35 @@ pub fn get_extra_tracks(profile_index: usize) -> Result<String, JsError> {
         serde_json::to_string(&info).map_err(|e| JsError::new(&e.to_string()))
     })
 }
+
+/// Search spans by name (case-insensitive substring match).
+/// Returns JSON: { match_count, total_count }
+#[wasm_bindgen]
+pub fn search_spans(profile_index: usize, query: &str) -> Result<String, JsError> {
+    with_profile(profile_index, |profile| {
+        let lower_query = query.to_lowercase();
+        let mut match_count = 0usize;
+        let mut total_count = 0usize;
+
+        for thread in &profile.threads {
+            for span in &thread.spans {
+                total_count += 1;
+                if span.name.to_lowercase().contains(&lower_query) {
+                    match_count += 1;
+                }
+            }
+        }
+
+        #[derive(serde::Serialize)]
+        struct SearchResult {
+            match_count: usize,
+            total_count: usize,
+        }
+
+        let result = SearchResult {
+            match_count,
+            total_count,
+        };
+        serde_json::to_string(&result).map_err(|e| JsError::new(&e.to_string()))
+    })
+}

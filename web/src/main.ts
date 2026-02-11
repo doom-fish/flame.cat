@@ -153,6 +153,20 @@ async function main() {
     canvasContainer,
     (query) => {
       searchQuery = query;
+      if (query && profileLoaded) {
+        try {
+          const firstLane = laneManager.lanes[0];
+          if (firstLane) {
+            const result = JSON.parse(wasm.search_spans(firstLane.profileIndex, query)) as {
+              match_count: number;
+              total_count: number;
+            };
+            searchBar.setMatchCount(result.match_count, result.total_count);
+          }
+        } catch {
+          // ignore search errors
+        }
+      }
       renderAll();
     },
     () => {
@@ -353,7 +367,7 @@ async function main() {
           SetClip: { rect: { x: 0, y: 0, w: canvas.clientWidth, h: lane.height } },
         });
 
-        // Search: dim non-matching frames
+        // Search: dim non-matching, highlight matching frames
         if (searchQuery) {
           const lowerQ = searchQuery.toLowerCase();
           for (const cmd of laneCmds) {
@@ -361,12 +375,26 @@ async function main() {
               typeof cmd !== "string" &&
               "DrawRect" in cmd &&
               cmd.DrawRect.label &&
-              cmd.DrawRect.frame_id != null &&
-              !cmd.DrawRect.label.toLowerCase().includes(lowerQ)
+              cmd.DrawRect.frame_id != null
             ) {
-              allCommands.push({
-                DrawRect: { ...cmd.DrawRect, color: "FlameNeutral", border_color: null },
-              });
+              if (cmd.DrawRect.label.toLowerCase().includes(lowerQ)) {
+                // Keep original + add highlight overlay
+                allCommands.push(cmd);
+                allCommands.push({
+                  DrawRect: {
+                    rect: cmd.DrawRect.rect,
+                    color: "SearchHighlight",
+                    border_color: "Border",
+                    label: null,
+                    frame_id: null,
+                  },
+                });
+              } else {
+                // Dim non-matching
+                allCommands.push({
+                  DrawRect: { ...cmd.DrawRect, color: "FlameNeutral", border_color: null },
+                });
+              }
             } else {
               allCommands.push(cmd);
             }
