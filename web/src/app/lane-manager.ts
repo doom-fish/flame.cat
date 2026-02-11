@@ -174,7 +174,7 @@ export class LaneManager {
       const label = lane.threadName ?? `${lane.viewType} (profile ${lane.profileIndex})`;
       commands.push({
         DrawText: {
-          position: { x: 24, y: y + HEADER_HEIGHT / 2 + 4 },
+          position: { x: 24, y: y + HEADER_HEIGHT / 2 },
           text: label,
           color: "LaneHeaderText",
           font_size: 12,
@@ -184,7 +184,7 @@ export class LaneManager {
       // Drag handle icon (≡)
       commands.push({
         DrawText: {
-          position: { x: 10, y: y + HEADER_HEIGHT / 2 + 4 },
+          position: { x: 10, y: y + HEADER_HEIGHT / 2 },
           text: "≡",
           color: "LaneHeaderText",
           font_size: 14,

@@ -4,7 +4,7 @@ import basicSsl from "@vitejs/plugin-basic-ssl";
 
 export default defineConfig({
   root: ".",
-  plugins: [basicSsl()],
+  plugins: process.env.VITE_SSL ? [basicSsl()] : [],
   build: {
     outDir: "dist",
   },

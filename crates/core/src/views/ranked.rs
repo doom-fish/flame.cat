@@ -55,7 +55,7 @@ pub fn render_ranked(
         frame_id: None,
     });
 
-    let header_y = HEADER_ROW_HEIGHT / 2.0 + 4.0;
+    let header_y = HEADER_ROW_HEIGHT / 2.0;
     for (text, x) in [
         ("Symbol Name", 8.0),
         ("Self", col_self_x + 4.0),
@@ -96,7 +96,7 @@ pub fn render_ranked(
             frame_id: None,
         });
 
-        let text_y = y + ROW_HEIGHT / 2.0 + 4.0;
+        let text_y = y + ROW_HEIGHT / 2.0;
 
         // Symbol name
         commands.push(RenderCommand::DrawText {

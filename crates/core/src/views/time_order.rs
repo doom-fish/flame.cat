@@ -56,7 +56,7 @@ pub fn render_time_order(
                 commands.push(RenderCommand::DrawText {
                     position: Point {
                         x: 6.0,
-                        y: header_y + THREAD_HEADER_HEIGHT / 2.0 + 3.0,
+                        y: header_y + THREAD_HEADER_HEIGHT / 2.0,
                     },
                     text: SharedStr::from(format!(
                         "{} ({} spans)",
