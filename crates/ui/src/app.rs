@@ -43,6 +43,8 @@ pub struct FlameApp {
     loading: bool,
     /// Cached minimap density (invalidated on profile load only).
     minimap_density: Option<Vec<u32>>,
+    /// Show keyboard help overlay.
+    show_help: bool,
 }
 
 #[derive(Clone)]
@@ -50,6 +52,9 @@ struct SelectedSpan {
     name: String,
     frame_id: u64,
     lane_index: usize,
+    /// Time bounds for zoom-to-span (in session µs).
+    start_us: f64,
+    end_us: f64,
 }
 
 enum LaneKind {
@@ -144,6 +149,7 @@ impl FlameApp {
             pending_data,
             loading: false,
             minimap_density: None,
+            show_help: false,
         }
     }
 
@@ -830,6 +836,11 @@ impl FlameApp {
                     ui.label(format!("{zoom_pct:.0}%"));
                     ui.separator();
 
+                    if ui.button("❓").on_hover_text("Keyboard shortcuts (?)").clicked() {
+                        self.show_help = !self.show_help;
+                    }
+                    ui.separator();
+
                     // Search box
                     let search_response = ui.add(
                         egui::TextEdit::singleline(&mut self.search_query)
@@ -1005,7 +1016,7 @@ impl FlameApp {
             self.draw_time_axis(ui, time_rect);
 
             // Minimap overview strip (interactive range slider)
-            let minimap_height = 40.0_f32;
+            let minimap_height = 48.0_f32;
             let (minimap_rect, minimap_resp) = ui.allocate_exact_size(
                 egui::vec2(ui.available_width(), minimap_height),
                 egui::Sense::click_and_drag(),
@@ -1149,7 +1160,35 @@ impl FlameApp {
             );
             painter.rect_filled(available, egui::CornerRadius::ZERO, bg);
 
+            // Vertical gridlines at time axis tick positions
+            if let Some(session) = &self.session {
+                let session_start = session.start_time();
+                let session_duration = session.end_time() - session_start;
+                if session_duration > 0.0 {
+                    let vis_start = session_start + self.view_start * session_duration;
+                    let vis_end = session_start + self.view_end * session_duration;
+                    let vis_dur = vis_end - vis_start;
+                    let interval = nice_tick_interval(vis_dur, 8);
+                    let first_tick = (vis_start / interval).ceil() * interval;
+                    let grid_color = crate::theme::resolve(
+                        flame_cat_protocol::ThemeToken::Border,
+                        self.theme_mode,
+                    ).gamma_multiply(0.3);
+                    let mut t = first_tick;
+                    while t <= vis_end {
+                        let frac = (t - vis_start) / vis_dur;
+                        let x = available.left() + frac as f32 * available.width();
+                        painter.line_segment(
+                            [egui::pos2(x, available.top()), egui::pos2(x, available.bottom())],
+                            egui::Stroke::new(1.0, grid_color),
+                        );
+                        t += interval;
+                    }
+                }
+            }
+
             let mut y_offset = available.top() - self.scroll_y;
+            let mut deferred_zoom: Option<(f64, f64)> = None;
 
             for (i, lane) in self.lanes.iter().enumerate() {
                 if !lane.visible {
@@ -1214,10 +1253,56 @@ impl FlameApp {
                                                 name,
                                                 frame_id: hit.frame_id,
                                                 lane_index: i,
+                                                start_us: hit.rect.left() as f64,
+                                                end_us: hit.rect.right() as f64,
                                             });
                                         }
                                     }
                                     break;
+                                }
+                            }
+                        }
+                    }
+
+                    // Selected span highlight
+                    if let Some(sel) = &self.selected_span {
+                        if sel.lane_index == i {
+                            for hit in &result.hit_regions {
+                                if hit.frame_id == sel.frame_id {
+                                    let sel_color = crate::theme::resolve(
+                                        flame_cat_protocol::ThemeToken::SelectionHighlight,
+                                        self.theme_mode,
+                                    );
+                                    painter.rect_stroke(
+                                        hit.rect,
+                                        egui::CornerRadius::ZERO,
+                                        egui::Stroke::new(2.0, sel_color),
+                                        egui::StrokeKind::Outside,
+                                    );
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    // Double-click to zoom to span
+                    if response.double_clicked() {
+                        if let Some(hover_pos) = ui.input(|i| i.pointer.hover_pos()) {
+                            if content_rect.contains(hover_pos) {
+                                for hit in &result.hit_regions {
+                                    if hit.rect.contains(hover_pos) {
+                                        let span_left = (hit.rect.left() - available.left()) as f64 / available.width() as f64;
+                                        let span_right = (hit.rect.right() - available.left()) as f64 / available.width() as f64;
+                                        let view_span = self.view_end - self.view_start;
+                                        let abs_left = self.view_start + span_left * view_span;
+                                        let abs_right = self.view_start + span_right * view_span;
+                                        let pad = (abs_right - abs_left) * 0.15;
+                                        deferred_zoom = Some((
+                                            (abs_left - pad).max(0.0),
+                                            (abs_right + pad).min(1.0),
+                                        ));
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -1276,6 +1361,13 @@ impl FlameApp {
 
                 y_offset += total_height + 1.0;
             }
+
+            // Apply deferred double-click zoom
+            if let Some((new_start, new_end)) = deferred_zoom {
+                self.view_start = new_start;
+                self.view_end = new_end;
+                self.invalidate_commands();
+            }
         });
     }
 
@@ -1307,6 +1399,54 @@ impl FlameApp {
             self.load_profile(&data);
         }
     }
+
+    fn render_help_overlay(&mut self, ctx: &egui::Context) {
+        if !self.show_help {
+            return;
+        }
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.show_help = false;
+            return;
+        }
+
+        egui::Area::new(egui::Id::new("help_overlay"))
+            .order(egui::Order::Foreground)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style())
+                    .inner_margin(16.0)
+                    .show(ui, |ui| {
+                        ui.heading("⌨ Keyboard Shortcuts");
+                        ui.separator();
+                        ui.spacing_mut().item_spacing.y = 4.0;
+                        let shortcuts = [
+                            ("A / ←", "Pan left"),
+                            ("D / →", "Pan right"),
+                            ("W / ↑", "Scroll up"),
+                            ("S / ↓", "Scroll down"),
+                            ("+", "Zoom in"),
+                            ("-", "Zoom out"),
+                            ("0", "Reset zoom"),
+                            ("Ctrl+Scroll", "Zoom at cursor"),
+                            ("Drag", "Pan + vertical scroll"),
+                            ("Double-click", "Zoom to span"),
+                            ("Click", "Select span"),
+                            ("Esc", "Deselect / close help"),
+                            ("?", "Toggle this help"),
+                        ];
+                        for (key, desc) in shortcuts {
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new(key).strong().monospace());
+                                ui.label(desc);
+                            });
+                        }
+                        ui.separator();
+                        if ui.button("Close").clicked() {
+                            self.show_help = false;
+                        }
+                    });
+            });
+    }
 }
 
 impl eframe::App for FlameApp {
@@ -1326,7 +1466,13 @@ impl eframe::App for FlameApp {
         self.render_detail_panel(ctx);
         self.render_sidebar(ctx);
         self.render_central_panel(ctx);
+        self.render_help_overlay(ctx);
         self.handle_file_drop(ctx);
+
+        // Global ? key to toggle help
+        if ctx.input(|i| i.key_pressed(egui::Key::Questionmark)) {
+            self.show_help = !self.show_help;
+        }
     }
 }
 
