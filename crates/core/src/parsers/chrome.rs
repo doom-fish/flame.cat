@@ -577,13 +577,13 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
                 }
 
                 // Screenshot extraction
-                if event.name == "Screenshot" {
-                    if let Some(snap) = event.args.as_ref().and_then(|a| a.get("snapshot")).and_then(|v| v.as_str()) {
-                        screenshots.push(Screenshot {
-                            ts: event.ts,
-                            data: snap.to_string(),
-                        });
-                    }
+                if event.name == "Screenshot"
+                    && let Some(snap) = event.args.as_ref().and_then(|a| a.get("snapshot")).and_then(|v| v.as_str())
+                {
+                    screenshots.push(Screenshot {
+                        ts: event.ts,
+                        data: snap.to_string(),
+                    });
                 }
 
                 instant_events.push(InstantEvent {

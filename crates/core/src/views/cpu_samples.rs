@@ -75,11 +75,11 @@ pub fn render_cpu_samples(
             continue;
         }
 
-        if let Some(last) = runs.last_mut() {
-            if last.node_id == node_id {
-                last.end = next_ts;
-                continue;
-            }
+        if let Some(last) = runs.last_mut()
+            && last.node_id == node_id
+        {
+            last.end = next_ts;
+            continue;
         }
         runs.push(Run {
             start: ts,

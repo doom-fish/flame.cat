@@ -31,9 +31,6 @@ pub struct FlameApp {
     lane_commands: Vec<Vec<RenderCommand>>,
     /// Global vertical scroll offset in pixels.
     scroll_y: f32,
-    /// Currently hovered frame_id.
-    #[allow(dead_code)]
-    hovered_frame: Option<u64>,
     /// Selected span for detail panel.
     selected_span: Option<SelectedSpan>,
     /// Search query for filtering spans.
@@ -76,8 +73,6 @@ struct LaneState {
     kind: LaneKind,
     name: String,
     height: f32,
-    #[allow(dead_code)]
-    scroll_y: f32,
     visible: bool,
 }
 
@@ -141,7 +136,6 @@ impl FlameApp {
             theme_mode: ThemeMode::Dark,
             lane_commands: Vec::new(),
             scroll_y: 0.0,
-            hovered_frame: None,
             selected_span: None,
             search_query: String::new(),
             error: None,
@@ -245,7 +239,6 @@ impl FlameApp {
                 kind: LaneKind::Thread(thread.id),
                 name: format!("{} ({span_count} spans)", thread.name),
                 height: content_height,
-                scroll_y: 0.0,
                 visible: true,
             });
         }
@@ -256,7 +249,6 @@ impl FlameApp {
                 kind: LaneKind::AsyncSpans,
                 name: format!("Async ({} spans)", profile.async_spans.len()),
                 height: 60.0,
-                scroll_y: 0.0,
                 visible: true,
             });
         }
@@ -266,7 +258,6 @@ impl FlameApp {
                 kind: LaneKind::Counter(i),
                 name: format!("📊 {}", counter.name),
                 height: 80.0,
-                scroll_y: 0.0,
                 visible: true,
             });
         }
@@ -276,7 +267,6 @@ impl FlameApp {
                 kind: LaneKind::Markers,
                 name: format!("Markers ({})", profile.markers.len()),
                 height: 30.0,
-                scroll_y: 0.0,
                 visible: true,
             });
         }
@@ -286,7 +276,6 @@ impl FlameApp {
                 kind: LaneKind::CpuSamples,
                 name: "CPU Samples".to_string(),
                 height: 80.0,
-                scroll_y: 0.0,
                 visible: true,
             });
         }
@@ -296,7 +285,6 @@ impl FlameApp {
                 kind: LaneKind::FrameTrack,
                 name: format!("Frames ({})", profile.frames.len()),
                 height: 40.0,
-                scroll_y: 0.0,
                 visible: true,
             });
         }
@@ -306,7 +294,6 @@ impl FlameApp {
                 kind: LaneKind::ObjectTrack,
                 name: format!("Objects ({})", profile.object_events.len()),
                 height: 60.0,
-                scroll_y: 0.0,
                 visible: true,
             });
         }
@@ -322,7 +309,6 @@ impl FlameApp {
                 kind: LaneKind::Thread(thread.id),
                 name: format!("{} ({span_count} spans)", thread.name),
                 height: content_height,
-                scroll_y: 0.0,
                 visible: *span_count >= 3,
             });
         }
@@ -362,7 +348,7 @@ impl FlameApp {
             }
             let viewport = Viewport {
                 x: 0.0,
-                y: lane.scroll_y as f64,
+                y: 0.0,
                 width: canvas_width as f64,
                 height: lane.height as f64,
                 dpr: 1.0,
@@ -932,9 +918,12 @@ impl eframe::App for FlameApp {
                                     lane.visible = vis;
                                     changed = true;
                                 }
-                                // Truncate long names
-                                let name = if lane.name.len() > 24 {
-                                    format!("{}…", &lane.name[..23])
+                                // Truncate long names (safe for multi-byte chars)
+                                let name = if lane.name.chars().count() > 24 {
+                                    let end = lane.name.char_indices()
+                                        .nth(23)
+                                        .map_or(lane.name.len(), |(i, _)| i);
+                                    format!("{}…", &lane.name[..end])
                                 } else {
                                     lane.name.clone()
                                 };
@@ -990,8 +979,9 @@ impl eframe::App for FlameApp {
                 let delta = response.drag_delta();
                 let view_span = self.view_end - self.view_start;
                 let dx_frac = -(delta.x as f64) / (available.width() as f64) * view_span;
-                self.view_start = (self.view_start + dx_frac).max(0.0);
-                self.view_end = (self.view_end + dx_frac).min(1.0);
+                let new_start = (self.view_start + dx_frac).clamp(0.0, 1.0 - view_span);
+                self.view_start = new_start;
+                self.view_end = new_start + view_span;
                 self.scroll_y -= delta.y;
                 self.scroll_y = self.scroll_y.max(0.0);
                 self.invalidate_commands();
@@ -1028,8 +1018,9 @@ impl eframe::App for FlameApp {
                 let view_span = self.view_end - self.view_start;
                 let dx_frac =
                     -(scroll.x as f64) / (available.width() as f64) * view_span;
-                self.view_start = (self.view_start + dx_frac).max(0.0);
-                self.view_end = (self.view_end + dx_frac).min(1.0);
+                let new_start = (self.view_start + dx_frac).clamp(0.0, 1.0 - view_span);
+                self.view_start = new_start;
+                self.view_end = new_start + view_span;
                 self.invalidate_commands();
             }
 
@@ -1100,6 +1091,14 @@ impl eframe::App for FlameApp {
             // Generate render commands AFTER all input (so invalidations are resolved)
             self.ensure_commands(available.width());
 
+            // Clamp scroll_y to valid range
+            let total_lane_height: f32 = self.lanes.iter()
+                .filter(|l| l.visible)
+                .map(|l| l.height + 1.0) // +1 for lane separator
+                .sum();
+            let max_scroll = (total_lane_height - available.height()).max(0.0);
+            self.scroll_y = self.scroll_y.clamp(0.0, max_scroll);
+
             // Render lanes
             let mut painter = ui.painter_at(available);
             let bg = crate::theme::resolve(
@@ -1160,15 +1159,14 @@ impl eframe::App for FlameApp {
                             for hit in &result.hit_regions {
                                 if hit.rect.contains(hover_pos) {
                                     if let Some(name) = find_span_label(cmds, hit.frame_id) {
-                                        #[allow(deprecated)]
-                                        egui::show_tooltip_at_pointer(
-                                            ui.ctx(),
-                                            ui.layer_id(),
-                                            egui::Id::new("span_tooltip"),
-                                            |ui| {
-                                                ui.label(&name);
-                                            },
-                                        );
+                                        egui::Area::new(egui::Id::new("span_tooltip"))
+                                            .order(egui::Order::Tooltip)
+                                            .current_pos(hover_pos + egui::vec2(12.0, 12.0))
+                                            .show(ui.ctx(), |ui| {
+                                                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                                                    ui.label(&name);
+                                                });
+                                            });
                                         if clicked {
                                             self.selected_span = Some(SelectedSpan {
                                                 name,
