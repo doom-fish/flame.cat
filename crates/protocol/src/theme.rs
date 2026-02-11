@@ -65,4 +65,8 @@ pub enum ThemeToken {
     FrameGood,
     FrameWarning,
     FrameDropped,
+
+    // Flow arrows
+    FlowArrow,
+    FlowArrowHead,
 }

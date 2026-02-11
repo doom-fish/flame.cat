@@ -94,6 +94,9 @@ fn resolve_dark(token: ThemeToken) -> ResolvedColor {
         FrameGood => ResolvedColor::rgb(76, 175, 80),
         FrameWarning => ResolvedColor::rgb(255, 193, 7),
         FrameDropped => ResolvedColor::rgb(244, 67, 54),
+
+        FlowArrow => ResolvedColor::rgba(255, 150, 50, 160),
+        FlowArrowHead => ResolvedColor::rgba(255, 150, 50, 200),
     }
 }
 
@@ -154,5 +157,8 @@ fn resolve_light(token: ThemeToken) -> ResolvedColor {
         FrameGood => ResolvedColor::rgb(56, 142, 60),
         FrameWarning => ResolvedColor::rgb(230, 170, 0),
         FrameDropped => ResolvedColor::rgb(211, 47, 47),
+
+        FlowArrow => ResolvedColor::rgba(50, 120, 220, 140),
+        FlowArrowHead => ResolvedColor::rgba(50, 120, 220, 180),
     }
 }

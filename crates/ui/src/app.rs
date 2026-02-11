@@ -1200,6 +1200,8 @@ impl FlameApp {
 
             let mut y_offset = available.top() - self.scroll_y;
             let mut deferred_zoom: Option<(f64, f64)> = None;
+            // Collect tid → y_center for flow arrow rendering
+            let mut tid_to_y: std::collections::HashMap<u64, f32> = std::collections::HashMap::new();
 
             for (i, lane) in self.lanes.iter().enumerate() {
                 if !lane.visible {
@@ -1208,6 +1210,11 @@ impl FlameApp {
 
                 let lane_top = y_offset;
                 let total_height = lane.height;
+
+                // Record lane y-center for flow arrows
+                if let LaneKind::Thread(tid) = &lane.kind {
+                    tid_to_y.insert(*tid as u64, lane_top + total_height / 2.0);
+                }
 
                 // Skip if completely off-screen
                 if lane_top > available.bottom() {
@@ -1386,6 +1393,81 @@ impl FlameApp {
                 );
 
                 y_offset += total_height + 1.0;
+            }
+
+            // Draw flow arrows across lanes
+            if let Some(session) = &self.session {
+                if let Some(entry) = session.profiles().first() {
+                    let profile = &entry.profile;
+                    let session_start = session.start_time();
+                    let session_duration = session.end_time() - session_start;
+                    if session_duration > 0.0 && !profile.flow_arrows.is_empty() {
+                        let arrow_color = crate::theme::resolve(
+                            flame_cat_protocol::ThemeToken::FlowArrow,
+                            self.theme_mode,
+                        );
+                        let head_color = crate::theme::resolve(
+                            flame_cat_protocol::ThemeToken::FlowArrowHead,
+                            self.theme_mode,
+                        );
+                        let view_span = self.view_end - self.view_start;
+
+                        painter.set_clip_rect(available);
+
+                        for arrow in &profile.flow_arrows {
+                            let from_y = tid_to_y.get(&arrow.from_tid);
+                            let to_y = tid_to_y.get(&arrow.to_tid);
+                            let (Some(&from_y), Some(&to_y)) = (from_y, to_y) else {
+                                continue;
+                            };
+
+                            // Convert timestamps to fractional viewport position
+                            let from_frac =
+                                ((arrow.from_ts - session_start) / session_duration - self.view_start) / view_span;
+                            let to_frac =
+                                ((arrow.to_ts - session_start) / session_duration - self.view_start) / view_span;
+
+                            // Skip if both endpoints are off-screen
+                            if (from_frac < -0.1 && to_frac < -0.1)
+                                || (from_frac > 1.1 && to_frac > 1.1)
+                            {
+                                continue;
+                            }
+
+                            let from_x = available.left() + from_frac as f32 * available.width();
+                            let to_x = available.left() + to_frac as f32 * available.width();
+
+                            let p1 = egui::pos2(from_x, from_y);
+                            let p4 = egui::pos2(to_x, to_y);
+
+                            // Cubic Bézier with horizontal control points
+                            let dx = (to_x - from_x).abs() * 0.4;
+                            let p2 = egui::pos2(from_x + dx, from_y);
+                            let p3 = egui::pos2(to_x - dx, to_y);
+
+                            let bezier = egui::epaint::CubicBezierShape::from_points_stroke(
+                                [p1, p2, p3, p4],
+                                false,
+                                egui::Color32::TRANSPARENT,
+                                egui::Stroke::new(1.5, arrow_color),
+                            );
+                            painter.add(bezier);
+
+                            // Small arrowhead triangle at destination
+                            let arrow_size = 5.0_f32;
+                            let dir = (p4 - p3).normalized();
+                            let perp = egui::vec2(-dir.y, dir.x);
+                            let tip = p4;
+                            let left = tip - dir * arrow_size + perp * arrow_size * 0.5;
+                            let right = tip - dir * arrow_size - perp * arrow_size * 0.5;
+                            painter.add(egui::epaint::PathShape::convex_polygon(
+                                vec![tip, left, right],
+                                head_color,
+                                egui::Stroke::NONE,
+                            ));
+                        }
+                    }
+                }
             }
 
             // Apply deferred double-click zoom (animated)
