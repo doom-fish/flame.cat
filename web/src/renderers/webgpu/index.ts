@@ -1,1 +1,0 @@
-export { WebGPURenderer } from "./renderer";

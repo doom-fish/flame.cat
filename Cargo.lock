@@ -1050,17 +1050,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "flame-cat-wasm"
-version = "0.1.0"
-dependencies = [
- "flame-cat-core",
- "flame-cat-protocol",
- "serde",
- "serde_json",
- "wasm-bindgen",
-]
-
-[[package]]
 name = "flate2"
 version = "1.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
