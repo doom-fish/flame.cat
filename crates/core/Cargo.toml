@@ -1,0 +1,12 @@
+[package]
+name = "flame-cat-core"
+description = "Core data model, parsers, and view transforms for flame.cat"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+flame-cat-protocol = { path = "../protocol" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }

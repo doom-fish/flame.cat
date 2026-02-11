@@ -1,0 +1,17 @@
+[package]
+name = "flame-cat-tui"
+description = "Terminal UI renderer for flame.cat"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "flame-cat"
+path = "src/main.rs"
+
+[dependencies]
+flame-cat-core = { path = "../core" }
+flame-cat-protocol = { path = "../protocol" }
+anyhow = { workspace = true }
+ratatui = "0.29"
+crossterm = "0.29"

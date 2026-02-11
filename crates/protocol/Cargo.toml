@@ -1,0 +1,9 @@
+[package]
+name = "flame-cat-protocol"
+description = "Render command protocol for flame.cat"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { workspace = true }
