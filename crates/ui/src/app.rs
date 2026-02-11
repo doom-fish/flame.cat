@@ -817,9 +817,12 @@ impl eframe::App for FlameApp {
                 self.invalidate_commands();
             }
 
-            // Scroll wheel = zoom (like Chrome DevTools / Perfetto)
+            // Scroll wheel: Ctrl/Cmd+scroll = zoom, plain scroll = vertical pan
             let scroll = ui.input(|i| i.smooth_scroll_delta);
-            if scroll.y.abs() > 0.1 {
+            let ctrl_held = ui.input(|i| i.modifiers.ctrl || i.modifiers.command);
+
+            if ctrl_held && scroll.y.abs() > 0.1 {
+                // Ctrl+scroll = zoom (like Chrome DevTools / Perfetto)
                 let zoom_factor = 2.0_f64.powf(-(scroll.y as f64) * 0.01);
                 let mouse_frac = if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
                     ((pos.x - available.left()) as f64 / available.width() as f64)
@@ -835,10 +838,13 @@ impl eframe::App for FlameApp {
                 self.view_start = (cursor_time - mouse_frac * new_span).max(0.0);
                 self.view_end = (self.view_start + new_span).min(1.0);
                 self.invalidate_commands();
+            } else if !ctrl_held && scroll.y.abs() > 0.1 {
+                // Plain scroll = vertical scroll through lanes
+                self.scroll_y = (self.scroll_y - scroll.y).max(0.0);
             }
 
             // Horizontal scroll (trackpad two-finger) = horizontal pan
-            if scroll.x.abs() > 0.1 {
+            if !ctrl_held && scroll.x.abs() > 0.1 {
                 let view_span = self.view_end - self.view_start;
                 let dx_frac =
                     -(scroll.x as f64) / (available.width() as f64) * view_span;
