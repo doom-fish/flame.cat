@@ -212,7 +212,9 @@ async function main() {
     const timeSel = _getTimeSelection?.();
     const selInfo = timeSel ? ` · Selection: ${formatTime((timeSel.end - timeSel.start) * profileDuration)}` : "";
     statusLeft.textContent = `${formatTime(viewStart * profileDuration)} – ${formatTime(viewEnd * profileDuration)}`;
-    statusRight.textContent = `Visible: ${formatTime(visibleDuration)} · ${laneManager.visibleLanes.length} lanes${selInfo}`;
+    const zoomLevel = 1 / (viewEnd - viewStart);
+    const zoomStr = zoomLevel > 1.01 ? ` · ${zoomLevel.toFixed(1)}×` : "";
+    statusRight.textContent = `Visible: ${formatTime(visibleDuration)} · ${laneManager.visibleLanes.length} lanes${zoomStr}${selInfo}`;
   };
 
   // Detail panel

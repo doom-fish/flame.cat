@@ -451,21 +451,31 @@ export class WebGPURenderer {
       }],
     });
 
-    // Simple path: draw all rects in one call, ignore batching for now
-    if (totalRects > 0) {
-      pass.setPipeline(this.rectPipeline);
-      pass.setBindGroup(0, this.rectBindGroup);
-      pass.setVertexBuffer(0, this.quadVertexBuffer);
-      pass.setVertexBuffer(1, this.rectInstanceBuffer);
-      pass.draw(6, totalRects);
-    }
+    // Draw batches with scissor clipping
+    for (const batch of batches) {
+      if (batch.scissor) {
+        const s = batch.scissor;
+        if (s.w <= 0 || s.h <= 0) continue;
+        pass.setScissorRect(s.x, s.y, s.w, s.h);
+      } else {
+        pass.setScissorRect(0, 0, pxW, pxH);
+      }
 
-    if (totalGlyphs > 0) {
-      pass.setPipeline(this.textPipeline);
-      pass.setBindGroup(0, this.textBindGroup);
-      pass.setVertexBuffer(0, this.quadVertexBuffer);
-      pass.setVertexBuffer(1, this.glyphInstanceBuffer);
-      pass.draw(6, totalGlyphs);
+      if (batch.rectCount > 0) {
+        pass.setPipeline(this.rectPipeline);
+        pass.setBindGroup(0, this.rectBindGroup);
+        pass.setVertexBuffer(0, this.quadVertexBuffer);
+        pass.setVertexBuffer(1, this.rectInstanceBuffer);
+        pass.draw(6, batch.rectCount, 0, batch.rectStart);
+      }
+
+      if (batch.glyphCount > 0) {
+        pass.setPipeline(this.textPipeline);
+        pass.setBindGroup(0, this.textBindGroup);
+        pass.setVertexBuffer(0, this.quadVertexBuffer);
+        pass.setVertexBuffer(1, this.glyphInstanceBuffer);
+        pass.draw(6, batch.glyphCount, 0, batch.glyphStart);
+      }
     }
 
     pass.end();
