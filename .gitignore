@@ -8,3 +8,4 @@ pkg/
 # Test profile artifacts
 chrome-profile.json
 *.cpuprofile
+.vite/

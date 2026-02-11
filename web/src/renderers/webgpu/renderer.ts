@@ -241,7 +241,7 @@ export class WebGPURenderer {
       // Skip degenerate or off-screen rects
       if (!(w > 0.01) || !(h > 0.01)) return;
       if (x + w < 0 || x > width || y + h < 0 || y > height) return;
-      if (!isFinite(x) || !isFinite(y)) return;
+      if (!isFinite(x) || !isFinite(y) || !isFinite(w) || !isFinite(h)) return;
       if (rectOffset + RECT_FLOATS > rectData.length) {
         const newBuf = new Float32Array(rectData.length * 2);
         newBuf.set(rectData);
@@ -259,7 +259,7 @@ export class WebGPURenderer {
       color: { r: number; g: number; b: number; a: number },
       align: string, maxWidth?: number,
     ) => {
-      if (!text || fontSize < 1 || !isFinite(x) || !isFinite(y)) return;
+      if (!text || fontSize < 1 || !isFinite(x) || !isFinite(y) || !isFinite(fontSize)) return;
       // Quick vertical cull
       if (y + fontSize < 0 || y - fontSize > height) return;
       const scale = fontSize / this.atlas.atlasSize;
