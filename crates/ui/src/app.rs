@@ -100,10 +100,22 @@ impl FlameApp {
                     let ctx = cc.egui_ctx.clone();
                     web_sys::console::log_1(&"flame.cat: loading demo profile...".into());
                     wasm_bindgen_futures::spawn_local(async move {
-                        match Self::fetch_bytes("/assets/demo.json").await {
+                        // Try preloaded data from JS (fetched in parallel with WASM)
+                        let result = Self::get_preloaded_demo().await
+                            .or_else(|| {
+                                web_sys::console::log_1(
+                                    &"flame.cat: preload miss, fetching...".into(),
+                                );
+                                None
+                            });
+                        let result = match result {
+                            Some(data) => Ok(data),
+                            None => Self::fetch_bytes("/assets/demo.json").await,
+                        };
+                        match result {
                             Ok(resp) => {
                                 web_sys::console::log_1(
-                                    &format!("flame.cat: fetched {} bytes", resp.len()).into(),
+                                    &format!("flame.cat: loaded {} bytes", resp.len()).into(),
                                 );
                                 if let Ok(mut lock) = pd.lock() {
                                     *lock = Some(resp);
@@ -422,6 +434,26 @@ impl FlameApp {
             };
             self.lane_commands.push(cmds);
         }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    async fn get_preloaded_demo() -> Option<Vec<u8>> {
+        use wasm_bindgen::JsCast;
+        use wasm_bindgen_futures::JsFuture;
+
+        let window = web_sys::window()?;
+        let promise = js_sys::Reflect::get(&window, &"__demoData".into()).ok()?;
+        if promise.is_undefined() || promise.is_null() {
+            return None;
+        }
+        let promise: js_sys::Promise = promise.dyn_into().ok()?;
+        let buf = JsFuture::from(promise).await.ok()?;
+        if buf.is_null() || buf.is_undefined() {
+            return None;
+        }
+        let array_buf: js_sys::ArrayBuffer = buf.dyn_into().ok()?;
+        let uint8 = js_sys::Uint8Array::new(&array_buf);
+        Some(uint8.to_vec())
     }
 
     #[cfg(target_arch = "wasm32")]

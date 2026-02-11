@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
     <title>flame.cat</title>
     <link data-trunk rel="copy-dir" href="assets" />
+    <script>
+        // Preload demo profile in parallel with WASM download
+        if (location.hash === '#demo') {
+            window.__demoData = fetch('/assets/demo.json')
+                .then(r => r.arrayBuffer())
+                .catch(() => null);
+        }
+    </script>
     <style>
         html, body {
             margin: 0;
