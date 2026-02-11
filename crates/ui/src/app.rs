@@ -66,6 +66,8 @@ enum LaneKind {
     CpuSamples,
     /// Frame timing track.
     FrameTrack,
+    /// Object lifecycle track (GC objects, etc.).
+    ObjectTrack,
     /// Minimap overview.
     Minimap,
 }
@@ -271,6 +273,17 @@ impl FlameApp {
             });
         }
 
+        // Object lifecycle track
+        if !profile.object_events.is_empty() {
+            self.lanes.push(LaneState {
+                kind: LaneKind::ObjectTrack,
+                name: format!("Objects ({})", profile.object_events.len()),
+                height: 60.0,
+                scroll_y: 0.0,
+                visible: true,
+            });
+        }
+
         // Minimap (always last, always visible)
         self.lanes.push(LaneState {
             kind: LaneKind::Minimap,
@@ -367,6 +380,14 @@ impl FlameApp {
                 LaneKind::FrameTrack => {
                     flame_cat_core::views::frame_track::render_frame_track(
                         &entry.profile.frames,
+                        &viewport,
+                        abs_start,
+                        abs_end,
+                    )
+                }
+                LaneKind::ObjectTrack => {
+                    flame_cat_core::views::object_track::render_object_track(
+                        &entry.profile.object_events,
                         &viewport,
                         abs_start,
                         abs_end,
