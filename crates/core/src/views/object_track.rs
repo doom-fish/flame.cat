@@ -116,17 +116,6 @@ pub fn render_object_track(
             frame_id: None,
         });
 
-        // Label
-        if w > MIN_LABEL_WIDTH {
-            commands.push(RenderCommand::DrawText {
-                position: Point::new(x + 3.0, y + ROW_HEIGHT / 2.0 + 3.0),
-                text: life.name.clone(),
-                color: ThemeToken::TextPrimary,
-                font_size: FONT_SIZE,
-                align: TextAlign::Left,
-            });
-        }
-
         // Snapshot markers
         for &snap_ts in &life.snapshots {
             if snap_ts < view_start || snap_ts > view_end {

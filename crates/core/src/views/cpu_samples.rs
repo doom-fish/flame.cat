@@ -144,16 +144,6 @@ pub fn render_cpu_samples(
                 label: Some(name.clone()),
                 frame_id: None,
             });
-
-            if clamped_w > MIN_LABEL_WIDTH {
-                commands.push(RenderCommand::DrawText {
-                    position: Point::new(clamped_x + 3.0, y + ROW_HEIGHT / 2.0 + 4.0),
-                    text: name.clone(),
-                    color: ThemeToken::TextPrimary,
-                    font_size: FONT_SIZE,
-                    align: TextAlign::Left,
-                });
-            }
         }
     }
 
