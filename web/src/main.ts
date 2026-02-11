@@ -423,6 +423,9 @@ async function main() {
             absViewStart,
             absViewEnd,
           );
+        } else if (trackType === "network") {
+          // Network waterfall rendered in JS from get_network_requests
+          commandsJson = "[]";
         } else {
           commandsJson = wasm.render_view(
             lane.profileIndex,
@@ -440,6 +443,72 @@ async function main() {
         }
 
         const laneCmds: RenderCommand[] = JSON.parse(commandsJson) as RenderCommand[];
+
+        // Network waterfall: generate horizontal bars from network request data
+        if (trackType === "network") {
+          try {
+            const reqsJson = wasm.get_network_requests(lane.profileIndex, absViewStart, absViewEnd);
+            const reqs = JSON.parse(reqsJson) as {
+              url: string;
+              send_ts: number;
+              response_ts: number | null;
+              finish_ts: number | null;
+              mime_type: string | null;
+              from_cache: boolean;
+            }[];
+            const viewRange = absViewEnd - absViewStart;
+            const w = canvas.clientWidth;
+            const ROW_H = 18;
+            const GAP = 2;
+            for (let ri = 0; ri < reqs.length; ri++) {
+              const req = reqs[ri];
+              const end = req.finish_ts ?? req.response_ts ?? req.send_ts;
+              const x0 = ((req.send_ts - absViewStart) / viewRange) * w;
+              const x1 = ((end - absViewStart) / viewRange) * w;
+              const y = ri * (ROW_H + GAP);
+              const barW = Math.max(x1 - x0, 2);
+              // TTFB phase (send → response)
+              if (req.response_ts != null) {
+                const xResp = ((req.response_ts - absViewStart) / viewRange) * w;
+                laneCmds.push({
+                  DrawRect: {
+                    rect: { x: x0, y, w: xResp - x0, h: ROW_H },
+                    color: "NetworkTTFB",
+                    border_color: null,
+                    label: null,
+                    frame_id: null,
+                  },
+                });
+              }
+              // Full bar
+              laneCmds.push({
+                DrawRect: {
+                  rect: { x: x0, y, w: barW, h: ROW_H },
+                  color: "NetworkBar",
+                  border_color: "LaneBorder",
+                  label: null,
+                  frame_id: null,
+                },
+              });
+              // URL label
+              const shortUrl = req.url.length > 60 ? "…" + req.url.slice(-58) : req.url;
+              if (barW > 30) {
+                laneCmds.push({
+                  DrawText: {
+                    text: shortUrl,
+                    pos: { x: x0 + 3, y: y + ROW_H / 2 },
+                    color: "TextPrimary",
+                    size: 10,
+                    align: "Left",
+                    frame_id: null,
+                  },
+                });
+              }
+            }
+          } catch {
+            // network data unavailable
+          }
+        }
 
         allCommands.push({
           PushTransform: { translate: { x: 0, y: laneY }, scale: { x: 1, y: 1 } },
@@ -1003,9 +1072,27 @@ async function main() {
           });
         }
 
-        if (extra.counter_count > 0 || extra.marker_count > 0 || extra.has_frames || extra.async_span_count > 0) {
-          laneSidebar.update(laneManager.lanes);
+        // Network waterfall track
+        try {
+          const netJson = wasm.get_network_requests(handle, 0, 1e15);
+          const netReqs = JSON.parse(netJson) as unknown[];
+          if (netReqs.length > 0) {
+            const ROW_H = 20;
+            const netHeight = Math.min(300, netReqs.length * ROW_H + 8);
+            laneManager.addLane({
+              id: `network-${handle}`,
+              viewType: activeView,
+              profileIndex: handle,
+              height: netHeight,
+              trackType: "network",
+              threadName: `🌐 Network (${netReqs.length})`,
+            });
+          }
+        } catch {
+          // network data optional
         }
+
+        laneSidebar.update(laneManager.lanes);
       } catch {
         // extra tracks are optional
       }

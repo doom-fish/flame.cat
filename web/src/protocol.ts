@@ -39,7 +39,9 @@ export type ThemeToken =
   | "FrameGood"
   | "FrameWarning"
   | "FrameDropped"
-  | "FlowArrow";
+  | "FlowArrow"
+  | "NetworkBar"
+  | "NetworkTTFB";
 
 export interface Point {
   x: number;

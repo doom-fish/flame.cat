@@ -299,6 +299,7 @@ mod tests {
             instant_events: vec![],
             object_events: vec![],
             cpu_samples: None,
+            network_requests: vec![],
         };
 
         let entries = get_ranked_entries(&profile, RankedSort::SelfTime, false);

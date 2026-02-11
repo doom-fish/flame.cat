@@ -239,6 +239,7 @@ mod tests {
             instant_events: vec![],
             object_events: vec![],
             cpu_samples: None,
+            network_requests: vec![],
         }
     }
 

@@ -1,6 +1,7 @@
 use flame_cat_protocol::{
     AsyncSpan, ClockKind, CounterSample, CounterTrack, CounterUnit, CpuNode, CpuSamples,
-    FlowArrow, InstantEvent, Marker, MarkerScope, ObjectEvent, ObjectPhase, SharedStr, TimeDomain,
+    FlowArrow, InstantEvent, Marker, MarkerScope, NetworkRequest, ObjectEvent, ObjectPhase,
+    SharedStr, TimeDomain,
 };
 use serde::Deserialize;
 use thiserror::Error;
@@ -366,6 +367,10 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
     let mut instant_events: Vec<InstantEvent> = Vec::new();
     let mut markers: Vec<Marker> = Vec::new();
     let mut object_events: Vec<ObjectEvent> = Vec::new();
+    // Network request correlation
+    let mut net_sends: std::collections::HashMap<String, NetworkRequest> =
+        std::collections::HashMap::new();
+    let mut network_requests: Vec<NetworkRequest> = Vec::new();
 
     // Counter state: name → (unit, samples)
     let mut counter_map: std::collections::HashMap<String, (CounterUnit, Vec<CounterSample>)> =
@@ -519,6 +524,54 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
                     && let Some(data) = event.args.as_ref().and_then(|a| a.get("data"))
                 {
                     extract_update_counters(data, event.ts, &mut counter_map);
+                }
+
+                // Network request correlation
+                if let Some(data) = event.args.as_ref().and_then(|a| a.get("data")) {
+                    match event.name.as_str() {
+                        "ResourceSendRequest" => {
+                            if let Some(rid) = data.get("requestId").and_then(|v| v.as_str()) {
+                                let url = data
+                                    .get("url")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("");
+                                net_sends.insert(
+                                    rid.to_string(),
+                                    NetworkRequest {
+                                        request_id: SharedStr::from(rid),
+                                        url: SharedStr::from(url),
+                                        send_ts: event.ts,
+                                        response_ts: None,
+                                        finish_ts: None,
+                                        mime_type: None,
+                                        from_cache: false,
+                                    },
+                                );
+                            }
+                        }
+                        "ResourceReceiveResponse" => {
+                            if let Some(rid) = data.get("requestId").and_then(|v| v.as_str()) {
+                                if let Some(req) = net_sends.get_mut(rid) {
+                                    req.response_ts = Some(event.ts);
+                                    if let Some(mime) = data.get("mimeType").and_then(|v| v.as_str()) {
+                                        req.mime_type = Some(SharedStr::from(mime));
+                                    }
+                                    req.from_cache = data.get("fromCache").and_then(|v| v.as_bool()).unwrap_or(false);
+                                }
+                            }
+                        }
+                        "ResourceFinish" => {
+                            if let Some(rid) = data.get("requestId").and_then(|v| v.as_str()) {
+                                if let Some(mut req) = net_sends.remove(rid) {
+                                    req.finish_ts = Some(event.ts);
+                                    network_requests.push(req);
+                                } else {
+                                    // Finish without send — skip
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
                 }
 
                 instant_events.push(InstantEvent {
@@ -769,6 +822,13 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
         None
     };
 
+    // Flush remaining network sends (no finish event)
+    for (_, req) in net_sends {
+        network_requests.push(req);
+    }
+    // Sort network requests by send timestamp
+    network_requests.sort_by(|a, b| a.send_ts.total_cmp(&b.send_ts));
+
     let mut profile = Profile::new(
         ProfileMetadata {
             name: None,
@@ -786,6 +846,7 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
     profile.instant_events = instant_events;
     profile.object_events = object_events;
     profile.cpu_samples = cpu_sample_data;
+    profile.network_requests = network_requests;
 
     Ok(profile)
 }

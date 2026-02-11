@@ -663,3 +663,42 @@ pub fn get_flow_arrows(
         serde_json::to_string(&arrows).map_err(|e| JsError::new(&e.to_string()))
     })
 }
+
+/// Get network requests for the visible time range.
+#[wasm_bindgen]
+pub fn get_network_requests(
+    profile_index: usize,
+    view_start: f64,
+    view_end: f64,
+) -> Result<String, JsError> {
+    with_profile(profile_index, |profile| {
+        #[derive(serde::Serialize)]
+        struct NetReqOut {
+            url: String,
+            send_ts: f64,
+            response_ts: Option<f64>,
+            finish_ts: Option<f64>,
+            mime_type: Option<String>,
+            from_cache: bool,
+        }
+
+        let reqs: Vec<NetReqOut> = profile
+            .network_requests
+            .iter()
+            .filter(|r| {
+                let end = r.finish_ts.or(r.response_ts).unwrap_or(r.send_ts);
+                r.send_ts <= view_end && end >= view_start
+            })
+            .map(|r| NetReqOut {
+                url: r.url.to_string(),
+                send_ts: r.send_ts,
+                response_ts: r.response_ts,
+                finish_ts: r.finish_ts,
+                mime_type: r.mime_type.as_ref().map(|s| s.to_string()),
+                from_cache: r.from_cache,
+            })
+            .collect();
+
+        serde_json::to_string(&reqs).map_err(|e| JsError::new(&e.to_string()))
+    })
+}

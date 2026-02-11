@@ -172,6 +172,7 @@ mod tests {
             instant_events: vec![],
             object_events: vec![],
             cpu_samples: None,
+            network_requests: vec![],
         }
     }
 
@@ -220,6 +221,7 @@ mod tests {
             instant_events: vec![],
             object_events: vec![],
             cpu_samples: None,
+            network_requests: vec![],
         };
         let vp = Viewport {
             x: 0.0,

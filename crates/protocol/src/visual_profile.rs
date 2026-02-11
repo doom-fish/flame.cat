@@ -53,6 +53,9 @@ pub struct VisualProfile {
     /// CPU profiler sample data.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cpu_samples: Option<CpuSamples>,
+    /// Network requests (waterfall data).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub network_requests: Vec<NetworkRequest>,
 }
 
 /// Top-level metadata about the profile.
@@ -419,6 +422,29 @@ pub struct CpuNode {
     pub script_id: u32,
 }
 
+/// A network request with timing phases.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkRequest {
+    /// Request ID for correlation.
+    pub request_id: SharedStr,
+    /// URL.
+    pub url: SharedStr,
+    /// Timestamp when the request was sent.
+    pub send_ts: f64,
+    /// Timestamp when first response byte arrived.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_ts: Option<f64>,
+    /// Timestamp when the request finished.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finish_ts: Option<f64>,
+    /// MIME type of the response.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<SharedStr>,
+    /// Whether the response was served from cache.
+    #[serde(default)]
+    pub from_cache: bool,
+}
+
 // --- Conversions from the old Profile model ---
 
 impl VisualProfile {
@@ -525,6 +551,7 @@ mod tests {
             instant_events: vec![],
             object_events: vec![],
             cpu_samples: None,
+            network_requests: vec![],
         }
     }
 

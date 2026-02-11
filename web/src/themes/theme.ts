@@ -54,6 +54,8 @@ export const darkTheme: Theme = {
     FrameWarning: { r: 0.95, g: 0.77, b: 0.06, a: 0.8 },
     FrameDropped: { r: 0.91, g: 0.3, b: 0.24, a: 0.9 },
     FlowArrow: { r: 0.47, g: 0.75, b: 0.96, a: 0.7 },
+    NetworkBar: { r: 0.35, g: 0.65, b: 0.55, a: 0.8 },
+    NetworkTTFB: { r: 0.6, g: 0.8, b: 0.7, a: 0.5 },
   },
 };
 
@@ -99,6 +101,8 @@ export const lightTheme: Theme = {
     FrameWarning: { r: 0.9, g: 0.7, b: 0.04, a: 0.7 },
     FrameDropped: { r: 0.89, g: 0.26, b: 0.2, a: 0.8 },
     FlowArrow: { r: 0.16, g: 0.47, b: 0.78, a: 0.6 },
+    NetworkBar: { r: 0.2, g: 0.55, b: 0.45, a: 0.7 },
+    NetworkTTFB: { r: 0.4, g: 0.7, b: 0.6, a: 0.4 },
   },
 };
 
