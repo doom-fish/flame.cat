@@ -40,7 +40,7 @@ export class SearchBar {
       font-size: inherit;
       padding: 4px 8px;
       border-radius: 3px;
-      width: 200px;
+      width: min(200px, 50vw);
     `;
 
     this.input.addEventListener("input", () => {

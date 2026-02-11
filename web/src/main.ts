@@ -42,9 +42,11 @@ function colorStr(c: Color): string {
 async function main() {
   // Layout: toolbar → canvas container → detail panel
   const root = document.createElement("div");
-  root.style.cssText = "display:flex;flex-direction:column;width:100vw;height:100vh;";
+  root.style.cssText =
+    "display:flex;flex-direction:column;width:100vw;height:100vh;position:fixed;top:0;left:0;";
   document.body.style.margin = "0";
   document.body.style.overflow = "hidden";
+  document.body.style.touchAction = "none";
   document.body.appendChild(root);
 
   const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -55,6 +57,15 @@ async function main() {
   let profileLoaded = false;
   let profileDuration = 0;
 
+  // Hidden file input for mobile file picking
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.accept = ".json,.cpuprofile";
+  fileInput.style.display = "none";
+  document.body.appendChild(fileInput);
+
+  const openFilePicker = () => fileInput.click();
+
   // Toolbar
   const toolbar = createToolbar({
     activeView,
@@ -64,6 +75,7 @@ async function main() {
       switchView(view);
     },
     onSearch: () => searchBar.show(),
+    onOpenFile: openFilePicker,
   });
   root.appendChild(toolbar);
 
@@ -74,7 +86,7 @@ async function main() {
 
   const canvas = document.createElement("canvas");
   canvas.id = "canvas";
-  canvas.style.cssText = "width:100%;height:100%;display:block;";
+  canvas.style.cssText = "width:100%;height:100%;display:block;touch-action:none;";
   canvasContainer.appendChild(canvas);
 
   // Detail panel
@@ -352,16 +364,8 @@ async function main() {
 
   bindInteraction(canvas, laneManager, renderAll);
 
-  // File drop
-  canvas.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-  });
-  canvas.addEventListener("drop", async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const file = e.dataTransfer?.files[0];
-    if (!file) return;
+  // Shared file-loading logic
+  const loadFile = async (file: File) => {
     const buffer = await file.arrayBuffer();
     const data = new Uint8Array(buffer);
     try {
@@ -387,10 +391,51 @@ async function main() {
     } catch (err) {
       console.error("Failed to load profile:", err);
     }
+  };
+
+  // File drop (desktop)
+  canvas.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  });
+  canvas.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const file = e.dataTransfer?.files[0];
+    if (file) await loadFile(file);
+  });
+
+  // File input (mobile + desktop fallback)
+  fileInput.addEventListener("change", async () => {
+    const file = fileInput.files?.[0];
+    if (file) await loadFile(file);
+    fileInput.value = "";
+  });
+
+  // Resize observer — keep canvas pixel buffer matched to display size
+  const resizeObserver = new ResizeObserver(() => {
+    const dpr = window.devicePixelRatio;
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      updateToolbarTheme();
+      if (profileLoaded) renderAll();
+    }
+  });
+  resizeObserver.observe(canvas);
+
+  // Orientation change — re-render after layout settles
+  window.addEventListener("orientationchange", () => {
+    setTimeout(() => {
+      updateToolbarTheme();
+      if (profileLoaded) renderAll();
+    }, 200);
   });
 
   renderer.render([], 0, 0);
-  console.log("flame.cat ready — drop a Chrome trace JSON file to visualize");
+  console.log("flame.cat ready — drop or open a Chrome trace JSON file to visualize");
 }
 
 main().catch(console.error);

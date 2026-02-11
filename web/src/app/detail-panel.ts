@@ -21,19 +21,24 @@ export class DetailPanel {
     this.el = document.createElement("div");
     this.el.id = "detail-panel";
     this.el.style.cssText = `
-      height: ${DETAIL_HEIGHT}px;
+      min-height: ${DETAIL_HEIGHT}px;
       display: none;
       align-items: center;
       font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
       font-size: 12px;
-      padding: 0 12px;
+      padding: 4px 12px;
       flex-shrink: 0;
-      gap: 24px;
       border-top: 1px solid transparent;
     `;
 
     this.contentEl = document.createElement("div");
-    this.contentEl.style.cssText = `display: flex; gap: 24px; align-items: center; width: 100%;`;
+    this.contentEl.style.cssText = `
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      width: 100%;
+      flex-wrap: wrap;
+    `;
     this.el.appendChild(this.contentEl);
     container.appendChild(this.el);
   }
