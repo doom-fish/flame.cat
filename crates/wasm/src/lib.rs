@@ -694,7 +694,7 @@ pub fn get_network_requests(
                 send_ts: r.send_ts,
                 response_ts: r.response_ts,
                 finish_ts: r.finish_ts,
-                mime_type: r.mime_type.as_ref().map(|s| s.to_string()),
+                mime_type: r.mime_type.as_ref().map(ToString::to_string),
                 from_cache: r.from_cache,
             })
             .collect();

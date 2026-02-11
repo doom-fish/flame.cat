@@ -550,14 +550,14 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
                             }
                         }
                         "ResourceReceiveResponse" => {
-                            if let Some(rid) = data.get("requestId").and_then(|v| v.as_str()) {
-                                if let Some(req) = net_sends.get_mut(rid) {
-                                    req.response_ts = Some(event.ts);
-                                    if let Some(mime) = data.get("mimeType").and_then(|v| v.as_str()) {
-                                        req.mime_type = Some(SharedStr::from(mime));
-                                    }
-                                    req.from_cache = data.get("fromCache").and_then(|v| v.as_bool()).unwrap_or(false);
+                            if let Some(rid) = data.get("requestId").and_then(serde_json::Value::as_str)
+                                && let Some(req) = net_sends.get_mut(rid)
+                            {
+                                req.response_ts = Some(event.ts);
+                                if let Some(mime) = data.get("mimeType").and_then(serde_json::Value::as_str) {
+                                    req.mime_type = Some(SharedStr::from(mime));
                                 }
+                                req.from_cache = data.get("fromCache").and_then(serde_json::Value::as_bool).unwrap_or(false);
                             }
                         }
                         "ResourceFinish" => {
