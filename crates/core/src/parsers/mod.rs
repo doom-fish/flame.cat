@@ -10,6 +10,7 @@ pub mod speedscope;
 pub mod tracy;
 
 use crate::model::Profile;
+use flame_cat_protocol::VisualProfile;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -137,4 +138,12 @@ pub fn parse_auto(data: &[u8]) -> Result<Profile, ParseError> {
     }
 
     Err(ParseError::UnknownFormat)
+}
+
+/// Auto-detect the profile format and parse it into the canonical VisualProfile.
+///
+/// This is the primary entry point for all profile loading. Every profiling
+/// format is normalized into the common VisualProfile IR.
+pub fn parse_auto_visual(data: &[u8]) -> Result<VisualProfile, ParseError> {
+    parse_auto(data).map(Profile::into_visual_profile)
 }

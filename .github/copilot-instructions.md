@@ -140,6 +140,16 @@ cargo fmt --check && cargo clippy -- -D warnings && cargo test && npm run lint &
 
 If a proper fix takes longer, that's fine — do it properly anyway. Technical debt from layout hacks compounds fast in a visualization tool where pixel precision matters.
 
+## Code Hygiene
+
+**Never leave leftover or dead code.** Unused imports, deprecated functions, orphaned modules, commented-out blocks, and stale type aliases confuse future sessions and accumulate as noise. Specifically:
+
+- **Remove dead code immediately** when it becomes unused — don't leave it "for later."
+- **Delete unused imports, types, and functions** rather than commenting them out.
+- **Clean up after refactors.** When moving logic to a new module or type, remove the old version completely. Don't keep both.
+- **Always do a cleanup stage** at the end of a task. Review all changed files for leftover artifacts, run `cargo clippy` and linters, and verify no dead code remains.
+- **Checkpoint with a commit** after cleanup so future sessions start from a clean state. A messy codebase misleads future context and wastes time on confusion.
+
 ## Code Conventions
 
 ### Rust

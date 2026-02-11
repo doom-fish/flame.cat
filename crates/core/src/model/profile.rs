@@ -1,3 +1,6 @@
+use flame_cat_protocol::{
+    ProfileMeta, SourceFormat, Span, SpanCategory, SpanKind, ThreadGroup, ValueUnit, VisualProfile,
+};
 use serde::{Deserialize, Serialize};
 
 /// A single stack frame span in the profile.
@@ -55,5 +58,187 @@ impl Profile {
     /// Direct children of the given frame (or top-level frames if `None`).
     pub fn children(&self, parent: Option<u64>) -> Vec<&Frame> {
         self.frames.iter().filter(|f| f.parent == parent).collect()
+    }
+
+    /// Convert this Profile into the canonical VisualProfile protocol.
+    pub fn into_visual_profile(self) -> VisualProfile {
+        let source_format = match self.metadata.format.as_str() {
+            "chrome" => SourceFormat::ChromeTrace,
+            "firefox" => SourceFormat::FirefoxGecko,
+            "react" => SourceFormat::ReactDevTools,
+            "cpuprofile" => SourceFormat::CpuProfile,
+            "speedscope" => SourceFormat::Speedscope,
+            "collapsed" => SourceFormat::CollapsedStacks,
+            "pprof" => SourceFormat::Pprof,
+            "tracy" => SourceFormat::Tracy,
+            "pix" => SourceFormat::Pix,
+            "ebpf" | "ebpf-perf" => SourceFormat::Ebpf,
+            _ => SourceFormat::Unknown,
+        };
+
+        let value_unit = match &source_format {
+            SourceFormat::CollapsedStacks | SourceFormat::Ebpf => ValueUnit::Samples,
+            SourceFormat::Pprof => ValueUnit::Nanoseconds,
+            _ => ValueUnit::Microseconds,
+        };
+
+        let spans: Vec<Span> = self
+            .frames
+            .iter()
+            .map(|f| Span {
+                id: f.id,
+                name: f.name.clone(),
+                start: f.start,
+                end: f.end,
+                depth: f.depth,
+                parent: f.parent,
+                self_value: f.self_time,
+                kind: match &source_format {
+                    SourceFormat::CollapsedStacks | SourceFormat::Ebpf | SourceFormat::Pprof => {
+                        SpanKind::Sample
+                    }
+                    _ => SpanKind::Event,
+                },
+                category: f.category.as_ref().map(|name| SpanCategory {
+                    name: name.clone(),
+                    source: None,
+                }),
+            })
+            .collect();
+
+        let thread = ThreadGroup {
+            id: 0,
+            name: "Main".to_string(),
+            sort_key: 0,
+            spans,
+        };
+
+        VisualProfile {
+            meta: ProfileMeta {
+                name: self.metadata.name,
+                source_format,
+                value_unit,
+                total_value: self.metadata.end_time - self.metadata.start_time,
+                start_time: self.metadata.start_time,
+                end_time: self.metadata.end_time,
+            },
+            threads: vec![thread],
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_profile(format: &str) -> Profile {
+        Profile {
+            metadata: ProfileMetadata {
+                name: Some("test.json".into()),
+                start_time: 0.0,
+                end_time: 200.0,
+                format: format.to_string(),
+            },
+            frames: vec![
+                Frame {
+                    id: 0,
+                    name: "main".into(),
+                    start: 0.0,
+                    end: 200.0,
+                    depth: 0,
+                    category: Some("js".into()),
+                    parent: None,
+                    self_time: 80.0,
+                },
+                Frame {
+                    id: 1,
+                    name: "render".into(),
+                    start: 10.0,
+                    end: 130.0,
+                    depth: 1,
+                    category: None,
+                    parent: Some(0),
+                    self_time: 120.0,
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn conversion_preserves_spans() {
+        let vp = sample_profile("chrome").into_visual_profile();
+        assert_eq!(vp.span_count(), 2);
+        assert_eq!(vp.threads.len(), 1);
+        assert_eq!(vp.threads[0].name, "Main");
+
+        let root = vp.span(0).expect("span 0 must exist");
+        assert_eq!(root.name, "main");
+        assert!((root.self_value - 80.0).abs() < f64::EPSILON);
+        assert!(root.category.is_some());
+        assert_eq!(root.category.as_ref().expect("category").name, "js");
+    }
+
+    #[test]
+    fn conversion_maps_source_format() {
+        for (fmt, expected) in [
+            ("chrome", SourceFormat::ChromeTrace),
+            ("firefox", SourceFormat::FirefoxGecko),
+            ("react", SourceFormat::ReactDevTools),
+            ("collapsed", SourceFormat::CollapsedStacks),
+            ("pprof", SourceFormat::Pprof),
+            ("tracy", SourceFormat::Tracy),
+            ("ebpf", SourceFormat::Ebpf),
+            ("unknown-fmt", SourceFormat::Unknown),
+        ] {
+            let vp = sample_profile(fmt).into_visual_profile();
+            assert_eq!(vp.meta.source_format, expected, "format: {fmt}");
+        }
+    }
+
+    #[test]
+    fn conversion_sets_value_unit() {
+        let collapsed = sample_profile("collapsed").into_visual_profile();
+        assert_eq!(collapsed.meta.value_unit, ValueUnit::Samples);
+
+        let chrome = sample_profile("chrome").into_visual_profile();
+        assert_eq!(chrome.meta.value_unit, ValueUnit::Microseconds);
+
+        let pprof = sample_profile("pprof").into_visual_profile();
+        assert_eq!(pprof.meta.value_unit, ValueUnit::Nanoseconds);
+    }
+
+    #[test]
+    fn conversion_sets_span_kind() {
+        let event_profile = sample_profile("chrome").into_visual_profile();
+        assert_eq!(
+            event_profile
+                .all_spans()
+                .next()
+                .expect("must have spans")
+                .kind,
+            SpanKind::Event
+        );
+
+        let sampled = sample_profile("collapsed").into_visual_profile();
+        assert_eq!(
+            sampled.all_spans().next().expect("must have spans").kind,
+            SpanKind::Sample
+        );
+    }
+
+    #[test]
+    fn conversion_preserves_metadata() {
+        let vp = sample_profile("chrome").into_visual_profile();
+        assert_eq!(vp.meta.name, Some("test.json".into()));
+        assert!((vp.meta.total_value - 200.0).abs() < f64::EPSILON);
+        assert!((vp.duration() - 200.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn conversion_preserves_parent_pointers() {
+        let vp = sample_profile("chrome").into_visual_profile();
+        let children = vp.children(Some(0));
+        assert_eq!(children.len(), 1);
+        assert_eq!(children[0].name, "render");
     }
 }

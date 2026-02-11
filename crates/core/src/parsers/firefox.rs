@@ -91,21 +91,17 @@ pub fn parse_firefox(data: &[u8]) -> Result<Profile, FirefoxParseError> {
     let interval = gecko.meta.as_ref().and_then(|m| m.interval).unwrap_or(1.0);
 
     for thread in &gecko.threads {
-        let stack_table = match &thread.stack_table {
-            Some(s) => s,
-            None => continue,
+        let Some(stack_table) = &thread.stack_table else {
+            continue;
         };
-        let frame_table = match &thread.frame_table {
-            Some(f) => f,
-            None => continue,
+        let Some(frame_table) = &thread.frame_table else {
+            continue;
         };
-        let string_table = match &thread.string_table {
-            Some(s) => s,
-            None => continue,
+        let Some(string_table) = &thread.string_table else {
+            continue;
         };
-        let samples = match &thread.samples {
-            Some(s) => s,
-            None => continue,
+        let Some(samples) = &thread.samples else {
+            continue;
         };
 
         // Resolve frame name: funcTable.name -> stringTable, or frameTable.func -> stringTable.

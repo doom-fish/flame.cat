@@ -1,18 +1,23 @@
 use std::sync::Mutex;
 
-use flame_cat_core::model::{Profile, ViewType};
 use flame_cat_core::views::{left_heavy, minimap, ranked, sandwich, time_order};
-use flame_cat_protocol::Viewport;
+use flame_cat_protocol::{Viewport, VisualProfile};
 use wasm_bindgen::prelude::*;
 
-static PROFILES: Mutex<Vec<Profile>> = Mutex::new(Vec::new());
+static PROFILES: Mutex<Vec<VisualProfile>> = Mutex::new(Vec::new());
+
+fn lock_profiles() -> Result<std::sync::MutexGuard<'static, Vec<VisualProfile>>, JsError> {
+    PROFILES
+        .lock()
+        .map_err(|_| JsError::new("internal error: profile store lock poisoned"))
+}
 
 /// Parse a profile from bytes (auto-detects format). Returns a handle (index) for later use.
 #[wasm_bindgen]
 pub fn parse_profile(data: &[u8]) -> Result<usize, JsError> {
-    let profile =
-        flame_cat_core::parsers::parse_auto(data).map_err(|e| JsError::new(&e.to_string()))?;
-    let mut profiles = PROFILES.lock().unwrap();
+    let profile = flame_cat_core::parsers::parse_auto_visual(data)
+        .map_err(|e| JsError::new(&e.to_string()))?;
+    let mut profiles = lock_profiles()?;
     let idx = profiles.len();
     profiles.push(profile);
     Ok(idx)
@@ -31,7 +36,7 @@ pub fn render_view(
     dpr: f64,
     selected_frame_id: Option<u64>,
 ) -> Result<String, JsError> {
-    let profiles = PROFILES.lock().unwrap();
+    let profiles = lock_profiles()?;
     let profile = profiles
         .get(profile_index)
         .ok_or_else(|| JsError::new("invalid profile index"))?;
@@ -44,26 +49,16 @@ pub fn render_view(
         dpr,
     };
 
-    let vt: ViewType = match view_type {
-        "time-order" => ViewType::TimeOrder,
-        "left-heavy" => ViewType::LeftHeavy,
-        "sandwich" => ViewType::Sandwich,
-        "ranked" => ViewType::Ranked,
-        _ => return Err(JsError::new(&format!("unknown view type: {view_type}"))),
-    };
-
-    let commands = match vt {
-        ViewType::TimeOrder => time_order::render_time_order(profile, &viewport),
-        ViewType::LeftHeavy => left_heavy::render_left_heavy(profile, &viewport),
-        ViewType::Sandwich => {
+    let commands = match view_type {
+        "time-order" => time_order::render_time_order(profile, &viewport),
+        "left-heavy" => left_heavy::render_left_heavy(profile, &viewport),
+        "sandwich" => {
             let frame_id = selected_frame_id
                 .ok_or_else(|| JsError::new("sandwich requires selected_frame_id"))?;
             sandwich::render_sandwich(profile, frame_id, &viewport)
         }
-        ViewType::Ranked => {
-            ranked::render_ranked(profile, &viewport, ranked::RankedSort::SelfTime, false)
-        }
-        _ => return Err(JsError::new("view type not yet supported in WASM")),
+        "ranked" => ranked::render_ranked(profile, &viewport, ranked::RankedSort::SelfTime, false),
+        _ => return Err(JsError::new(&format!("unknown view type: {view_type}"))),
     };
 
     serde_json::to_string(&commands).map_err(|e| JsError::new(&e.to_string()))
@@ -72,21 +67,21 @@ pub fn render_view(
 /// Get profile metadata as JSON.
 #[wasm_bindgen]
 pub fn get_profile_metadata(profile_index: usize) -> Result<String, JsError> {
-    let profiles = PROFILES.lock().unwrap();
+    let profiles = lock_profiles()?;
     let profile = profiles
         .get(profile_index)
         .ok_or_else(|| JsError::new("invalid profile index"))?;
-    serde_json::to_string(&profile.metadata).map_err(|e| JsError::new(&e.to_string()))
+    serde_json::to_string(&profile.meta).map_err(|e| JsError::new(&e.to_string()))
 }
 
-/// Get the number of frames in a profile.
+/// Get the number of spans in a profile.
 #[wasm_bindgen]
 pub fn get_frame_count(profile_index: usize) -> Result<usize, JsError> {
-    let profiles = PROFILES.lock().unwrap();
+    let profiles = lock_profiles()?;
     let profile = profiles
         .get(profile_index)
         .ok_or_else(|| JsError::new("invalid profile index"))?;
-    Ok(profile.frames.len())
+    Ok(profile.span_count())
 }
 
 /// Render the minimap for a profile, returning render commands as JSON.
@@ -99,7 +94,7 @@ pub fn render_minimap(
     visible_start_frac: f64,
     visible_end_frac: f64,
 ) -> Result<String, JsError> {
-    let profiles = PROFILES.lock().unwrap();
+    let profiles = lock_profiles()?;
     let profile = profiles
         .get(profile_index)
         .ok_or_else(|| JsError::new("invalid profile index"))?;
@@ -124,7 +119,7 @@ pub fn get_ranked_entries(
     sort_field: &str,
     ascending: bool,
 ) -> Result<String, JsError> {
-    let profiles = PROFILES.lock().unwrap();
+    let profiles = lock_profiles()?;
     let profile = profiles
         .get(profile_index)
         .ok_or_else(|| JsError::new("invalid profile index"))?;

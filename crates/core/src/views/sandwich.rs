@@ -1,6 +1,4 @@
-use flame_cat_protocol::{Rect, RenderCommand, ThemeToken, Viewport};
-
-use crate::model::Profile;
+use flame_cat_protocol::{Rect, RenderCommand, ThemeToken, Viewport, VisualProfile};
 
 const FRAME_HEIGHT: f64 = 20.0;
 const SEPARATOR_HEIGHT: f64 = 4.0;
@@ -8,7 +6,7 @@ const SEPARATOR_HEIGHT: f64 = 4.0;
 /// Render a sandwich view: for a selected frame, show callers above and
 /// callees below, each as a mini left-heavy view.
 pub fn render_sandwich(
-    profile: &Profile,
+    profile: &VisualProfile,
     selected_frame_id: u64,
     viewport: &Viewport,
 ) -> Vec<RenderCommand> {
@@ -18,9 +16,9 @@ pub fn render_sandwich(
         label: Some("Sandwich".to_string()),
     });
 
-    // Find all frames matching the selected name.
-    let selected_name = match profile.frame(selected_frame_id) {
-        Some(f) => f.name.clone(),
+    // Find all spans matching the selected name.
+    let selected_name = match profile.span(selected_frame_id) {
+        Some(s) => s.name.clone(),
         None => {
             commands.push(RenderCommand::EndGroup);
             return commands;
@@ -28,9 +26,8 @@ pub fn render_sandwich(
     };
 
     let matching: Vec<_> = profile
-        .frames
-        .iter()
-        .filter(|f| f.name == selected_name)
+        .all_spans()
+        .filter(|s| s.name == selected_name)
         .collect();
 
     if matching.is_empty() {
@@ -38,20 +35,19 @@ pub fn render_sandwich(
         return commands;
     }
 
-    let total_time: f64 = matching.iter().map(|f| f.duration()).sum();
+    let total_time: f64 = matching.iter().map(|s| s.duration()).sum();
     let x_scale = viewport.width / total_time.max(1.0);
 
     // === Callers section (walk upward) ===
     let caller_y_base = 0.0;
 
-    // Collect caller chains.
     let mut caller_time: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
     for m in &matching {
         let mut current = m.parent;
         while let Some(pid) = current {
-            if let Some(parent_frame) = profile.frame(pid) {
-                *caller_time.entry(parent_frame.name.clone()).or_default() += m.duration();
-                current = parent_frame.parent;
+            if let Some(parent_span) = profile.span(pid) {
+                *caller_time.entry(parent_span.name.clone()).or_default() += m.duration();
+                current = parent_span.parent;
             } else {
                 break;
             }
@@ -59,7 +55,7 @@ pub fn render_sandwich(
     }
 
     let mut callers: Vec<_> = caller_time.into_iter().collect();
-    callers.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+    callers.sort_by(|a, b| b.1.total_cmp(&a.1));
 
     for (i, (name, time)) in callers.iter().enumerate() {
         let w = time * x_scale;
@@ -102,7 +98,7 @@ pub fn render_sandwich(
     }
 
     let mut callees: Vec<_> = callee_time.into_iter().collect();
-    callees.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+    callees.sort_by(|a, b| b.1.total_cmp(&a.1));
 
     for (i, (name, time)) in callees.iter().enumerate() {
         let w = time * x_scale;
@@ -130,49 +126,59 @@ pub fn render_sandwich(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Frame, ProfileMetadata};
+    use flame_cat_protocol::{ProfileMeta, SourceFormat, Span, SpanKind, ThreadGroup, ValueUnit};
 
     #[test]
     fn shows_callers_and_callees() {
-        let profile = Profile {
-            metadata: ProfileMetadata {
+        let profile = VisualProfile {
+            meta: ProfileMeta {
                 name: None,
+                source_format: SourceFormat::Unknown,
+                value_unit: ValueUnit::Microseconds,
+                total_value: 100.0,
                 start_time: 0.0,
                 end_time: 100.0,
-                format: "test".to_string(),
             },
-            frames: vec![
-                Frame {
-                    id: 0,
-                    name: "root".into(),
-                    start: 0.0,
-                    end: 100.0,
-                    depth: 0,
-                    category: None,
-                    parent: None,
-                    self_time: 0.0,
-                },
-                Frame {
-                    id: 1,
-                    name: "middle".into(),
-                    start: 0.0,
-                    end: 100.0,
-                    depth: 1,
-                    category: None,
-                    parent: Some(0),
-                    self_time: 0.0,
-                },
-                Frame {
-                    id: 2,
-                    name: "leaf".into(),
-                    start: 0.0,
-                    end: 60.0,
-                    depth: 2,
-                    category: None,
-                    parent: Some(1),
-                    self_time: 60.0,
-                },
-            ],
+            threads: vec![ThreadGroup {
+                id: 0,
+                name: "Main".into(),
+                sort_key: 0,
+                spans: vec![
+                    Span {
+                        id: 0,
+                        name: "root".into(),
+                        start: 0.0,
+                        end: 100.0,
+                        depth: 0,
+                        parent: None,
+                        self_value: 0.0,
+                        kind: SpanKind::Event,
+                        category: None,
+                    },
+                    Span {
+                        id: 1,
+                        name: "middle".into(),
+                        start: 0.0,
+                        end: 100.0,
+                        depth: 1,
+                        parent: Some(0),
+                        self_value: 0.0,
+                        kind: SpanKind::Event,
+                        category: None,
+                    },
+                    Span {
+                        id: 2,
+                        name: "leaf".into(),
+                        start: 0.0,
+                        end: 60.0,
+                        depth: 2,
+                        parent: Some(1),
+                        self_value: 60.0,
+                        kind: SpanKind::Event,
+                        category: None,
+                    },
+                ],
+            }],
         };
         let vp = Viewport {
             x: 0.0,
@@ -207,5 +213,47 @@ mod tests {
             rects.contains(&"leaf".to_string()),
             "should have callee 'leaf'"
         );
+    }
+
+    #[test]
+    fn nonexistent_frame_returns_group_only() {
+        let profile = VisualProfile {
+            meta: ProfileMeta {
+                name: None,
+                source_format: SourceFormat::Unknown,
+                value_unit: ValueUnit::Microseconds,
+                total_value: 100.0,
+                start_time: 0.0,
+                end_time: 100.0,
+            },
+            threads: vec![ThreadGroup {
+                id: 0,
+                name: "Main".into(),
+                sort_key: 0,
+                spans: vec![Span {
+                    id: 0,
+                    name: "only".into(),
+                    start: 0.0,
+                    end: 100.0,
+                    depth: 0,
+                    parent: None,
+                    self_value: 100.0,
+                    kind: SpanKind::Event,
+                    category: None,
+                }],
+            }],
+        };
+        let vp = Viewport {
+            x: 0.0,
+            y: 0.0,
+            width: 800.0,
+            height: 600.0,
+            dpr: 1.0,
+        };
+        // Non-existent frame id — should return only BeginGroup + EndGroup
+        let cmds = render_sandwich(&profile, 999, &vp);
+        assert_eq!(cmds.len(), 2);
+        assert!(matches!(cmds[0], RenderCommand::BeginGroup { .. }));
+        assert!(matches!(cmds[1], RenderCommand::EndGroup));
     }
 }

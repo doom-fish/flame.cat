@@ -1,10 +1,14 @@
 pub mod commands;
 pub mod theme;
 pub mod types;
+pub mod visual_profile;
 
 pub use commands::{RenderCommand, TextAlign};
 pub use theme::ThemeToken;
 pub use types::{Color, Point, Rect};
+pub use visual_profile::{
+    ProfileMeta, SourceFormat, Span, SpanCategory, SpanKind, ThreadGroup, ValueUnit, VisualProfile,
+};
 
 /// Viewport describing the visible region — passed to view transforms so
 /// they can cull off-screen frames and compute pixel-space coordinates.

@@ -1,14 +1,12 @@
-use flame_cat_protocol::{Rect, RenderCommand, ThemeToken, Viewport};
-
-use crate::model::Profile;
+use flame_cat_protocol::{Rect, RenderCommand, ThemeToken, Viewport, VisualProfile};
 
 const MINIMAP_FRAME_HEIGHT: f64 = 3.0;
 
 /// Render a minimap overview of the entire profile. The minimap shows all
-/// frames compressed to fit the viewport width, with a viewport indicator
+/// spans compressed to fit the viewport width, with a viewport indicator
 /// overlay showing the currently visible region.
 pub fn render_minimap(
-    profile: &Profile,
+    profile: &VisualProfile,
     viewport: &Viewport,
     visible_start_frac: f64,
     visible_end_frac: f64,
@@ -18,7 +16,7 @@ pub fn render_minimap(
         return Vec::new();
     }
 
-    let start = profile.metadata.start_time;
+    let start = profile.meta.start_time;
     let x_scale = viewport.width / duration;
 
     let mut commands = Vec::new();
@@ -36,17 +34,17 @@ pub fn render_minimap(
         frame_id: None,
     });
 
-    // Draw compressed frames
-    for frame in &profile.frames {
-        let x = (frame.start - start) * x_scale;
-        let w = frame.duration() * x_scale;
-        let y = f64::from(frame.depth) * MINIMAP_FRAME_HEIGHT;
+    // Draw compressed spans
+    for span in profile.all_spans() {
+        let x = (span.start - start) * x_scale;
+        let w = span.duration() * x_scale;
+        let y = f64::from(span.depth) * MINIMAP_FRAME_HEIGHT;
 
         if w < 0.3 || y + MINIMAP_FRAME_HEIGHT > viewport.height {
             continue;
         }
 
-        let color = match frame.depth % 4 {
+        let color = match span.depth % 4 {
             0 => ThemeToken::FlameHot,
             1 => ThemeToken::FlameWarm,
             2 => ThemeToken::FlameCold,
@@ -80,26 +78,34 @@ pub fn render_minimap(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Frame, ProfileMetadata};
+    use flame_cat_protocol::{ProfileMeta, SourceFormat, Span, SpanKind, ThreadGroup, ValueUnit};
 
     #[test]
     fn renders_minimap_with_viewport() {
-        let profile = Profile {
-            metadata: ProfileMetadata {
+        let profile = VisualProfile {
+            meta: ProfileMeta {
                 name: None,
+                source_format: SourceFormat::Unknown,
+                value_unit: ValueUnit::Microseconds,
+                total_value: 100.0,
                 start_time: 0.0,
                 end_time: 100.0,
-                format: "test".to_string(),
             },
-            frames: vec![Frame {
+            threads: vec![ThreadGroup {
                 id: 0,
-                name: "main".into(),
-                start: 0.0,
-                end: 100.0,
-                depth: 0,
-                category: None,
-                parent: None,
-                self_time: 100.0,
+                name: "Main".into(),
+                sort_key: 0,
+                spans: vec![Span {
+                    id: 0,
+                    name: "main".into(),
+                    start: 0.0,
+                    end: 100.0,
+                    depth: 0,
+                    parent: None,
+                    self_value: 100.0,
+                    kind: SpanKind::Event,
+                    category: None,
+                }],
             }],
         };
         let vp = Viewport {

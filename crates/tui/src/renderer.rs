@@ -8,7 +8,7 @@ use crossterm::{
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use flame_cat_protocol::{RenderCommand, ThemeToken};
+use flame_cat_protocol::{RenderCommand, ThemeToken, VisualProfile};
 use ratatui::{
     Terminal,
     backend::CrosstermBackend,
@@ -16,8 +16,6 @@ use ratatui::{
     style::{Color, Style},
     widgets::{Block, Borders},
 };
-
-use flame_cat_core::model::Profile;
 
 fn theme_to_color(token: &ThemeToken) -> Color {
     match token {
@@ -52,7 +50,7 @@ fn theme_to_color(token: &ThemeToken) -> Color {
     }
 }
 
-pub fn render_tui(profile: &Profile, _commands: &[RenderCommand]) -> Result<()> {
+pub fn render_tui(profile: &VisualProfile, _commands: &[RenderCommand]) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -80,8 +78,8 @@ pub fn render_tui(profile: &Profile, _commands: &[RenderCommand]) -> Result<()> 
             let header_area = Rect::new(0, 0, area.width, 1);
             let header = Block::default()
                 .title(format!(
-                    " flame.cat — {} frames | ←→ scroll | +/- zoom | q quit ",
-                    profile.frames.len()
+                    " flame.cat — {} spans | ←→ scroll | +/- zoom | q quit ",
+                    profile.span_count()
                 ))
                 .style(Style::default().fg(Color::White).bg(Color::DarkGray));
             frame.render_widget(header, header_area);

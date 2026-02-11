@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 
-use flame_cat_protocol::{Rect, RenderCommand, ThemeToken, Viewport};
-
-use crate::model::Profile;
+use flame_cat_protocol::{Rect, RenderCommand, Span, ThemeToken, Viewport, VisualProfile};
 
 const FRAME_HEIGHT: f64 = 20.0;
 
@@ -15,13 +13,13 @@ struct MergedNode {
 
 /// Render a profile in left-heavy view: identical call stacks are merged
 /// and sorted heaviest-first (left).
-pub fn render_left_heavy(profile: &Profile, viewport: &Viewport) -> Vec<RenderCommand> {
-    if profile.frames.is_empty() {
+pub fn render_left_heavy(profile: &VisualProfile, viewport: &Viewport) -> Vec<RenderCommand> {
+    let spans: Vec<&Span> = profile.all_spans().collect();
+    if spans.is_empty() {
         return Vec::new();
     }
 
-    // Group top-level frames, then recursively merge children.
-    let roots = merge_children(profile, None);
+    let roots = merge_children(&spans, None);
     let total_time: f64 = roots.iter().map(|n| n.total_time).sum();
     if total_time <= 0.0 {
         return Vec::new();
@@ -41,14 +39,9 @@ pub fn render_left_heavy(profile: &Profile, viewport: &Viewport) -> Vec<RenderCo
     commands
 }
 
-fn merge_children(profile: &Profile, parent: Option<u64>) -> Vec<MergedNode> {
-    let children: Vec<_> = profile
-        .frames
-        .iter()
-        .filter(|f| f.parent == parent)
-        .collect();
+fn merge_children(spans: &[&Span], parent: Option<u64>) -> Vec<MergedNode> {
+    let children: Vec<&&Span> = spans.iter().filter(|s| s.parent == parent).collect();
 
-    // Group by name, sum times, recursively merge.
     let mut groups: HashMap<&str, (f64, Vec<u64>)> = HashMap::new();
     for child in &children {
         let entry = groups.entry(&child.name).or_insert((0.0, Vec::new()));
@@ -59,13 +52,11 @@ fn merge_children(profile: &Profile, parent: Option<u64>) -> Vec<MergedNode> {
     let mut nodes: Vec<MergedNode> = groups
         .into_iter()
         .map(|(name, (total_time, ids))| {
-            // Merge grandchildren from all instances of this name.
             let mut merged_children = Vec::new();
             for id in &ids {
-                let mut sub = merge_children(profile, Some(*id));
+                let mut sub = merge_children(spans, Some(*id));
                 merged_children.append(&mut sub);
             }
-            // Re-merge the grandchildren by name too.
             let merged_children = re_merge(merged_children);
 
             MergedNode {
@@ -76,8 +67,7 @@ fn merge_children(profile: &Profile, parent: Option<u64>) -> Vec<MergedNode> {
         })
         .collect();
 
-    // Sort heaviest first.
-    nodes.sort_by(|a, b| b.total_time.partial_cmp(&a.total_time).unwrap());
+    nodes.sort_by(|a, b| b.total_time.total_cmp(&a.total_time));
     nodes
 }
 
@@ -93,7 +83,7 @@ fn re_merge(nodes: Vec<MergedNode>) -> Vec<MergedNode> {
         entry.children.extend(node.children);
     }
     let mut result: Vec<MergedNode> = groups.into_values().collect();
-    result.sort_by(|a, b| b.total_time.partial_cmp(&a.total_time).unwrap());
+    result.sort_by(|a, b| b.total_time.total_cmp(&a.total_time));
     result
 }
 
@@ -142,39 +132,48 @@ fn layout_nodes(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Frame, ProfileMetadata};
+    use flame_cat_protocol::{ProfileMeta, SourceFormat, SpanKind, ThreadGroup, ValueUnit};
 
     #[test]
     fn merges_identical_stacks() {
-        let profile = Profile {
-            metadata: ProfileMetadata {
+        let profile = VisualProfile {
+            meta: ProfileMeta {
                 name: None,
+                source_format: SourceFormat::Unknown,
+                value_unit: ValueUnit::Microseconds,
+                total_value: 100.0,
                 start_time: 0.0,
                 end_time: 100.0,
-                format: "test".to_string(),
             },
-            frames: vec![
-                Frame {
-                    id: 0,
-                    name: "main".into(),
-                    start: 0.0,
-                    end: 50.0,
-                    depth: 0,
-                    category: None,
-                    parent: None,
-                    self_time: 50.0,
-                },
-                Frame {
-                    id: 1,
-                    name: "main".into(),
-                    start: 50.0,
-                    end: 100.0,
-                    depth: 0,
-                    category: None,
-                    parent: None,
-                    self_time: 50.0,
-                },
-            ],
+            threads: vec![ThreadGroup {
+                id: 0,
+                name: "Main".into(),
+                sort_key: 0,
+                spans: vec![
+                    Span {
+                        id: 0,
+                        name: "main".into(),
+                        start: 0.0,
+                        end: 50.0,
+                        depth: 0,
+                        parent: None,
+                        self_value: 50.0,
+                        kind: SpanKind::Event,
+                        category: None,
+                    },
+                    Span {
+                        id: 1,
+                        name: "main".into(),
+                        start: 50.0,
+                        end: 100.0,
+                        depth: 0,
+                        parent: None,
+                        self_value: 50.0,
+                        kind: SpanKind::Event,
+                        category: None,
+                    },
+                ],
+            }],
         };
         let vp = Viewport {
             x: 0.0,
@@ -190,5 +189,28 @@ mod tests {
             .collect();
         // Two "main" frames should be merged into one rect.
         assert_eq!(rects.len(), 1);
+    }
+
+    #[test]
+    fn empty_profile_returns_empty() {
+        let profile = VisualProfile {
+            meta: ProfileMeta {
+                name: None,
+                source_format: SourceFormat::Unknown,
+                value_unit: ValueUnit::Microseconds,
+                total_value: 0.0,
+                start_time: 0.0,
+                end_time: 0.0,
+            },
+            threads: vec![],
+        };
+        let vp = Viewport {
+            x: 0.0,
+            y: 0.0,
+            width: 800.0,
+            height: 600.0,
+            dpr: 1.0,
+        };
+        assert!(render_left_heavy(&profile, &vp).is_empty());
     }
 }

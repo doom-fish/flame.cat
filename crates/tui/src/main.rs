@@ -13,7 +13,7 @@ fn main() -> Result<()> {
 
     let path = PathBuf::from(&args[1]);
     let data = std::fs::read(&path)?;
-    let profile = flame_cat_core::parsers::chrome::parse_chrome_trace(&data)?;
+    let profile = flame_cat_core::parsers::parse_auto_visual(&data)?;
 
     let viewport = flame_cat_protocol::Viewport {
         x: 0.0,

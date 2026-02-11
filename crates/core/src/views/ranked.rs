@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use flame_cat_protocol::{Point, Rect, RenderCommand, TextAlign, ThemeToken, Viewport};
-
-use crate::model::Profile;
+use flame_cat_protocol::{
+    Point, Rect, RenderCommand, TextAlign, ThemeToken, Viewport, VisualProfile,
+};
 
 const ROW_HEIGHT: f64 = 24.0;
 const HEADER_ROW_HEIGHT: f64 = 28.0;
@@ -25,14 +25,14 @@ pub enum RankedSort {
     Count,
 }
 
-/// Aggregate all frames by name and produce render commands for a table layout.
+/// Aggregate all spans by name and produce render commands for a table layout.
 pub fn render_ranked(
-    profile: &Profile,
+    profile: &VisualProfile,
     viewport: &Viewport,
     sort: RankedSort,
     ascending: bool,
 ) -> Vec<RenderCommand> {
-    let entries = aggregate_frames(profile, sort, ascending);
+    let entries = aggregate_spans(profile, sort, ascending);
     let total_duration = profile.duration().max(1.0);
 
     let mut commands = Vec::new();
@@ -177,20 +177,20 @@ pub fn render_ranked(
 
 /// Compute ranked entries from WASM for the table/detail views.
 pub fn get_ranked_entries(
-    profile: &Profile,
+    profile: &VisualProfile,
     sort: RankedSort,
     ascending: bool,
 ) -> Vec<RankedEntry> {
-    aggregate_frames(profile, sort, ascending)
+    aggregate_spans(profile, sort, ascending)
 }
 
-fn aggregate_frames(profile: &Profile, sort: RankedSort, ascending: bool) -> Vec<RankedEntry> {
+fn aggregate_spans(profile: &VisualProfile, sort: RankedSort, ascending: bool) -> Vec<RankedEntry> {
     let mut by_name: HashMap<&str, (f64, f64, u32)> = HashMap::new();
 
-    for frame in &profile.frames {
-        let entry = by_name.entry(&frame.name).or_default();
-        entry.0 += frame.self_time;
-        entry.1 += frame.duration();
+    for span in profile.all_spans() {
+        let entry = by_name.entry(&span.name).or_default();
+        entry.0 += span.self_value;
+        entry.1 += span.duration();
         entry.2 += 1;
     }
 
@@ -205,12 +205,8 @@ fn aggregate_frames(profile: &Profile, sort: RankedSort, ascending: bool) -> Vec
         .collect();
 
     match sort {
-        RankedSort::SelfTime => {
-            entries.sort_by(|a, b| b.self_time.partial_cmp(&a.self_time).unwrap())
-        }
-        RankedSort::TotalTime => {
-            entries.sort_by(|a, b| b.total_time.partial_cmp(&a.total_time).unwrap())
-        }
+        RankedSort::SelfTime => entries.sort_by(|a, b| b.self_time.total_cmp(&a.self_time)),
+        RankedSort::TotalTime => entries.sort_by(|a, b| b.total_time.total_cmp(&a.total_time)),
         RankedSort::Name => entries.sort_by(|a, b| a.name.cmp(&b.name)),
         RankedSort::Count => entries.sort_by(|a, b| b.count.cmp(&a.count)),
     }
@@ -235,50 +231,61 @@ fn format_time(us: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Frame, ProfileMetadata};
-    use flame_cat_protocol::Viewport;
+    use flame_cat_protocol::{
+        ProfileMeta, SourceFormat, Span, SpanKind, ThreadGroup, ValueUnit, Viewport,
+    };
 
     #[test]
     fn aggregates_by_name() {
-        let profile = Profile {
-            metadata: ProfileMetadata {
+        let profile = VisualProfile {
+            meta: ProfileMeta {
                 name: None,
+                source_format: SourceFormat::Unknown,
+                value_unit: ValueUnit::Microseconds,
+                total_value: 100.0,
                 start_time: 0.0,
                 end_time: 100.0,
-                format: "test".to_string(),
             },
-            frames: vec![
-                Frame {
-                    id: 0,
-                    name: "foo".into(),
-                    start: 0.0,
-                    end: 50.0,
-                    depth: 0,
-                    category: None,
-                    parent: None,
-                    self_time: 30.0,
-                },
-                Frame {
-                    id: 1,
-                    name: "foo".into(),
-                    start: 50.0,
-                    end: 80.0,
-                    depth: 0,
-                    category: None,
-                    parent: None,
-                    self_time: 20.0,
-                },
-                Frame {
-                    id: 2,
-                    name: "bar".into(),
-                    start: 10.0,
-                    end: 40.0,
-                    depth: 1,
-                    category: None,
-                    parent: Some(0),
-                    self_time: 30.0,
-                },
-            ],
+            threads: vec![ThreadGroup {
+                id: 0,
+                name: "Main".into(),
+                sort_key: 0,
+                spans: vec![
+                    Span {
+                        id: 0,
+                        name: "foo".into(),
+                        start: 0.0,
+                        end: 50.0,
+                        depth: 0,
+                        parent: None,
+                        self_value: 30.0,
+                        kind: SpanKind::Event,
+                        category: None,
+                    },
+                    Span {
+                        id: 1,
+                        name: "foo".into(),
+                        start: 50.0,
+                        end: 80.0,
+                        depth: 0,
+                        parent: None,
+                        self_value: 20.0,
+                        kind: SpanKind::Event,
+                        category: None,
+                    },
+                    Span {
+                        id: 2,
+                        name: "bar".into(),
+                        start: 10.0,
+                        end: 40.0,
+                        depth: 1,
+                        parent: Some(0),
+                        self_value: 30.0,
+                        kind: SpanKind::Event,
+                        category: None,
+                    },
+                ],
+            }],
         };
 
         let entries = get_ranked_entries(&profile, RankedSort::SelfTime, false);

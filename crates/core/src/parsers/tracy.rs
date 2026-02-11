@@ -119,7 +119,7 @@ fn flatten_zone(
         start: zone.start,
         end: zone.end,
         depth,
-        category: thread_name.map(|s| s.to_string()),
+        category: thread_name.map(ToString::to_string),
         parent: parent_id,
         self_time: 0.0,
     });
