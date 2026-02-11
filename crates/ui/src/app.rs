@@ -214,7 +214,7 @@ impl FlameApp {
             let content_height = if *max_depth == 0 {
                 20.0_f32
             } else {
-                ((*max_depth + 1) as f32 * 18.0 + 4.0).min(250.0)
+                ((*max_depth + 1) as f32 * 18.0 + 4.0).min(180.0)
             };
             self.lanes.push(LaneState {
                 kind: LaneKind::Thread(thread.id),
@@ -1103,19 +1103,19 @@ fn compute_auto_zoom(profile: &VisualProfile) -> Option<(f64, f64)> {
         };
     }
 
-    // Sort start times, then sliding window for smallest range covering 50% of spans
+    // Sort start times, then sliding window for smallest range covering 80% of spans
     let mut starts: Vec<f64> = thread.spans.iter().map(|s| s.start).collect();
     starts.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let half = starts.len() / 2;
+    let window_size = (starts.len() * 4) / 5; // 80% of spans
     let mut best_range = f64::MAX;
     let mut best_lo = starts[0];
     let mut best_hi = *starts.last().unwrap();
-    for i in 0..starts.len() - half {
-        let range = starts[i + half] - starts[i];
+    for i in 0..starts.len() - window_size {
+        let range = starts[i + window_size] - starts[i];
         if range < best_range {
             best_range = range;
             best_lo = starts[i];
-            best_hi = starts[i + half];
+            best_hi = starts[i + window_size];
         }
     }
     Some((best_lo, best_hi))
