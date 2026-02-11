@@ -34,12 +34,23 @@ pub struct FlameApp {
     /// Currently hovered frame_id.
     #[allow(dead_code)]
     hovered_frame: Option<u64>,
+    /// Selected span for detail panel.
+    selected_span: Option<SelectedSpan>,
+    /// Search query for filtering spans.
+    search_query: String,
     /// Error message to display.
     error: Option<String>,
     /// Pending profile data from async load.
     pending_data: std::sync::Arc<std::sync::Mutex<Option<Vec<u8>>>>,
     /// Loading state.
     loading: bool,
+}
+
+#[derive(Clone)]
+struct SelectedSpan {
+    name: String,
+    frame_id: u64,
+    lane_index: usize,
 }
 
 struct LaneState {
@@ -99,6 +110,8 @@ impl FlameApp {
             lane_commands: Vec::new(),
             scroll_y: 0.0,
             hovered_frame: None,
+            selected_span: None,
+            search_query: String::new(),
             error: None,
             pending_data,
             loading: false,
@@ -122,42 +135,22 @@ impl FlameApp {
                 );
                 self.setup_lanes(&profile);
 
-                // Find content bounds to auto-zoom
-                // Focus on the thread with the most spans (usually the main thread)
-                let densest_thread = profile
-                    .threads
-                    .iter()
-                    .max_by_key(|t| t.spans.len());
-
-                let (content_min, content_max) = if let Some(thread) = densest_thread {
-                    let mut cmin = f64::INFINITY;
-                    let mut cmax = f64::NEG_INFINITY;
-                    for span in &thread.spans {
-                        cmin = cmin.min(span.start);
-                        cmax = cmax.max(span.end);
-                    }
-                    (cmin, cmax)
-                } else {
-                    (f64::INFINITY, f64::NEG_INFINITY)
-                };
+                // Compute auto-zoom bounds before consuming profile
+                let zoom_bounds = compute_auto_zoom(&profile);
 
                 let session = Session::from_profile(profile, "Profile");
                 let session_start = session.start_time();
                 let session_end = session.end_time();
                 let duration = session_end - session_start;
 
-                if duration > 0.0
-                    && content_min.is_finite()
-                    && content_max.is_finite()
-                    && content_max > content_min
-                {
-                    // Add 5% padding around content
-                    let content_dur = content_max - content_min;
-                    let pad = content_dur * 0.05;
-                    self.view_start =
-                        ((content_min - pad - session_start) / duration).clamp(0.0, 1.0);
-                    self.view_end =
-                        ((content_max + pad - session_start) / duration).clamp(0.0, 1.0);
+                if duration > 0.0 {
+                    if let Some((lo, hi)) = zoom_bounds {
+                        let pad = (hi - lo) * 0.15;
+                        self.view_start =
+                            ((lo - pad - session_start) / duration).clamp(0.0, 1.0);
+                        self.view_end =
+                            ((hi + pad - session_start) / duration).clamp(0.0, 1.0);
+                    }
                 } else {
                     self.view_start = 0.0;
                     self.view_end = 1.0;
@@ -166,6 +159,7 @@ impl FlameApp {
                 self.session = Some(session);
                 self.scroll_y = 0.0;
                 self.error = None;
+                self.selected_span = None;
                 self.invalidate_commands();
             }
             Err(e) => {
@@ -176,15 +170,26 @@ impl FlameApp {
 
     fn setup_lanes(&mut self, profile: &VisualProfile) {
         self.lanes.clear();
-        for thread in &profile.threads {
-            let span_count = thread.spans.len();
-            let max_depth = thread
-                .spans
-                .iter()
-                .map(|s| s.depth)
-                .max()
-                .unwrap_or(0);
-            let content_height = ((max_depth + 1) as f32 * 20.0 + 8.0).max(40.0).min(400.0);
+
+        // Collect and sort by span count (densest first)
+        let mut thread_info: Vec<_> = profile
+            .threads
+            .iter()
+            .map(|t| {
+                let span_count = t.spans.len();
+                let max_depth = t.spans.iter().map(|s| s.depth).max().unwrap_or(0);
+                (t, span_count, max_depth)
+            })
+            .collect();
+        thread_info.sort_by(|a, b| b.1.cmp(&a.1));
+
+        for (thread, span_count, max_depth) in thread_info {
+            // Height based on actual content depth, compact for shallow lanes
+            let content_height = if max_depth == 0 {
+                24.0_f32
+            } else {
+                ((max_depth + 1) as f32 * 20.0 + 4.0).min(300.0)
+            };
             self.lanes.push(LaneState {
                 thread_id: Some(thread.id),
                 thread_name: format!("{} ({span_count} spans)", thread.name),
@@ -268,6 +273,89 @@ impl FlameApp {
         let uint8 = js_sys::Uint8Array::new(&buf);
         Ok(uint8.to_vec())
     }
+
+    /// Draw the time axis ruler showing tick marks and time labels.
+    fn draw_time_axis(&self, ui: &egui::Ui, rect: egui::Rect) {
+        let Some(session) = &self.session else {
+            return;
+        };
+        let session_start = session.start_time();
+        let session_end = session.end_time();
+        let duration = session_end - session_start;
+        if duration <= 0.0 {
+            return;
+        }
+
+        let painter = ui.painter_at(rect);
+
+        // Background
+        let bg = crate::theme::resolve(
+            flame_cat_protocol::ThemeToken::LaneHeaderBackground,
+            self.theme_mode,
+        );
+        painter.rect_filled(rect, egui::CornerRadius::ZERO, bg);
+
+        // Visible time window in µs
+        let vis_start_us = session_start + self.view_start * duration;
+        let vis_end_us = session_start + self.view_end * duration;
+        let vis_duration = vis_end_us - vis_start_us;
+        if vis_duration <= 0.0 {
+            return;
+        }
+
+        // Compute nice tick interval
+        let target_tick_count = (rect.width() / 100.0).max(2.0) as usize;
+        let tick_interval = nice_tick_interval(vis_duration, target_tick_count);
+
+        let text_color = crate::theme::resolve(
+            flame_cat_protocol::ThemeToken::TextSecondary,
+            self.theme_mode,
+        );
+        let tick_color = crate::theme::resolve(
+            flame_cat_protocol::ThemeToken::LaneBorder,
+            self.theme_mode,
+        );
+
+        // First tick aligned to interval (relative to session start)
+        let rel_start = vis_start_us - session_start;
+        let first_tick = (rel_start / tick_interval).ceil() * tick_interval;
+
+        let mut tick = first_tick;
+        while tick <= vis_end_us - session_start {
+            let frac = (tick - rel_start) / vis_duration;
+            let x = rect.left() + frac as f32 * rect.width();
+
+            // Tick mark
+            painter.line_segment(
+                [
+                    egui::pos2(x, rect.bottom() - 6.0),
+                    egui::pos2(x, rect.bottom()),
+                ],
+                egui::Stroke::new(1.0, tick_color),
+            );
+
+            // Time label
+            let label = format_tick_label(tick, tick_interval);
+            painter.text(
+                egui::pos2(x, rect.center().y),
+                egui::Align2::CENTER_CENTER,
+                &label,
+                egui::FontId::proportional(10.0),
+                text_color,
+            );
+
+            tick += tick_interval;
+        }
+
+        // Bottom border
+        painter.line_segment(
+            [
+                egui::pos2(rect.left(), rect.bottom()),
+                egui::pos2(rect.right(), rect.bottom()),
+            ],
+            egui::Stroke::new(1.0, tick_color),
+        );
+    }
 }
 
 impl eframe::App for FlameApp {
@@ -328,6 +416,17 @@ impl eframe::App for FlameApp {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let zoom_pct = 100.0 / (self.view_end - self.view_start);
                     ui.label(format!("{zoom_pct:.0}%"));
+                    ui.separator();
+
+                    // Search box
+                    let search_response = ui.add(
+                        egui::TextEdit::singleline(&mut self.search_query)
+                            .hint_text("🔍 Search spans…")
+                            .desired_width(150.0),
+                    );
+                    if search_response.changed() {
+                        self.invalidate_commands();
+                    }
                 });
             });
         });
@@ -355,6 +454,103 @@ impl eframe::App for FlameApp {
             });
         });
 
+        // Detail panel: show selected span info
+        if let Some(selected) = &self.selected_span {
+            let selected_clone = selected.clone();
+            egui::TopBottomPanel::bottom("detail_panel")
+                .min_height(60.0)
+                .max_height(150.0)
+                .resizable(true)
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.heading("📋 Detail");
+                        ui.with_layout(
+                            egui::Layout::right_to_left(egui::Align::Center),
+                            |ui| {
+                                if ui.button("✕").clicked() {
+                                    self.selected_span = None;
+                                }
+                            },
+                        );
+                    });
+                    ui.separator();
+
+                    // Find the span in the session to show timing info
+                    if let Some(session) = &self.session {
+                        if let Some(entry) = session.profiles().first() {
+                            let lane = &self.lanes[selected_clone.lane_index];
+                            if let Some(tid) = lane.thread_id {
+                                if let Some(thread) =
+                                    entry.profile.threads.iter().find(|t| t.id == tid)
+                                {
+                                    if let Some(span) = thread
+                                        .spans
+                                        .iter()
+                                        .find(|s| s.id == selected_clone.frame_id)
+                                    {
+                                        ui.horizontal(|ui| {
+                                            ui.label(
+                                                egui::RichText::new(&selected_clone.name)
+                                                    .strong()
+                                                    .size(13.0),
+                                            );
+                                        });
+                                        ui.horizontal(|ui| {
+                                            ui.label(format!(
+                                                "Duration: {} | Self: {} | Depth: {} | Thread: {}",
+                                                format_duration(span.duration()),
+                                                format_duration(span.self_value),
+                                                span.depth,
+                                                lane.thread_name,
+                                            ));
+                                        });
+                                        if let Some(cat) = &span.category {
+                                            ui.label(format!("Category: {}", cat.name));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+        }
+
+        // Sidebar: lane visibility toggles
+        if self.session.is_some() {
+            egui::SidePanel::left("lane_sidebar")
+                .default_width(160.0)
+                .min_width(100.0)
+                .resizable(true)
+                .show(ctx, |ui| {
+                    ui.heading("Lanes");
+                    ui.separator();
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        let mut changed = false;
+                        for lane in &mut self.lanes {
+                            let mut vis = lane.visible;
+                            ui.horizontal(|ui| {
+                                if ui.checkbox(&mut vis, "").changed() {
+                                    lane.visible = vis;
+                                    changed = true;
+                                }
+                                // Truncate long names
+                                let name = if lane.thread_name.len() > 24 {
+                                    format!("{}…", &lane.thread_name[..23])
+                                } else {
+                                    lane.thread_name.clone()
+                                };
+                                ui.label(
+                                    egui::RichText::new(name).size(11.0),
+                                );
+                            });
+                        }
+                        if changed {
+                            self.invalidate_commands();
+                        }
+                    });
+                });
+        }
+
         // Central panel: flame chart
         egui::CentralPanel::default().show(ctx, |ui| {
             if self.session.is_none() {
@@ -369,6 +565,14 @@ impl eframe::App for FlameApp {
                 });
                 return;
             }
+
+            // Time axis ruler
+            let time_axis_height = 24.0_f32;
+            let (time_rect, _) = ui.allocate_exact_size(
+                egui::vec2(ui.available_width(), time_axis_height),
+                egui::Sense::hover(),
+            );
+            self.draw_time_axis(ui, time_rect);
 
             let available = ui.available_rect_before_wrap();
             self.ensure_commands(available.width());
@@ -552,11 +756,13 @@ impl eframe::App for FlameApp {
                         cmds,
                         egui::pos2(available.left(), content_top),
                         self.theme_mode,
+                        &self.search_query,
                     );
 
-                    // Hover tooltip
+                    // Hover tooltip + click to select
                     if let Some(hover_pos) = ui.input(|i| i.pointer.hover_pos()) {
                         if content_rect.contains(hover_pos) {
+                            let clicked = response.clicked();
                             for hit in &result.hit_regions {
                                 if hit.rect.contains(hover_pos) {
                                     if let Some(name) = find_span_label(cmds, hit.frame_id) {
@@ -569,6 +775,13 @@ impl eframe::App for FlameApp {
                                                 ui.label(&name);
                                             },
                                         );
+                                        if clicked {
+                                            self.selected_span = Some(SelectedSpan {
+                                                name,
+                                                frame_id: hit.frame_id,
+                                                lane_index: i,
+                                            });
+                                        }
                                     }
                                     break;
                                 }
@@ -640,4 +853,70 @@ fn find_span_label(cmds: &[RenderCommand], frame_id: u64) -> Option<String> {
         }
     }
     None
+}
+
+/// Compute a "nice" tick interval for the time axis.
+/// Returns interval in µs.
+fn nice_tick_interval(visible_duration_us: f64, target_ticks: usize) -> f64 {
+    let raw = visible_duration_us / target_ticks as f64;
+    // Find the nearest "nice" number: 1, 2, 5, 10, 20, 50, ...
+    let mag = 10.0_f64.powf(raw.log10().floor());
+    let residual = raw / mag;
+    let nice = if residual <= 1.5 {
+        1.0
+    } else if residual <= 3.5 {
+        2.0
+    } else if residual <= 7.5 {
+        5.0
+    } else {
+        10.0
+    };
+    nice * mag
+}
+
+/// Format a tick label (time in µs relative to session start) with appropriate units.
+fn format_tick_label(us: f64, interval: f64) -> String {
+    if interval >= 1_000_000.0 {
+        format!("{:.1}s", us / 1_000_000.0)
+    } else if interval >= 1_000.0 {
+        format!("{:.1}ms", us / 1_000.0)
+    } else {
+        format!("{:.0}µs", us)
+    }
+}
+
+/// Find the densest time window in the busiest thread.
+/// Returns `Some((lo, hi))` in µs, or `None` if no spans.
+fn compute_auto_zoom(profile: &VisualProfile) -> Option<(f64, f64)> {
+    let thread = profile.threads.iter().max_by_key(|t| t.spans.len())?;
+    if thread.spans.is_empty() {
+        return None;
+    }
+
+    if thread.spans.len() < 10 {
+        let cmin = thread.spans.iter().map(|s| s.start).fold(f64::INFINITY, f64::min);
+        let cmax = thread.spans.iter().map(|s| s.end).fold(f64::NEG_INFINITY, f64::max);
+        return if cmin.is_finite() && cmax.is_finite() {
+            Some((cmin, cmax))
+        } else {
+            None
+        };
+    }
+
+    // Sort start times, then sliding window for smallest range covering 50% of spans
+    let mut starts: Vec<f64> = thread.spans.iter().map(|s| s.start).collect();
+    starts.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let half = starts.len() / 2;
+    let mut best_range = f64::MAX;
+    let mut best_lo = starts[0];
+    let mut best_hi = *starts.last().unwrap();
+    for i in 0..starts.len() - half {
+        let range = starts[i + half] - starts[i];
+        if range < best_range {
+            best_range = range;
+            best_lo = starts[i];
+            best_hi = starts[i + half];
+        }
+    }
+    Some((best_lo, best_hi))
 }

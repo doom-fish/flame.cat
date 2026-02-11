@@ -53,12 +53,14 @@ pub struct RenderResult {
 /// Render a list of `RenderCommand` into an egui `Painter`.
 ///
 /// `offset` is the top-left pixel position of the rendering area.
+/// `search` is an optional search filter — non-matching spans are dimmed.
 /// Returns hit regions for click/hover interaction.
 pub fn render_commands(
     painter: &mut egui::Painter,
     commands: &[RenderCommand],
     offset: Pos2,
     mode: ThemeMode,
+    search: &str,
 ) -> RenderResult {
     let mut transform_stack: Vec<Transform> = vec![Transform::identity()];
     let mut clip_stack: Vec<Rect> = Vec::new();
@@ -91,6 +93,18 @@ pub fn render_commands(
                 }
 
                 let fill = theme::resolve(*color, mode);
+
+                // Dim non-matching spans when search is active
+                let search_match = search.is_empty()
+                    || label
+                        .as_ref()
+                        .is_some_and(|l| l.as_ref().to_lowercase().contains(&search.to_lowercase()));
+                let fill = if search_match {
+                    fill
+                } else {
+                    egui::Color32::from_rgba_unmultiplied(fill.r(), fill.g(), fill.b(), 40)
+                };
+
                 painter.rect_filled(egui_rect, CornerRadius::ZERO, fill);
 
                 if let Some(bc) = border_color {
