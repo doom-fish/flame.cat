@@ -207,10 +207,11 @@ async function main() {
   };
 
   const MINIMAP_HEIGHT = 40;
+  const TIME_AXIS_HEIGHT = 24;
 
   const renderAll = () => {
     const allCommands: RenderCommand[] = [];
-    const laneYOffset = profileLoaded ? MINIMAP_HEIGHT : 0;
+    const laneYOffset = profileLoaded ? MINIMAP_HEIGHT + TIME_AXIS_HEIGHT : 0;
 
     // Minimap
     if (profileLoaded && laneManager.lanes[0]) {
@@ -228,6 +229,36 @@ async function main() {
         allCommands.push(...minimapCmds);
       } catch {
         // minimap optional
+      }
+
+      // Time axis between minimap and lanes
+      try {
+        const firstLane = laneManager.lanes[0];
+        const meta = JSON.parse(wasm.get_profile_metadata(firstLane.profileIndex)) as {
+          start_time: number;
+          end_time: number;
+        };
+        const duration = meta.end_time - meta.start_time;
+        const { viewStart: vs, viewEnd: ve } = laneManager.getViewWindow();
+        const relViewStart = vs * duration;
+        const relViewEnd = ve * duration;
+        const gridHeight = laneManager.totalHeight() + laneManager.visibleLanes.length * laneManager.headerHeight;
+
+        allCommands.push({
+          PushTransform: { translate: { x: 0, y: MINIMAP_HEIGHT }, scale: { x: 1, y: 1 } },
+        });
+        const axisJson = wasm.render_time_axis(
+          canvas.clientWidth,
+          window.devicePixelRatio,
+          relViewStart,
+          relViewEnd,
+          gridHeight,
+        );
+        const axisCmds: RenderCommand[] = JSON.parse(axisJson) as RenderCommand[];
+        allCommands.push(...axisCmds);
+        allCommands.push("PopTransform");
+      } catch {
+        // time axis optional
       }
     }
 
@@ -374,8 +405,7 @@ async function main() {
 
   // Hit test: find frame at mouse position
   const hitTest = (mx: number, my: number): { name: string; frameId: number; profileIndex: number } | null => {
-    const laneYOffset = profileLoaded ? MINIMAP_HEIGHT : 0;
-    const scrollOffset = -laneManager.globalScrollY;
+    const laneYOffset = profileLoaded ? MINIMAP_HEIGHT + TIME_AXIS_HEIGHT : 0;    const scrollOffset = -laneManager.globalScrollY;
     const { viewStart, viewEnd } = laneManager.getViewWindow();
     const visible = laneManager.visibleLanes;
     for (let i = 0; i < visible.length; i++) {
@@ -556,7 +586,7 @@ async function main() {
     canvas,
     laneManager,
     renderAll,
-    () => (profileLoaded ? MINIMAP_HEIGHT : 0),
+    () => (profileLoaded ? MINIMAP_HEIGHT + TIME_AXIS_HEIGHT : 0),
     () => profileLoaded,
     (_from, _to) => {
       laneSidebar.update(laneManager.lanes);

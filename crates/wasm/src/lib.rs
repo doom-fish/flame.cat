@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 
 use flame_cat_core::model::Session;
-use flame_cat_core::views::{counter, frame_track, left_heavy, markers, minimap, ranked, sandwich, time_order};
+use flame_cat_core::views::{counter, frame_track, left_heavy, markers, minimap, ranked, sandwich, time_axis, time_order};
 use flame_cat_protocol::{Viewport, VisualProfile};
 use wasm_bindgen::prelude::*;
 
@@ -484,6 +484,26 @@ pub fn render_frame_track(
         let commands = frame_track::render_frame_track(&profile.frames, &viewport, vs, ve);
         serde_json::to_string(&commands).map_err(|e| JsError::new(&e.to_string()))
     })
+}
+
+/// Render a time axis ruler with ticks and labels.
+#[wasm_bindgen]
+pub fn render_time_axis(
+    width: f64,
+    dpr: f64,
+    view_start: f64,
+    view_end: f64,
+    grid_height: f64,
+) -> Result<String, JsError> {
+    let viewport = Viewport {
+        x: 0.0,
+        y: 0.0,
+        width,
+        height: 24.0,
+        dpr,
+    };
+    let commands = time_axis::render_time_axis(&viewport, view_start, view_end, grid_height);
+    serde_json::to_string(&commands).map_err(|e| JsError::new(&e.to_string()))
 }
 
 /// Get counter track names for a profile as JSON array.

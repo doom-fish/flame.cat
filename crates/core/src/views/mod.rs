@@ -5,4 +5,5 @@ pub mod markers;
 pub mod minimap;
 pub mod ranked;
 pub mod sandwich;
+pub mod time_axis;
 pub mod time_order;
