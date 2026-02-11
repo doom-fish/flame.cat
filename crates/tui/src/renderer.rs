@@ -37,6 +37,18 @@ fn theme_to_color(token: &ThemeToken) -> Color {
         ThemeToken::Background => Color::Black,
         ThemeToken::Surface => Color::Black,
         ThemeToken::Border => Color::DarkGray,
+        ThemeToken::ToolbarBackground => Color::DarkGray,
+        ThemeToken::ToolbarText => Color::White,
+        ThemeToken::ToolbarTabActive => Color::Green,
+        ThemeToken::ToolbarTabHover => Color::Gray,
+        ThemeToken::MinimapBackground => Color::Black,
+        ThemeToken::MinimapViewport => Color::DarkGray,
+        ThemeToken::TableRowEven => Color::Black,
+        ThemeToken::TableRowOdd => Color::Rgb(20, 20, 20),
+        ThemeToken::TableHeaderBackground => Color::DarkGray,
+        ThemeToken::TableBorder => Color::DarkGray,
+        ThemeToken::BarFill => Color::Green,
+        ThemeToken::SearchHighlight => Color::LightYellow,
     }
 }
 

@@ -16,7 +16,19 @@ export type ThemeToken =
   | "HoverHighlight"
   | "Background"
   | "Surface"
-  | "Border";
+  | "Border"
+  | "ToolbarBackground"
+  | "ToolbarText"
+  | "ToolbarTabActive"
+  | "ToolbarTabHover"
+  | "MinimapBackground"
+  | "MinimapViewport"
+  | "TableRowEven"
+  | "TableRowOdd"
+  | "TableHeaderBackground"
+  | "TableBorder"
+  | "BarFill"
+  | "SearchHighlight";
 
 export interface Point {
   x: number;

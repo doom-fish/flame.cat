@@ -1,9 +1,17 @@
-import { darkTheme, lightTheme } from "./themes";
-import type { Theme } from "./themes";
+import { darkTheme, lightTheme, resolveColor } from "./themes";
+import type { Theme, Color } from "./themes";
 import type { RenderCommand } from "./protocol";
 import { WebGPURenderer } from "./renderers/webgpu";
 import { CanvasRenderer } from "./renderers/canvas";
-import { LaneManager } from "./app";
+import {
+  LaneManager,
+  createToolbar,
+  applyToolbarTheme,
+  Hovertip,
+  DetailPanel,
+  SearchBar,
+} from "./app";
+import type { ViewType } from "./app";
 import { bindInteraction } from "./app/interaction";
 
 interface Renderer {
@@ -15,7 +23,6 @@ async function createRenderer(
   canvas: HTMLCanvasElement,
   theme: Theme,
 ): Promise<{ renderer: Renderer; backend: string }> {
-  // Try WebGPU first, fall back to Canvas2D
   if (navigator.gpu) {
     try {
       const r = new WebGPURenderer(canvas, theme);
@@ -28,18 +35,66 @@ async function createRenderer(
   return { renderer: new CanvasRenderer(canvas, theme), backend: "canvas2d" };
 }
 
-async function main() {
-  const canvas = document.getElementById("canvas") as HTMLCanvasElement;
-  if (!canvas) throw new Error("No canvas element found");
+function colorStr(c: Color): string {
+  return `rgba(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)},${c.a})`;
+}
 
-  canvas.style.width = "100vw";
-  canvas.style.height = "100vh";
-  canvas.style.display = "block";
+async function main() {
+  // Layout: toolbar → canvas container → detail panel
+  const root = document.createElement("div");
+  root.style.cssText = "display:flex;flex-direction:column;width:100vw;height:100vh;";
   document.body.style.margin = "0";
   document.body.style.overflow = "hidden";
+  document.body.appendChild(root);
 
   const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
   const theme: Theme = prefersDark ? darkTheme : lightTheme;
+
+  let activeView: ViewType = "time-order";
+  let searchQuery = "";
+  let profileLoaded = false;
+  let profileDuration = 0;
+
+  // Toolbar
+  const toolbar = createToolbar({
+    activeView,
+    profileName: null,
+    onViewChange: (view) => {
+      activeView = view;
+      switchView(view);
+    },
+    onSearch: () => searchBar.show(),
+  });
+  root.appendChild(toolbar);
+
+  // Canvas container
+  const canvasContainer = document.createElement("div");
+  canvasContainer.style.cssText = "flex:1;position:relative;min-height:0;";
+  root.appendChild(canvasContainer);
+
+  const canvas = document.createElement("canvas");
+  canvas.id = "canvas";
+  canvas.style.cssText = "width:100%;height:100%;display:block;";
+  canvasContainer.appendChild(canvas);
+
+  // Detail panel
+  const detailPanel = new DetailPanel(root);
+
+  // Hovertip
+  const hovertip = new Hovertip(canvasContainer);
+
+  // Search bar
+  const searchBar = new SearchBar(
+    canvasContainer,
+    (query) => {
+      searchQuery = query;
+      renderAll();
+    },
+    () => {
+      searchQuery = "";
+      renderAll();
+    },
+  );
 
   const { renderer, backend } = await createRenderer(canvas, theme);
   console.log(`Using ${backend} renderer`);
@@ -49,17 +104,38 @@ async function main() {
 
   const laneManager = new LaneManager();
 
+  const MINIMAP_HEIGHT = 40;
+
   const renderAll = () => {
     const allCommands: RenderCommand[] = [];
+    const laneYOffset = profileLoaded ? MINIMAP_HEIGHT : 0;
 
-    // Render lane headers
-    allCommands.push(...laneManager.renderHeaders(canvas.clientWidth));
+    // Minimap
+    if (profileLoaded && laneManager.lanes[0]) {
+      try {
+        const minimapJson = wasm.render_minimap(
+          laneManager.lanes[0].profileIndex,
+          canvas.clientWidth,
+          MINIMAP_HEIGHT,
+          window.devicePixelRatio,
+          0,
+          1,
+        );
+        const minimapCmds: RenderCommand[] = JSON.parse(minimapJson) as RenderCommand[];
+        allCommands.push(...minimapCmds);
+      } catch {
+        // minimap optional
+      }
+    }
 
-    // Render each lane's content
+    // Lane headers
+    allCommands.push(...laneManager.renderHeaders(canvas.clientWidth, laneYOffset));
+
+    // Lane content
     for (let i = 0; i < laneManager.lanes.length; i++) {
       const lane = laneManager.lanes[i];
       if (!lane) continue;
-      const laneY = laneManager.laneY(i) + laneManager.headerHeight;
+      const laneY = laneManager.laneY(i) + laneManager.headerHeight + laneYOffset;
       try {
         const commandsJson = wasm.render_view(
           lane.profileIndex,
@@ -69,20 +145,39 @@ async function main() {
           canvas.clientWidth,
           lane.height,
           window.devicePixelRatio,
-          lane.selectedFrameId,
+          lane.selectedFrameId != null ? BigInt(lane.selectedFrameId) : undefined,
         );
         const laneCmds: RenderCommand[] = JSON.parse(commandsJson) as RenderCommand[];
-        console.log(`Lane ${lane.id}: ${laneCmds.length} commands`, laneCmds.slice(0, 5));
 
-        // Offset lane content by its Y position
         allCommands.push({
           PushTransform: { translate: { x: 0, y: laneY }, scale: { x: 1, y: 1 } },
         });
-        // Clip uses lane-local coordinates (inside the transform)
         allCommands.push({
           SetClip: { rect: { x: 0, y: 0, w: canvas.clientWidth, h: lane.height } },
         });
-        allCommands.push(...laneCmds);
+
+        // Search: dim non-matching frames
+        if (searchQuery) {
+          const lowerQ = searchQuery.toLowerCase();
+          for (const cmd of laneCmds) {
+            if (
+              typeof cmd !== "string" &&
+              "DrawRect" in cmd &&
+              cmd.DrawRect.label &&
+              cmd.DrawRect.frame_id != null &&
+              !cmd.DrawRect.label.toLowerCase().includes(lowerQ)
+            ) {
+              allCommands.push({
+                DrawRect: { ...cmd.DrawRect, color: "FlameNeutral", border_color: null },
+              });
+            } else {
+              allCommands.push(cmd);
+            }
+          }
+        } else {
+          allCommands.push(...laneCmds);
+        }
+
         allCommands.push("ClearClip");
         allCommands.push("PopTransform");
       } catch (err) {
@@ -90,54 +185,210 @@ async function main() {
       }
     }
 
-    // Debug: expose on window
-    (window as Record<string, unknown>).__lastCommands = allCommands;
-
     const { scrollX } = laneManager.getTransform();
     renderer.render(allCommands, scrollX, 0);
   };
 
-  // Bind interaction handlers
+  const switchView = (view: ViewType) => {
+    for (const lane of laneManager.lanes) {
+      if (view === "sandwich" && !lane.selectedFrameId) {
+        lane.selectedFrameId = 0;
+      }
+      lane.viewType = view;
+    }
+    updateToolbarTheme();
+    renderAll();
+  };
+
+  const updateToolbarTheme = () => {
+    applyToolbarTheme(
+      toolbar,
+      {
+        bg: colorStr(resolveColor(theme, "ToolbarBackground")),
+        text: colorStr(resolveColor(theme, "ToolbarText")),
+        tabActive: colorStr(resolveColor(theme, "ToolbarTabActive")),
+        tabHover: colorStr(resolveColor(theme, "ToolbarTabHover")),
+      },
+      activeView,
+    );
+  };
+
+  // Hit test: find frame at mouse position
+  const hitTest = (mx: number, my: number): { name: string; frameId: number } | null => {
+    const laneYOffset = profileLoaded ? MINIMAP_HEIGHT : 0;
+    for (let i = 0; i < laneManager.lanes.length; i++) {
+      const lane = laneManager.lanes[i];
+      if (!lane) continue;
+      const laneY = laneManager.laneY(i) + laneManager.headerHeight + laneYOffset;
+      if (my < laneY || my > laneY + lane.height) continue;
+      try {
+        const json = wasm.render_view(
+          lane.profileIndex,
+          lane.viewType,
+          0,
+          0,
+          canvas.clientWidth,
+          lane.height,
+          window.devicePixelRatio,
+          lane.selectedFrameId != null ? BigInt(lane.selectedFrameId) : undefined,
+        );
+        const cmds: RenderCommand[] = JSON.parse(json) as RenderCommand[];
+        const localY = my - laneY;
+        for (const cmd of cmds) {
+          if (typeof cmd !== "string" && "DrawRect" in cmd && cmd.DrawRect.frame_id != null) {
+            const r = cmd.DrawRect.rect;
+            if (mx >= r.x && mx <= r.x + r.w && localY >= r.y && localY <= r.y + r.h) {
+              return { name: cmd.DrawRect.label ?? "unknown", frameId: cmd.DrawRect.frame_id };
+            }
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    return null;
+  };
+
+  // Hovertip on mousemove
+  canvas.addEventListener("mousemove", (e) => {
+    if (!profileLoaded) return;
+    const result = hitTest(e.offsetX, e.offsetY);
+    if (result) {
+      hovertip.show(
+        e.offsetX,
+        e.offsetY,
+        canvas.clientWidth,
+        canvas.clientHeight,
+        result.name,
+        `frame #${result.frameId}`,
+      );
+    } else {
+      hovertip.hide();
+    }
+  });
+  canvas.addEventListener("mouseleave", () => hovertip.hide());
+
+  // Click for selection + detail panel
+  canvas.addEventListener("click", (e) => {
+    if (!profileLoaded) return;
+    const result = hitTest(e.offsetX, e.offsetY);
+    if (result) {
+      for (const lane of laneManager.lanes) lane.selectedFrameId = result.frameId;
+      try {
+        const firstLane = laneManager.lanes[0];
+        if (firstLane) {
+          const json = wasm.get_ranked_entries(firstLane.profileIndex, "self", false);
+          const entries = JSON.parse(json) as {
+            name: string;
+            self_time: number;
+            total_time: number;
+            count: number;
+          }[];
+          const entry = entries.find((e) => e.name === result.name);
+          if (entry) {
+            detailPanel.show(
+              {
+                name: entry.name,
+                selfTime: entry.self_time,
+                totalTime: entry.total_time,
+                depth: 0,
+                category: null,
+              },
+              profileDuration,
+            );
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+      renderAll();
+    } else {
+      detailPanel.hide();
+      for (const lane of laneManager.lanes) lane.selectedFrameId = undefined;
+      renderAll();
+    }
+  });
+
+  // Keyboard shortcuts
+  window.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+      e.preventDefault();
+      searchBar.show();
+    }
+    if (e.key === "Escape" && detailPanel.isVisible) detailPanel.hide();
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && profileLoaded) {
+      const views: Record<string, ViewType> = {
+        "1": "time-order",
+        "2": "left-heavy",
+        "3": "sandwich",
+        "4": "ranked",
+      };
+      const v = views[e.key];
+      if (v) {
+        activeView = v;
+        switchView(v);
+      }
+    }
+  });
+
+  // Apply initial theme
+  updateToolbarTheme();
+  hovertip.applyTheme({
+    bg: colorStr(resolveColor(theme, "Surface")),
+    text: colorStr(resolveColor(theme, "TextPrimary")),
+    border: colorStr(resolveColor(theme, "Border")),
+  });
+  detailPanel.applyTheme({
+    bg: colorStr(resolveColor(theme, "ToolbarBackground")),
+    text: colorStr(resolveColor(theme, "TextPrimary")),
+    border: colorStr(resolveColor(theme, "Border")),
+  });
+  searchBar.applyTheme({
+    bg: colorStr(resolveColor(theme, "Surface")),
+    text: colorStr(resolveColor(theme, "TextPrimary")),
+    border: colorStr(resolveColor(theme, "Border")),
+    inputBg: colorStr(resolveColor(theme, "Background")),
+  });
+
   bindInteraction(canvas, laneManager, renderAll);
 
-  // File drop handling
+  // File drop
   canvas.addEventListener("dragover", (e) => {
     e.preventDefault();
     e.stopPropagation();
   });
-
   canvas.addEventListener("drop", async (e) => {
     e.preventDefault();
     e.stopPropagation();
     const file = e.dataTransfer?.files[0];
     if (!file) return;
-
     const buffer = await file.arrayBuffer();
     const data = new Uint8Array(buffer);
-
     try {
       const handle = wasm.parse_profile(data);
       const meta = JSON.parse(wasm.get_profile_metadata(handle)) as {
+        name: string | null;
         start_time: number;
         end_time: number;
       };
       const frameCount = wasm.get_frame_count(handle);
-      console.log(`Loaded profile: ${frameCount} frames, ${meta.end_time - meta.start_time}µs`);
-
+      profileDuration = meta.end_time - meta.start_time;
+      profileLoaded = true;
+      console.log(`Loaded profile: ${frameCount} frames, ${profileDuration}µs`);
+      const centerEl = toolbar.querySelector("#toolbar-center");
+      if (centerEl) centerEl.textContent = meta.name ?? file.name;
       laneManager.addLane({
         id: `lane-${laneManager.lanes.length}`,
-        viewType: "time-order",
+        viewType: activeView,
         profileIndex: handle,
-        height: Math.max(200, canvas.clientHeight / 2),
+        height: Math.max(200, canvas.clientHeight - 100),
       });
-
       renderAll();
     } catch (err) {
       console.error("Failed to load profile:", err);
     }
   });
 
-  // Render empty state
   renderer.render([], 0, 0);
   console.log("flame.cat ready — drop a Chrome trace JSON file to visualize");
 }

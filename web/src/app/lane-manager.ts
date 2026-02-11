@@ -1,8 +1,10 @@
 import type { RenderCommand } from "../protocol";
 
+export type ViewType = "time-order" | "left-heavy" | "sandwich" | "ranked";
+
 export interface LaneConfig {
   id: string;
-  viewType: "time-order" | "left-heavy" | "sandwich";
+  viewType: ViewType;
   profileIndex: number;
   height: number;
   scrollY: number;
@@ -113,12 +115,12 @@ export class LaneManager {
   }
 
   /** Generate lane header render commands. */
-  renderHeaders(canvasWidth: number): RenderCommand[] {
+  renderHeaders(canvasWidth: number, yOffset = 0): RenderCommand[] {
     const commands: RenderCommand[] = [];
     for (let i = 0; i < this.lanes.length; i++) {
       const lane = this.lanes[i];
       if (!lane) continue;
-      const y = this.laneY(i);
+      const y = this.laneY(i) + yOffset;
       commands.push({
         DrawRect: {
           rect: { x: 0, y, w: canvasWidth, h: HEADER_HEIGHT },
