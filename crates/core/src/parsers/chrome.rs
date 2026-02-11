@@ -63,6 +63,20 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
 
     for event in &sorted_events {
         let key = (event.pid, event.tid);
+
+        // Pop completed X events from the stack before processing the next event.
+        if let Some(stack) = stacks.get_mut(&key) {
+            while let Some(&top_idx) = stack.last() {
+                let top = &frames[top_idx];
+                // Only auto-pop X events (B events are popped by their E counterpart)
+                if top.end > top.start && top.end <= event.ts {
+                    stack.pop();
+                } else {
+                    break;
+                }
+            }
+        }
+
         match event.ph.as_str() {
             "X" => {
                 let dur = event.dur.unwrap_or(0.0);
@@ -89,13 +103,8 @@ pub fn parse_chrome_trace(data: &[u8]) -> Result<Profile, ChromeParseError> {
                     parent: parent_id,
                     self_time: 0.0, // computed below
                 });
-                // X events are self-contained; push/pop for child nesting
-                // is only relevant for B/E. But we record them transiently
-                // so that nested X events within a B/E span get the right
-                // parent.
+                // Keep X events on stack so nested children get correct depth
                 stacks.entry(key).or_default().push(frame_idx);
-                // Immediately pop since X is complete
-                stacks.entry(key).or_default().pop();
             }
             "B" => {
                 let depth = stacks.entry(key).or_default().len() as u32;
@@ -190,6 +199,8 @@ mod tests {
 
         let child = &profile.frames[1];
         assert_eq!(child.name, "child");
+        assert_eq!(child.depth, 1);
+        assert_eq!(child.parent, Some(main_frame.id));
         assert_eq!(child.category.as_deref(), Some("func"));
     }
 

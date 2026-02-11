@@ -2,8 +2,31 @@ import { darkTheme, lightTheme } from "./themes";
 import type { Theme } from "./themes";
 import type { RenderCommand } from "./protocol";
 import { WebGPURenderer } from "./renderers/webgpu";
+import { CanvasRenderer } from "./renderers/canvas";
 import { LaneManager } from "./app";
 import { bindInteraction } from "./app/interaction";
+
+interface Renderer {
+  render(commands: RenderCommand[], scrollX: number, scrollY: number): void;
+  setTheme(theme: Theme): void;
+}
+
+async function createRenderer(
+  canvas: HTMLCanvasElement,
+  theme: Theme,
+): Promise<{ renderer: Renderer; backend: string }> {
+  // Try WebGPU first, fall back to Canvas2D
+  if (navigator.gpu) {
+    try {
+      const r = new WebGPURenderer(canvas, theme);
+      await r.init();
+      return { renderer: r, backend: "webgpu" };
+    } catch {
+      console.warn("WebGPU init failed, falling back to Canvas2D");
+    }
+  }
+  return { renderer: new CanvasRenderer(canvas, theme), backend: "canvas2d" };
+}
 
 async function main() {
   const canvas = document.getElementById("canvas") as HTMLCanvasElement;
@@ -18,10 +41,10 @@ async function main() {
   const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
   const theme: Theme = prefersDark ? darkTheme : lightTheme;
 
-  const renderer = new WebGPURenderer(canvas, theme);
-  await renderer.init();
+  const { renderer, backend } = await createRenderer(canvas, theme);
+  console.log(`Using ${backend} renderer`);
 
-  const wasm = await import("../crates/wasm/pkg/flame_cat_wasm.js");
+  const wasm = await import("../../crates/wasm/pkg/flame_cat_wasm.js");
   await wasm.default();
 
   const laneManager = new LaneManager();
@@ -49,13 +72,15 @@ async function main() {
           lane.selectedFrameId,
         );
         const laneCmds: RenderCommand[] = JSON.parse(commandsJson) as RenderCommand[];
+        console.log(`Lane ${lane.id}: ${laneCmds.length} commands`, laneCmds.slice(0, 5));
 
         // Offset lane content by its Y position
         allCommands.push({
           PushTransform: { translate: { x: 0, y: laneY }, scale: { x: 1, y: 1 } },
         });
+        // Clip uses lane-local coordinates (inside the transform)
         allCommands.push({
-          SetClip: { rect: { x: 0, y: laneY, w: canvas.clientWidth, h: lane.height } },
+          SetClip: { rect: { x: 0, y: 0, w: canvas.clientWidth, h: lane.height } },
         });
         allCommands.push(...laneCmds);
         allCommands.push("ClearClip");
@@ -64,6 +89,9 @@ async function main() {
         console.error(`Failed to render lane ${lane.id}:`, err);
       }
     }
+
+    // Debug: expose on window
+    (window as Record<string, unknown>).__lastCommands = allCommands;
 
     const { scrollX } = laneManager.getTransform();
     renderer.render(allCommands, scrollX, 0);
