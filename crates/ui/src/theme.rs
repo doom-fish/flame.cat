@@ -40,63 +40,64 @@ pub fn resolve(token: ThemeToken, mode: ThemeMode) -> egui::Color32 {
 fn resolve_dark(token: ThemeToken) -> ResolvedColor {
     use ThemeToken::*;
     match token {
-        FlameHot => ResolvedColor::rgb(255, 100, 50),
-        FlameWarm => ResolvedColor::rgb(255, 180, 50),
-        FlameCold => ResolvedColor::rgb(80, 180, 255),
-        FlameNeutral => ResolvedColor::rgb(100, 120, 160),
+        // Perfetto-inspired flame palette
+        FlameHot => ResolvedColor::rgb(244, 67, 54), // Material Red
+        FlameWarm => ResolvedColor::rgb(255, 167, 38), // Material Orange
+        FlameCold => ResolvedColor::rgb(66, 165, 245), // Material Blue
+        FlameNeutral => ResolvedColor::rgb(149, 117, 205), // Material Purple
 
-        LaneBackground => ResolvedColor::rgb(30, 30, 35),
-        LaneBorder => ResolvedColor::rgb(60, 60, 70),
-        LaneHeaderBackground => ResolvedColor::rgb(40, 40, 48),
-        LaneHeaderText => ResolvedColor::rgb(200, 200, 210),
+        LaneBackground => ResolvedColor::rgb(24, 24, 24), // Perfetto bg
+        LaneBorder => ResolvedColor::rgb(48, 48, 48),
+        LaneHeaderBackground => ResolvedColor::rgb(33, 33, 33),
+        LaneHeaderText => ResolvedColor::rgb(224, 224, 224),
 
-        TextPrimary => ResolvedColor::rgb(230, 230, 240),
-        TextSecondary => ResolvedColor::rgb(160, 160, 175),
-        TextMuted => ResolvedColor::rgb(100, 100, 115),
+        TextPrimary => ResolvedColor::rgb(236, 236, 236),
+        TextSecondary => ResolvedColor::rgb(158, 158, 158),
+        TextMuted => ResolvedColor::rgb(97, 97, 97),
 
-        SelectionHighlight => ResolvedColor::rgba(66, 135, 245, 80),
-        HoverHighlight => ResolvedColor::rgba(255, 255, 255, 30),
+        SelectionHighlight => ResolvedColor::rgba(68, 138, 255, 90), // Perfetto accent
+        HoverHighlight => ResolvedColor::rgba(255, 255, 255, 25),
 
-        Background => ResolvedColor::rgb(22, 22, 28),
-        Surface => ResolvedColor::rgb(35, 35, 42),
-        Border => ResolvedColor::rgb(55, 55, 65),
+        Background => ResolvedColor::rgb(18, 18, 18), // Perfetto dark bg
+        Surface => ResolvedColor::rgb(33, 33, 33),
+        Border => ResolvedColor::rgb(48, 48, 48),
 
-        ToolbarBackground => ResolvedColor::rgb(28, 28, 34),
-        ToolbarText => ResolvedColor::rgb(200, 200, 210),
-        ToolbarTabActive => ResolvedColor::rgb(66, 135, 245),
-        ToolbarTabHover => ResolvedColor::rgba(255, 255, 255, 20),
+        ToolbarBackground => ResolvedColor::rgb(24, 24, 24),
+        ToolbarText => ResolvedColor::rgb(224, 224, 224),
+        ToolbarTabActive => ResolvedColor::rgb(68, 138, 255),
+        ToolbarTabHover => ResolvedColor::rgba(255, 255, 255, 15),
 
-        MinimapBackground => ResolvedColor::rgb(20, 20, 28),
-        MinimapViewport => ResolvedColor::rgba(100, 160, 255, 50),
-        MinimapDensity => ResolvedColor::rgb(100, 170, 255),
-        MinimapHandle => ResolvedColor::rgb(180, 200, 255),
+        MinimapBackground => ResolvedColor::rgb(18, 18, 18),
+        MinimapViewport => ResolvedColor::rgba(68, 138, 255, 45),
+        MinimapDensity => ResolvedColor::rgb(68, 138, 255),
+        MinimapHandle => ResolvedColor::rgb(144, 202, 249),
 
-        InlineLabelText => ResolvedColor::rgb(200, 200, 210),
-        InlineLabelBackground => ResolvedColor::rgb(30, 30, 40),
+        InlineLabelText => ResolvedColor::rgb(224, 224, 224),
+        InlineLabelBackground => ResolvedColor::rgb(33, 33, 33),
 
-        TableRowEven => ResolvedColor::rgb(30, 30, 35),
-        TableRowOdd => ResolvedColor::rgb(35, 35, 42),
-        TableHeaderBackground => ResolvedColor::rgb(40, 40, 48),
-        TableBorder => ResolvedColor::rgb(55, 55, 65),
-        BarFill => ResolvedColor::rgb(66, 135, 245),
-        SearchHighlight => ResolvedColor::rgba(255, 200, 50, 120),
+        TableRowEven => ResolvedColor::rgb(24, 24, 24),
+        TableRowOdd => ResolvedColor::rgb(30, 30, 30),
+        TableHeaderBackground => ResolvedColor::rgb(38, 38, 41),
+        TableBorder => ResolvedColor::rgb(48, 48, 48),
+        BarFill => ResolvedColor::rgb(68, 138, 255),
+        SearchHighlight => ResolvedColor::rgba(255, 235, 59, 120), // Material Yellow
 
-        CounterFill => ResolvedColor::rgba(66, 135, 245, 60),
-        CounterLine => ResolvedColor::rgb(66, 135, 245),
-        CounterText => ResolvedColor::rgb(160, 160, 175),
+        CounterFill => ResolvedColor::rgba(68, 138, 255, 50),
+        CounterLine => ResolvedColor::rgb(68, 138, 255),
+        CounterText => ResolvedColor::rgb(158, 158, 158),
 
-        MarkerLine => ResolvedColor::rgb(255, 200, 50),
-        MarkerText => ResolvedColor::rgb(255, 200, 50),
+        MarkerLine => ResolvedColor::rgb(255, 214, 0),
+        MarkerText => ResolvedColor::rgb(255, 214, 0),
 
-        AsyncSpanFill => ResolvedColor::rgb(100, 160, 220),
-        AsyncSpanBorder => ResolvedColor::rgb(70, 130, 200),
+        AsyncSpanFill => ResolvedColor::rgb(77, 182, 172), // Material Teal
+        AsyncSpanBorder => ResolvedColor::rgb(0, 150, 136),
 
         FrameGood => ResolvedColor::rgb(76, 175, 80),
         FrameWarning => ResolvedColor::rgb(255, 193, 7),
         FrameDropped => ResolvedColor::rgb(244, 67, 54),
 
-        FlowArrow => ResolvedColor::rgba(255, 150, 50, 160),
-        FlowArrowHead => ResolvedColor::rgba(255, 150, 50, 200),
+        FlowArrow => ResolvedColor::rgba(158, 158, 158, 80),
+        FlowArrowHead => ResolvedColor::rgba(158, 158, 158, 120),
     }
 }
 

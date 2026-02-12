@@ -26,16 +26,12 @@ High-performance flame graph visualization tool. Renders with egui (WebGL2/nativ
 
 <table>
 <tr>
-<td><strong>Time Order (dark)</strong><br><img src="docs/screenshots/demo-dark.png" width="400"></td>
-<td><strong>Time Order (light)</strong><br><img src="docs/screenshots/demo-light.png" width="400"></td>
-</tr>
-<tr>
+<td><strong>Time Order</strong><br><img src="docs/screenshots/demo-dark.png" width="400"></td>
 <td><strong>Left Heavy</strong><br><img src="docs/screenshots/left-heavy.png" width="400"></td>
-<td><strong>Icicle (inverted)</strong><br><img src="docs/screenshots/icicle.png" width="400"></td>
 </tr>
 <tr>
+<td><strong>Icicle (inverted)</strong><br><img src="docs/screenshots/icicle.png" width="400"></td>
 <td><strong>Ranked</strong><br><img src="docs/screenshots/ranked.png" width="400"></td>
-<td><strong>Welcome</strong><br><img src="docs/screenshots/welcome.png" width="400"></td>
 </tr>
 </table>
 

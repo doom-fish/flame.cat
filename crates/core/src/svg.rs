@@ -90,24 +90,24 @@ pub fn render_svg(commands: &[RenderCommand], width: f64, height: f64, dark: boo
 fn resolve_color(token: ThemeToken, dark: bool) -> &'static str {
     if dark {
         match token {
-            ThemeToken::FlameHot => "#ff6b6b",
-            ThemeToken::FlameWarm => "#ffa36b",
-            ThemeToken::FlameCold => "#6bb5ff",
-            ThemeToken::FlameNeutral => "#a8a8c8",
-            ThemeToken::Border | ThemeToken::TableBorder | ThemeToken::AsyncSpanBorder => "#444466",
+            ThemeToken::FlameHot => "#f44336",
+            ThemeToken::FlameWarm => "#ffa726",
+            ThemeToken::FlameCold => "#42a5f5",
+            ThemeToken::FlameNeutral => "#9575cd",
+            ThemeToken::Border | ThemeToken::TableBorder | ThemeToken::AsyncSpanBorder => "#303030",
             ThemeToken::TextPrimary | ThemeToken::ToolbarText | ThemeToken::InlineLabelText => {
-                "#e0e0e0"
+                "#ececec"
             }
             ThemeToken::TextSecondary | ThemeToken::TextMuted | ThemeToken::CounterText => {
-                "#888899"
+                "#9e9e9e"
             }
-            ThemeToken::LaneBackground | ThemeToken::Background => "#1e1e3a",
-            ThemeToken::SelectionHighlight | ThemeToken::HoverHighlight => "#ffdd57",
-            ThemeToken::SearchHighlight => "#00cc88",
-            ThemeToken::BarFill | ThemeToken::CounterFill | ThemeToken::AsyncSpanFill => "#6666aa",
-            ThemeToken::MarkerLine | ThemeToken::MarkerText => "#ff9f43",
-            ThemeToken::FrameGood => "#2ecc71",
-            _ => "#6a6a8a",
+            ThemeToken::LaneBackground | ThemeToken::Background => "#181818",
+            ThemeToken::SelectionHighlight | ThemeToken::HoverHighlight => "#448aff",
+            ThemeToken::SearchHighlight => "#ffeb3b",
+            ThemeToken::BarFill | ThemeToken::CounterFill | ThemeToken::AsyncSpanFill => "#448aff",
+            ThemeToken::MarkerLine | ThemeToken::MarkerText => "#ffd600",
+            ThemeToken::FrameGood => "#4caf50",
+            _ => "#616161",
         }
     } else {
         match token {
@@ -159,7 +159,7 @@ mod tests {
         assert!(svg.starts_with("<svg"));
         assert!(svg.ends_with("</svg>"));
         assert!(svg.contains("main"));
-        assert!(svg.contains("#ff6b6b"));
+        assert!(svg.contains("#f44336"));
     }
 
     #[test]

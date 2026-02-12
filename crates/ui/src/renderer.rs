@@ -317,10 +317,10 @@ fn name_to_color(name: &str, mode: ThemeMode) -> egui::Color32 {
     }
     let hue = (hash % 360) as f32;
 
-    // HSL → RGB with theme-appropriate saturation/lightness
+    // HSL → RGB with Perfetto-inspired saturation/lightness
     let (s, l) = match mode {
-        ThemeMode::Dark => (0.55, 0.55),
-        ThemeMode::Light => (0.50, 0.62),
+        ThemeMode::Dark => (0.60, 0.50), // Vibrant on dark bg
+        ThemeMode::Light => (0.55, 0.58),
     };
     hsl_to_color32(hue, s, l)
 }
