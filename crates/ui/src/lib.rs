@@ -137,7 +137,7 @@ pub fn set_profile_json(json: Option<String>) {
     }
 }
 
-/// Cached lane render commands for SVG export (set by app each render pass).
+/// Cached lane render commands for SVG export (set on demand by app).
 static LANE_COMMANDS: std::sync::Mutex<Vec<Vec<flame_cat_protocol::RenderCommand>>> =
     std::sync::Mutex::new(Vec::new());
 

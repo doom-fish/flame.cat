@@ -66,6 +66,8 @@ pub fn render_commands(
     let mut clip_stack: Vec<Rect> = Vec::new();
     let mut hit_regions: Vec<HitRegion> = Vec::new();
 
+    let search_lower = search.to_lowercase();
+
     for cmd in commands {
         let tf = transform_stack
             .last()
@@ -98,10 +100,10 @@ pub fn render_commands(
                 let fill = theme::resolve(*color, mode);
 
                 // Dim non-matching spans when search is active
-                let search_match = search.is_empty()
-                    || label.as_ref().is_some_and(|l| {
-                        l.as_ref().to_lowercase().contains(&search.to_lowercase())
-                    });
+                let search_match = search_lower.is_empty()
+                    || label
+                        .as_ref()
+                        .is_some_and(|l| l.as_ref().to_lowercase().contains(&search_lower));
                 let fill = if search_match {
                     fill
                 } else {

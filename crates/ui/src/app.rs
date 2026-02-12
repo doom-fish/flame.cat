@@ -59,6 +59,10 @@ pub struct FlameApp {
     zoom_history: Vec<(f64, f64)>,
     /// Current position in zoom_history (index of last applied entry).
     zoom_history_pos: usize,
+    /// Generation counter — incremented on any state change, used to skip snapshot rebuild.
+    state_gen: u64,
+    /// Last generation that was emitted as a snapshot.
+    last_emitted_gen: u64,
 }
 
 #[derive(Clone)]
@@ -188,6 +192,8 @@ impl FlameApp {
             drag_select_start: None,
             zoom_history: vec![(0.0, 1.0)],
             zoom_history_pos: 0,
+            state_gen: 0,
+            last_emitted_gen: u64::MAX, // Force first emit
         }
     }
 
@@ -379,6 +385,7 @@ impl FlameApp {
 
     fn invalidate_commands(&mut self) {
         self.lane_commands.clear();
+        self.state_gen += 1;
     }
 
     /// Push a zoom entry to history (truncate any forward history).
@@ -408,7 +415,7 @@ impl FlameApp {
         };
 
         if self.lane_commands.len() == self.lanes.len() {
-            return;
+            return; // Already cached — no work needed
         }
 
         let session_start = session.start_time();
@@ -528,7 +535,7 @@ impl FlameApp {
             self.lane_commands.push(cmds);
         }
 
-        // Cache lane commands for SVG export
+        // Update SVG export cache (only when commands were rebuilt)
         crate::set_lane_commands(self.lane_commands.clone());
     }
 
@@ -2387,8 +2394,15 @@ impl eframe::App for FlameApp {
             self.show_help = !self.show_help;
         }
 
-        // Emit state snapshot for JS hooks
-        self.emit_snapshot();
+        // Emit state snapshot for JS hooks (skip if nothing changed)
+        // Note: hovered_span changes are tracked separately
+        if self.state_gen != self.last_emitted_gen
+            || self.hovered_span.is_some()
+            || self.last_emitted_gen == u64::MAX
+        {
+            self.emit_snapshot();
+            self.last_emitted_gen = self.state_gen;
+        }
     }
 }
 
