@@ -1624,6 +1624,34 @@ impl eframe::App for FlameApp {
             self.loading = false;
         }
 
+        // Process commands from JS API
+        for cmd in crate::drain_commands() {
+            match cmd {
+                crate::AppCommand::SetTheme(mode) => {
+                    self.theme_mode = mode;
+                    match mode {
+                        crate::theme::ThemeMode::Dark => {
+                            ctx.set_visuals(egui::Visuals::dark());
+                        }
+                        crate::theme::ThemeMode::Light => {
+                            ctx.set_visuals(egui::Visuals::light());
+                        }
+                    }
+                    self.invalidate_commands();
+                }
+                crate::AppCommand::SetSearch(query) => {
+                    self.search_query = query;
+                    self.invalidate_commands();
+                }
+                crate::AppCommand::ResetZoom => {
+                    self.view_start = 0.0;
+                    self.view_end = 1.0;
+                    self.scroll_y = 0.0;
+                    self.invalidate_commands();
+                }
+            }
+        }
+
         self.tick_animation(ctx);
 
         self.render_toolbar(ctx);

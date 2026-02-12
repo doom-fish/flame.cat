@@ -4,6 +4,33 @@ mod theme;
 
 pub use app::FlameApp;
 
+/// Commands that can be sent from JS to the egui app.
+#[derive(Debug)]
+pub enum AppCommand {
+    SetTheme(theme::ThemeMode),
+    SetSearch(String),
+    ResetZoom,
+}
+
+/// Global command queue drained by the app each frame.
+static COMMAND_QUEUE: std::sync::Mutex<Vec<AppCommand>> = std::sync::Mutex::new(Vec::new());
+
+/// Push a command to the global queue.
+pub fn push_command(cmd: AppCommand) {
+    if let Ok(mut q) = COMMAND_QUEUE.lock() {
+        q.push(cmd);
+    }
+}
+
+/// Drain all pending commands.
+pub fn drain_commands() -> Vec<AppCommand> {
+    if let Ok(mut q) = COMMAND_QUEUE.lock() {
+        std::mem::take(&mut *q)
+    } else {
+        Vec::new()
+    }
+}
+
 // WASM entry point + JS API
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -51,7 +78,6 @@ pub fn start_on_canvas(canvas_id: &str) -> Result<(), JsValue> {
                 web_options,
                 Box::new(|cc| {
                     let app = FlameApp::new(cc);
-                    // Store global handles for JS interop
                     let _ = PENDING_DATA.set(app.pending_data_handle());
                     let _ = EGUI_CTX.set(cc.egui_ctx.clone());
                     Ok(Box::new(app))
@@ -75,8 +101,43 @@ pub fn load_profile(data: &[u8]) -> Result<(), JsValue> {
     if let Ok(mut lock) = pending.lock() {
         *lock = Some(data.to_vec());
     }
+    request_repaint();
+    Ok(())
+}
+
+/// Set theme: "dark" or "light".
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = "setTheme")]
+pub fn set_theme(mode: &str) -> Result<(), JsValue> {
+    let theme = match mode {
+        "light" => theme::ThemeMode::Light,
+        "dark" => theme::ThemeMode::Dark,
+        _ => return Err(JsValue::from_str("theme must be 'dark' or 'light'")),
+    };
+    push_command(AppCommand::SetTheme(theme));
+    request_repaint();
+    Ok(())
+}
+
+/// Set search query. Empty string clears search.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = "setSearch")]
+pub fn set_search(query: &str) {
+    push_command(AppCommand::SetSearch(query.to_string()));
+    request_repaint();
+}
+
+/// Reset zoom to fit all data.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = "resetZoom")]
+pub fn reset_zoom() {
+    push_command(AppCommand::ResetZoom);
+    request_repaint();
+}
+
+#[cfg(target_arch = "wasm32")]
+fn request_repaint() {
     if let Some(ctx) = EGUI_CTX.get() {
         ctx.request_repaint();
     }
-    Ok(())
 }
