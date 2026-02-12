@@ -68,9 +68,10 @@ fn resolve_dark(token: ThemeToken) -> ResolvedColor {
         ToolbarTabHover => ResolvedColor::rgba(255, 255, 255, 15),
 
         // Minimap background — distinct from lane bg
-        MinimapBackground => ResolvedColor::rgb(8, 8, 10),
-        MinimapViewport => ResolvedColor::rgba(68, 138, 255, 80),
-        MinimapDensity => ResolvedColor::rgb(130, 200, 255),
+        MinimapBackground => ResolvedColor::rgb(10, 10, 12),
+        MinimapViewport => ResolvedColor::rgba(68, 138, 255, 100),
+        MinimapDensity => ResolvedColor::rgb(80, 160, 255),
+        MinimapHandle => ResolvedColor::rgb(200, 220, 255),
         MinimapHandle => ResolvedColor::rgb(144, 202, 249),
 
         InlineLabelText => ResolvedColor::rgb(224, 224, 224),

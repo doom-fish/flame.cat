@@ -240,8 +240,8 @@ pub fn render_commands(
                     galley.size() + egui::vec2(6.0, 2.0),
                 );
                 let bg_color = match mode {
-                    ThemeMode::Dark => egui::Color32::from_rgba_unmultiplied(30, 30, 35, 190),
-                    ThemeMode::Light => egui::Color32::from_rgba_unmultiplied(250, 250, 252, 210),
+                    ThemeMode::Dark => egui::Color32::from_rgb(24, 24, 24),
+                    ThemeMode::Light => egui::Color32::from_rgb(250, 250, 252),
                 };
                 painter.rect_filled(bg_rect, CornerRadius::same(2), bg_color);
                 painter.galley(text_pos, galley, text_color);
