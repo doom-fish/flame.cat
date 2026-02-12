@@ -1848,7 +1848,17 @@ impl FlameApp {
 
                 painter.set_clip_rect(prev_clip);
 
-                // Inline lane label (subtle, top-left corner with background pill)
+                // Inline lane label (top-left corner with opaque background pill)
+                // Skip for lane types that render their own title in commands
+                let self_labeled = matches!(
+                    lane.kind,
+                    LaneKind::Counter(_)
+                        | LaneKind::Markers
+                        | LaneKind::CpuSamples
+                        | LaneKind::FrameTrack
+                        | LaneKind::ObjectTrack
+                );
+                if !self_labeled {
                 let label_text = &lane.name;
                 let label_font = egui::FontId::proportional(10.0);
                 let label_text_color = crate::theme::resolve(
@@ -1866,7 +1876,20 @@ impl FlameApp {
                     egui::pos2(available.left() + 2.0, lane_top + 2.0),
                     egui::vec2(label_w, label_h),
                 );
-                if label_rect.intersects(available) {
+                // Only draw if label fits within the lane vertically
+                if label_rect.bottom() <= lane_top + total_height
+                    && label_rect.intersects(available)
+                {
+                    // Opaque background to prevent text overlap with spans
+                    let lane_bg = crate::theme::resolve(
+                        flame_cat_protocol::ThemeToken::LaneBackground,
+                        self.theme_mode,
+                    );
+                    painter.rect_filled(
+                        label_rect.expand(1.0),
+                        egui::CornerRadius::same(3),
+                        lane_bg,
+                    );
                     let label_bg_color = crate::theme::resolve(
                         flame_cat_protocol::ThemeToken::InlineLabelBackground,
                         self.theme_mode,
@@ -1879,9 +1902,10 @@ impl FlameApp {
                     painter.galley(
                         egui::pos2(available.left() + 6.0, lane_top + 4.0),
                         label_galley,
-                        egui::Color32::TRANSPARENT, // color already in galley
+                        egui::Color32::TRANSPARENT,
                     );
                 }
+                } // end !self_labeled
 
                 // Lane border
                 let border_color = crate::theme::resolve(
