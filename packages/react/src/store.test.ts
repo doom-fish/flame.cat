@@ -16,6 +16,7 @@ function mockWasm(): WasmExports {
     search: "",
     theme: "dark",
     view_type: "time_order",
+    color_mode: "by_name",
     can_go_back: false,
     can_go_forward: false,
   };
@@ -55,6 +56,10 @@ function mockWasm(): WasmExports {
       stateCallback?.();
     }),
     setViewType: vi.fn((vt: string) => {
+    setColorMode: vi.fn((mode: string) => {
+      state.color_mode = mode;
+      stateCallback?.();
+    }),
       state.view_type = vt;
       stateCallback?.();
     }),

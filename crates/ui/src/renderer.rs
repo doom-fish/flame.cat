@@ -55,12 +55,22 @@ pub struct RenderResult {
 /// `offset` is the top-left pixel position of the rendering area.
 /// `search` is an optional search filter — non-matching spans are dimmed.
 /// Returns hit regions for click/hover interaction.
+/// How span rectangles are colored.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColorMode {
+    /// Use theme token from render command (depth-based cycling).
+    Theme,
+    /// Hash the span label into a consistent hue (color-by-package).
+    ByName,
+}
+
 pub fn render_commands(
     painter: &mut egui::Painter,
     commands: &[RenderCommand],
     offset: Pos2,
     mode: ThemeMode,
     search: &str,
+    color_mode: ColorMode,
 ) -> RenderResult {
     let mut transform_stack: Vec<Transform> = vec![Transform::identity()];
     let mut clip_stack: Vec<Rect> = Vec::new();
@@ -117,7 +127,16 @@ pub fn render_commands(
                     continue;
                 }
 
-                let fill = theme::resolve(*color, mode);
+                let fill = match color_mode {
+                    ColorMode::ByName => {
+                        if let Some(label_text) = label {
+                            name_to_color(label_text, mode)
+                        } else {
+                            theme::resolve(*color, mode)
+                        }
+                    }
+                    ColorMode::Theme => theme::resolve(*color, mode),
+                };
 
                 // Dim non-matching spans when search is active
                 let search_match = !search_active || matching_labels.contains(&cmd_index);
@@ -264,4 +283,47 @@ pub fn render_commands(
     }
 
     RenderResult { hit_regions }
+}
+
+/// Generate a consistent color from a span name by hashing the "package" prefix.
+/// Extracts the first segment before common separators (::, ., /, @) and hashes it.
+fn name_to_color(name: &str, mode: ThemeMode) -> egui::Color32 {
+    // Extract package/module prefix
+    let prefix = name
+        .split(|c: char| c == ':' || c == '.' || c == '/' || c == '@' || c == '\\')
+        .next()
+        .unwrap_or(name);
+
+    // Simple hash → hue
+    let mut hash: u32 = 5381;
+    for b in prefix.bytes() {
+        hash = hash.wrapping_mul(33).wrapping_add(u32::from(b));
+    }
+    let hue = (hash % 360) as f32;
+
+    // HSL → RGB with theme-appropriate saturation/lightness
+    let (s, l) = match mode {
+        ThemeMode::Dark => (0.55, 0.55),
+        ThemeMode::Light => (0.50, 0.62),
+    };
+    hsl_to_color32(hue, s, l)
+}
+
+fn hsl_to_color32(h: f32, s: f32, l: f32) -> egui::Color32 {
+    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
+    let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
+    let m = l - c / 2.0;
+    let (r, g, b) = match (h as u32) / 60 {
+        0 => (c, x, 0.0),
+        1 => (x, c, 0.0),
+        2 => (0.0, c, x),
+        3 => (0.0, x, c),
+        4 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
+    egui::Color32::from_rgb(
+        ((r + m) * 255.0) as u8,
+        ((g + m) * 255.0) as u8,
+        ((b + m) * 255.0) as u8,
+    )
 }

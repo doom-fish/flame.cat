@@ -284,6 +284,44 @@ export function useTheme(): ThemeState {
   return { mode: mode as "dark" | "light", setMode, toggle };
 }
 
+// ── useColorMode ───────────────────────────────────────────────────────
+
+export type ColorMode = "by_name" | "by_depth";
+
+export interface ColorModeState {
+  /** Current color mode. */
+  colorMode: ColorMode;
+  /** Switch coloring mode. */
+  setColorMode(mode: ColorMode): void;
+  /** Toggle between by-name and by-depth. */
+  toggle(): void;
+}
+
+/** Span coloring mode: by package/name or by stack depth. */
+export function useColorMode(): ColorModeState {
+  const store = useFlameCatStore();
+
+  const colorMode = useSyncExternalStore(
+    store.subscribe,
+    store.getColorMode,
+    () => "by_name" as const,
+  );
+
+  const setColorMode = useCallback(
+    (m: ColorMode) => {
+      store.exec((w) => w.setColorMode(m));
+    },
+    [store],
+  );
+
+  const toggle = useCallback(() => {
+    const current = store.getColorMode();
+    store.exec((w) => w.setColorMode(current === "by_name" ? "by_depth" : "by_name"));
+  }, [store]);
+
+  return { colorMode: colorMode as ColorMode, setColorMode, toggle };
+}
+
 // ── useSelectedSpan ────────────────────────────────────────────────────
 
 export interface SelectionState {

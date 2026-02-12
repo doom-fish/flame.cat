@@ -8,6 +8,7 @@ export interface StateSnapshot {
   search: string;
   theme: "dark" | "light";
   view_type: ViewType;
+  color_mode: "by_name" | "by_depth";
   can_go_back: boolean;
   can_go_forward: boolean;
 }
@@ -64,6 +65,7 @@ export interface WasmExports {
   setViewType(viewType: string): void;
   navigateBack(): void;
   navigateForward(): void;
+  setColorMode(mode: string): void;
   navigateToParent(): void;
   navigateToChild(): void;
   navigateToNextSibling(): void;

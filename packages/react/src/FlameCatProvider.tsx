@@ -65,6 +65,7 @@ export function FlameCatProvider({
           setViewType: mod.setViewType,
           navigateBack: mod.navigateBack,
           navigateForward: mod.navigateForward,
+          setColorMode: mod.setColorMode,
           navigateToParent: mod.navigateToParent,
           navigateToChild: mod.navigateToChild,
           navigateToNextSibling: mod.navigateToNextSibling,

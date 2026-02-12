@@ -35,6 +35,7 @@ pub enum AppCommand {
     SetViewType(ViewType),
     NavigateBack,
     NavigateForward,
+    SetColorMode(String),
     NavigateToParent,
     NavigateToChild,
     NavigateToNextSibling,
@@ -71,6 +72,7 @@ pub struct StateSnapshot {
     pub search: String,
     pub theme: String,
     pub view_type: ViewType,
+    pub color_mode: String,
     pub can_go_back: bool,
     pub can_go_forward: bool,
 }
@@ -124,6 +126,7 @@ static STATE: std::sync::Mutex<StateSnapshot> = std::sync::Mutex::new(StateSnaps
     search: String::new(),
     theme: String::new(),
     view_type: ViewType::TimeOrder,
+    color_mode: String::new(),
     can_go_back: false,
     can_go_forward: false,
 });
@@ -346,6 +349,13 @@ pub fn navigate_back() {
 #[wasm_bindgen(js_name = "navigateForward")]
 pub fn navigate_forward() {
     push_command(AppCommand::NavigateForward);
+    request_repaint();
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = "setColorMode")]
+pub fn set_color_mode(mode: &str) {
+    push_command(AppCommand::SetColorMode(mode.to_string()));
     request_repaint();
 }
 

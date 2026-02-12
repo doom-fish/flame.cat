@@ -12,6 +12,7 @@ const EMPTY_SNAPSHOT: StateSnapshot = {
   search: "",
   theme: "dark",
   view_type: "time_order",
+  color_mode: "by_name",
   can_go_back: false,
   can_go_forward: false,
 };
@@ -67,6 +68,7 @@ export class FlameCatStore {
   getViewType = (): string => this.snapshot.view_type || "time_order";
   getCanGoBack = (): boolean => this.snapshot.can_go_back ?? false;
   getCanGoForward = (): boolean => this.snapshot.can_go_forward ?? false;
+  getColorMode = (): string => this.snapshot.color_mode || "by_name";
 
   /** Called when WASM module is loaded and ready. */
   attach(wasm: WasmExports): void {

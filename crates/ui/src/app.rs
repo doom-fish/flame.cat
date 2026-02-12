@@ -29,6 +29,8 @@ pub struct FlameApp {
     theme_mode: ThemeMode,
     /// Active visualization mode.
     view_type: crate::ViewType,
+    /// How span rects are colored.
+    color_mode: crate::renderer::ColorMode,
     /// Cached render commands per lane (invalidated on zoom/scroll/resize).
     lane_commands: Vec<Vec<RenderCommand>>,
     /// Global vertical scroll offset in pixels.
@@ -185,6 +187,7 @@ impl FlameApp {
             view_end: 1.0,
             theme_mode: ThemeMode::Dark,
             view_type: crate::ViewType::TimeOrder,
+            color_mode: crate::renderer::ColorMode::ByName,
             lane_commands: Vec::new(),
             scroll_y: 0.0,
             selected_span: None,
@@ -978,6 +981,22 @@ impl FlameApp {
                     self.invalidate_commands();
                 }
 
+                // Color mode toggle
+                let color_label = match self.color_mode {
+                    renderer::ColorMode::ByName => "🎨 By Name",
+                    renderer::ColorMode::Theme => "🎨 By Depth",
+                };
+                if ui
+                    .button(color_label)
+                    .on_hover_text("Toggle span coloring mode")
+                    .clicked()
+                {
+                    self.color_mode = match self.color_mode {
+                        renderer::ColorMode::ByName => renderer::ColorMode::Theme,
+                        renderer::ColorMode::Theme => renderer::ColorMode::ByName,
+                    };
+                }
+
                 ui.separator();
 
                 // View type tabs
@@ -1721,6 +1740,7 @@ impl FlameApp {
                         egui::pos2(available.left(), lane_top),
                         self.theme_mode,
                         &self.search_query,
+                        self.color_mode,
                     );
 
                     // Hover tooltip + click to select + right-click context menu
@@ -2448,6 +2468,14 @@ impl eframe::App for FlameApp {
                         self.invalidate_commands();
                     }
                 }
+                crate::AppCommand::SetColorMode(mode) => {
+                    self.color_mode = match mode.as_str() {
+                        "by_name" => renderer::ColorMode::ByName,
+                        "by_depth" | "theme" => renderer::ColorMode::Theme,
+                        _ => renderer::ColorMode::ByName,
+                    };
+                    self.state_gen += 1;
+                }
                 crate::AppCommand::NavigateToParent => {
                     if let Some(sel) = self.selected_span.clone() {
                         self.navigate_to_parent(sel.frame_id, sel.lane_index);
@@ -2585,6 +2613,11 @@ impl FlameApp {
             search: self.search_query.clone(),
             theme,
             view_type: self.view_type,
+            color_mode: match self.color_mode {
+                renderer::ColorMode::ByName => "by_name",
+                renderer::ColorMode::Theme => "by_depth",
+            }
+            .to_string(),
             can_go_back: self.zoom_history_pos > 0,
             can_go_forward: self.zoom_history_pos + 1 < self.zoom_history.len(),
         });
