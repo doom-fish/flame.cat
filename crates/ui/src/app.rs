@@ -959,6 +959,34 @@ impl FlameApp {
                             self.invalidate_commands();
                         }
                     }
+
+                    ui.separator();
+
+                    // Back/forward navigation
+                    let can_back = self.zoom_history_pos > 0;
+                    let can_fwd = self.zoom_history_pos + 1 < self.zoom_history.len();
+                    if ui
+                        .add_enabled(can_back, egui::Button::new("◁"))
+                        .on_hover_text("Back (zoom history)")
+                        .clicked()
+                    {
+                        self.zoom_history_pos -= 1;
+                        let (s, e) = self.zoom_history[self.zoom_history_pos];
+                        self.view_start = s;
+                        self.view_end = e;
+                        self.invalidate_commands();
+                    }
+                    if ui
+                        .add_enabled(can_fwd, egui::Button::new("▷"))
+                        .on_hover_text("Forward (zoom history)")
+                        .clicked()
+                    {
+                        self.zoom_history_pos += 1;
+                        let (s, e) = self.zoom_history[self.zoom_history_pos];
+                        self.view_start = s;
+                        self.view_end = e;
+                        self.invalidate_commands();
+                    }
                 }
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -999,11 +1027,21 @@ impl FlameApp {
                     let duration_us = session.duration();
                     let view_span = self.view_end - self.view_start;
                     let vis_duration_us = view_span * (session.end_time() - session.start_time());
+                    let profiles = session.profiles();
+                    let span_count: usize = profiles
+                        .iter()
+                        .flat_map(|p| &p.profile.threads)
+                        .map(|t| t.spans.len())
+                        .sum();
+                    let thread_count: usize =
+                        profiles.iter().map(|p| p.profile.threads.len()).sum();
                     ui.label(format!(
-                        "Duration: {} | Viewing: {} | Zoom: {:.0}% | Lanes: {}",
+                        "Duration: {} | Viewing: {} | Zoom: {:.0}% | {} spans · {} threads · {} lanes",
                         format_duration(duration_us),
                         format_duration(vis_duration_us),
                         100.0 / view_span,
+                        span_count,
+                        thread_count,
                         self.lanes.iter().filter(|l| l.visible).count(),
                     ));
                 } else {
@@ -1053,10 +1091,17 @@ impl FlameApp {
                                             );
                                         });
                                         ui.horizontal(|ui| {
+                                            let total_dur = entry.profile.duration();
+                                            let pct =
+                                                if total_dur > 0.0 { span.duration() / total_dur * 100.0 } else { 0.0 };
+                                            let self_pct =
+                                                if total_dur > 0.0 { span.self_value / total_dur * 100.0 } else { 0.0 };
                                             ui.label(format!(
-                                                "Duration: {} | Self: {} | Depth: {} | Thread: {}",
+                                                "Duration: {} ({:.1}%) | Self: {} ({:.1}%) | Depth: {} | Thread: {}",
                                                 format_duration(span.duration()),
+                                                pct,
                                                 format_duration(span.self_value),
+                                                self_pct,
                                                 span.depth,
                                                 lane.name,
                                             ));
@@ -1099,18 +1144,44 @@ impl FlameApp {
                                     lane.visible = vis;
                                     changed = true;
                                 }
-                                // Truncate long names (safe for multi-byte chars)
-                                let name = if lane.name.chars().count() > 24 {
-                                    let end = lane
-                                        .name
-                                        .char_indices()
-                                        .nth(23)
-                                        .map_or(lane.name.len(), |(i, _)| i);
-                                    format!("{}…", &lane.name[..end])
-                                } else {
-                                    lane.name.clone()
+                                // Lane type icon
+                                let icon = match &lane.kind {
+                                    LaneKind::Thread(_) => "🧵",
+                                    LaneKind::Counter(_) => "📊",
+                                    LaneKind::AsyncSpans => "⚡",
+                                    LaneKind::Markers => "📍",
+                                    LaneKind::CpuSamples => "🔬",
+                                    LaneKind::FrameTrack => "🎞",
+                                    LaneKind::ObjectTrack => "📦",
                                 };
-                                ui.label(egui::RichText::new(name).size(11.0));
+                                ui.label(egui::RichText::new(icon).size(10.0));
+                                // Truncate long names (safe for multi-byte chars)
+                                let full_name = &lane.name;
+                                let display_name = if full_name.chars().count() > 20 {
+                                    let end = full_name
+                                        .char_indices()
+                                        .nth(19)
+                                        .map_or(full_name.len(), |(i, _)| i);
+                                    format!("{}…", &full_name[..end])
+                                } else {
+                                    full_name.clone()
+                                };
+                                let label = ui.label(egui::RichText::new(&display_name).size(11.0));
+                                // Full name tooltip on truncated labels
+                                if display_name.len() < full_name.len() {
+                                    label.on_hover_text(full_name);
+                                }
+                                // Span count (right-aligned, muted)
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        ui.label(
+                                            egui::RichText::new(format!("{}", lane.span_count))
+                                                .size(9.0)
+                                                .weak(),
+                                        );
+                                    },
+                                );
                             });
                         }
                         if changed {
