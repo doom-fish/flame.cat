@@ -10,19 +10,20 @@ pub enum AppCommand {
     SetTheme(theme::ThemeMode),
     SetSearch(String),
     ResetZoom,
+    SetViewport(f64, f64),
+    SetLaneVisibility(usize, bool),
+    SelectSpan(Option<u64>),
 }
 
 /// Global command queue drained by the app each frame.
 static COMMAND_QUEUE: std::sync::Mutex<Vec<AppCommand>> = std::sync::Mutex::new(Vec::new());
 
-/// Push a command to the global queue.
 pub fn push_command(cmd: AppCommand) {
     if let Ok(mut q) = COMMAND_QUEUE.lock() {
         q.push(cmd);
     }
 }
 
-/// Drain all pending commands.
 pub fn drain_commands() -> Vec<AppCommand> {
     if let Ok(mut q) = COMMAND_QUEUE.lock() {
         std::mem::take(&mut *q)
@@ -31,34 +32,133 @@ pub fn drain_commands() -> Vec<AppCommand> {
     }
 }
 
-// WASM entry point + JS API
+/// Lightweight state snapshot written by the app each frame, read by JS.
+#[derive(Default, serde::Serialize)]
+pub struct StateSnapshot {
+    pub profile: Option<ProfileSnapshot>,
+    pub lanes: Vec<LaneSnapshot>,
+    pub viewport: ViewportSnapshot,
+    pub selected: Option<SelectedSpanSnapshot>,
+    pub search: String,
+    pub theme: String,
+}
+
+#[derive(serde::Serialize)]
+pub struct ProfileSnapshot {
+    pub name: Option<String>,
+    pub format: String,
+    pub duration_us: f64,
+    pub start_time: f64,
+    pub end_time: f64,
+    pub span_count: usize,
+    pub thread_count: usize,
+}
+
+#[derive(serde::Serialize)]
+pub struct LaneSnapshot {
+    pub name: String,
+    pub kind: String,
+    pub height: f32,
+    pub visible: bool,
+}
+
+#[derive(Default, serde::Serialize)]
+pub struct ViewportSnapshot {
+    pub start: f64,
+    pub end: f64,
+    pub scroll_y: f32,
+}
+
+#[derive(serde::Serialize)]
+pub struct SelectedSpanSnapshot {
+    pub name: String,
+    pub frame_id: u64,
+    pub lane_index: usize,
+    pub start_us: f64,
+    pub end_us: f64,
+}
+
+static STATE: std::sync::Mutex<StateSnapshot> = std::sync::Mutex::new(StateSnapshot {
+    profile: None,
+    lanes: Vec::new(),
+    viewport: ViewportSnapshot {
+        start: 0.0,
+        end: 1.0,
+        scroll_y: 0.0,
+    },
+    selected: None,
+    search: String::new(),
+    theme: String::new(),
+});
+
+pub fn write_snapshot(snap: StateSnapshot) {
+    let changed = if let Ok(mut s) = STATE.lock() {
+        let changed = s.viewport.start != snap.viewport.start
+            || s.viewport.end != snap.viewport.end
+            || s.viewport.scroll_y != snap.viewport.scroll_y
+            || s.search != snap.search
+            || s.theme != snap.theme
+            || s.selected.is_some() != snap.selected.is_some()
+            || s.profile.is_some() != snap.profile.is_some()
+            || s.lanes.len() != snap.lanes.len();
+        *s = snap;
+        changed
+    } else {
+        false
+    };
+    if changed {
+        #[cfg(target_arch = "wasm32")]
+        notify_js();
+    }
+}
+
+// ── WASM entry point + JS API ──────────────────────────────────────────
+
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
 
-/// Global handle to the pending_data channel so JS can push profile data.
 #[cfg(target_arch = "wasm32")]
 static PENDING_DATA: std::sync::OnceLock<std::sync::Arc<std::sync::Mutex<Option<Vec<u8>>>>> =
     std::sync::OnceLock::new();
 
-/// Global handle to the egui context for requesting repaints from JS.
 #[cfg(target_arch = "wasm32")]
 static EGUI_CTX: std::sync::OnceLock<egui::Context> = std::sync::OnceLock::new();
 
-/// Default entry point — mounts on `#flame_cat_canvas`.
+/// Store JS callback in thread-local (WASM is single-threaded).
+#[cfg(target_arch = "wasm32")]
+thread_local! {
+    static STATE_CALLBACK: std::cell::RefCell<Option<js_sys::Function>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(target_arch = "wasm32")]
+fn notify_js() {
+    STATE_CALLBACK.with(|cb| {
+        if let Some(f) = cb.borrow().as_ref() {
+            let _ = f.call0(&JsValue::NULL);
+        }
+    });
+}
+
+#[cfg(target_arch = "wasm32")]
+fn request_repaint() {
+    if let Some(ctx) = EGUI_CTX.get() {
+        ctx.request_repaint();
+    }
+}
+
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(start)]
 pub fn start() -> Result<(), JsValue> {
     start_on_canvas("flame_cat_canvas")
 }
 
-/// Mount the flame graph viewer on a canvas element with the given DOM ID.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(js_name = "startOnCanvas")]
 pub fn start_on_canvas(canvas_id: &str) -> Result<(), JsValue> {
     console_error_panic_hook::set_once();
-
     let web_options = eframe::WebOptions::default();
     let id = canvas_id.to_string();
     wasm_bindgen_futures::spawn_local(async move {
@@ -71,7 +171,6 @@ pub fn start_on_canvas(canvas_id: &str) -> Result<(), JsValue> {
             .unwrap_or_else(|| panic!("no canvas element with id '{id}'"))
             .dyn_into::<web_sys::HtmlCanvasElement>()
             .expect("element is not a canvas");
-
         let start_result = eframe::WebRunner::new()
             .start(
                 canvas,
@@ -91,7 +190,6 @@ pub fn start_on_canvas(canvas_id: &str) -> Result<(), JsValue> {
     Ok(())
 }
 
-/// Load a profile from JS. Accepts a `Uint8Array` of profile data.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(js_name = "loadProfile")]
 pub fn load_profile(data: &[u8]) -> Result<(), JsValue> {
@@ -105,7 +203,6 @@ pub fn load_profile(data: &[u8]) -> Result<(), JsValue> {
     Ok(())
 }
 
-/// Set theme: "dark" or "light".
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(js_name = "setTheme")]
 pub fn set_theme(mode: &str) -> Result<(), JsValue> {
@@ -119,7 +216,6 @@ pub fn set_theme(mode: &str) -> Result<(), JsValue> {
     Ok(())
 }
 
-/// Set search query. Empty string clears search.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(js_name = "setSearch")]
 pub fn set_search(query: &str) {
@@ -127,7 +223,6 @@ pub fn set_search(query: &str) {
     request_repaint();
 }
 
-/// Reset zoom to fit all data.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(js_name = "resetZoom")]
 pub fn reset_zoom() {
@@ -136,8 +231,40 @@ pub fn reset_zoom() {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn request_repaint() {
-    if let Some(ctx) = EGUI_CTX.get() {
-        ctx.request_repaint();
+#[wasm_bindgen(js_name = "setViewport")]
+pub fn set_viewport(start: f64, end: f64) {
+    push_command(AppCommand::SetViewport(start, end));
+    request_repaint();
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = "setLaneVisibility")]
+pub fn set_lane_visibility(index: usize, visible: bool) {
+    push_command(AppCommand::SetLaneVisibility(index, visible));
+    request_repaint();
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = "selectSpan")]
+pub fn select_span(frame_id: Option<u64>) {
+    push_command(AppCommand::SelectSpan(frame_id));
+    request_repaint();
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = "onStateChange")]
+pub fn on_state_change(callback: js_sys::Function) {
+    STATE_CALLBACK.with(|cb| {
+        *cb.borrow_mut() = Some(callback);
+    });
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = "getState")]
+pub fn get_state() -> String {
+    if let Ok(s) = STATE.lock() {
+        serde_json::to_string(&*s).unwrap_or_default()
+    } else {
+        "{}".to_string()
     }
 }

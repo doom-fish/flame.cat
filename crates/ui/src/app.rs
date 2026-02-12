@@ -1649,6 +1649,53 @@ impl eframe::App for FlameApp {
                     self.scroll_y = 0.0;
                     self.invalidate_commands();
                 }
+                crate::AppCommand::SetViewport(start, end) => {
+                    self.view_start = start.max(0.0);
+                    self.view_end = end.min(1.0);
+                    self.invalidate_commands();
+                }
+                crate::AppCommand::SetLaneVisibility(index, visible) => {
+                    if let Some(lane) = self.lanes.get_mut(index) {
+                        lane.visible = visible;
+                        self.invalidate_commands();
+                    }
+                }
+                crate::AppCommand::SelectSpan(frame_id) => {
+                    if let Some(fid) = frame_id {
+                        // Find the span name from render commands
+                        let label = self
+                            .lane_commands
+                            .iter()
+                            .flat_map(|cmds| cmds.iter())
+                            .find_map(|cmd| {
+                                if let RenderCommand::DrawRect {
+                                    label: Some(label),
+                                    frame_id: Some(id),
+                                    ..
+                                } = cmd
+                                {
+                                    if *id == fid {
+                                        Some(label.clone())
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            });
+                        if let Some(name) = label {
+                            self.selected_span = Some(SelectedSpan {
+                                name: name.to_string(),
+                                frame_id: fid,
+                                lane_index: 0,
+                                start_us: 0.0,
+                                end_us: 0.0,
+                            });
+                        }
+                    } else {
+                        self.selected_span = None;
+                    }
+                }
             }
         }
 
@@ -1667,6 +1714,79 @@ impl eframe::App for FlameApp {
         if ctx.input(|i| i.key_pressed(egui::Key::Questionmark)) {
             self.show_help = !self.show_help;
         }
+
+        // Emit state snapshot for JS hooks
+        self.emit_snapshot();
+    }
+}
+
+impl FlameApp {
+    fn emit_snapshot(&self) {
+        let profile = self.session.as_ref().map(|s| {
+            let profiles = s.profiles();
+            let thread_count: usize = profiles.iter().map(|p| p.profile.threads.len()).sum();
+            let span_count: usize = profiles
+                .iter()
+                .flat_map(|p| &p.profile.threads)
+                .map(|t| t.spans.len())
+                .sum();
+            crate::ProfileSnapshot {
+                name: profiles.first().map(|p| p.label.clone()),
+                format: profiles
+                    .first()
+                    .map(|p| format!("{:?}", p.profile.meta.source_format))
+                    .unwrap_or_default(),
+                duration_us: s.duration(),
+                start_time: s.start_time(),
+                end_time: s.end_time(),
+                span_count,
+                thread_count,
+            }
+        });
+        let lanes = self
+            .lanes
+            .iter()
+            .map(|l| crate::LaneSnapshot {
+                name: l.name.clone(),
+                kind: match &l.kind {
+                    LaneKind::Thread(_) => "thread".to_string(),
+                    LaneKind::Counter(_) => "counter".to_string(),
+                    LaneKind::AsyncSpans => "async".to_string(),
+                    LaneKind::Markers => "markers".to_string(),
+                    LaneKind::CpuSamples => "cpu_samples".to_string(),
+                    LaneKind::FrameTrack => "frame_track".to_string(),
+                    LaneKind::ObjectTrack => "object_track".to_string(),
+                    LaneKind::Minimap => "minimap".to_string(),
+                },
+                height: l.height,
+                visible: l.visible,
+            })
+            .collect();
+        let viewport = crate::ViewportSnapshot {
+            start: self.view_start,
+            end: self.view_end,
+            scroll_y: self.scroll_y,
+        };
+        let selected = self.selected_span.as_ref().map(|s| crate::SelectedSpanSnapshot {
+            name: s.name.clone(),
+            frame_id: s.frame_id,
+            lane_index: s.lane_index,
+            start_us: s.start_us,
+            end_us: s.end_us,
+        });
+        let theme = match self.theme_mode {
+            ThemeMode::Dark => "dark",
+            ThemeMode::Light => "light",
+        }
+        .to_string();
+        crate::write_snapshot(crate::StateSnapshot {
+            profile,
+            lanes,
+            viewport,
+            selected,
+            search: self.search_query.clone(),
+            theme,
+        });
     }
 }
 

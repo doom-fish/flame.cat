@@ -1,38 +1,93 @@
 # @flame-cat/react
 
-Flame graph React component powered by flame.cat egui/WASM. Controlled via a hook-based controller.
+Composable React hooks for the [flame.cat](https://flame.cat) flame graph viewer (egui/WASM).
 
 ## Install
 
-```bash
+```sh
 npm install @flame-cat/react
 ```
 
-## Usage
+## Quick Start
 
 ```tsx
-import { FlameGraph, useFlameGraph } from "@flame-cat/react";
+import {
+  FlameCatProvider,
+  FlameCanvas,
+  useFlameGraph,
+  useSearch,
+  useTheme,
+  useLanes,
+  useSelectedSpan,
+} from "@flame-cat/react";
 
 function App() {
-  const flame = useFlameGraph();
+  return (
+    <FlameCatProvider wasmUrl="/wasm/flame-cat-ui.js">
+      <Toolbar />
+      <div style={{ display: "flex", height: "100vh" }}>
+        <LaneSidebar />
+        <FlameCanvas adaptive />
+      </div>
+      <DetailPanel />
+    </FlameCatProvider>
+  );
+}
 
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const buf = await e.target.files?.[0]?.arrayBuffer();
-    if (buf) flame.loadProfile(buf);
-  }
+function Toolbar() {
+  const { loadProfile } = useFlameGraph();
+  const { query, setQuery } = useSearch();
+  const { mode, setMode } = useTheme();
 
   return (
     <div>
-      <input type="file" onChange={handleFile} />
-      <button onClick={() => flame.resetZoom()}>Reset</button>
-      <button onClick={() => flame.setTheme("light")}>Light</button>
-      <button onClick={() => flame.setSearch("render")}>Search</button>
-
-      <FlameGraph
-        controller={flame}
-        wasmUrl="/wasm/flame-cat-ui.js"
-        height={600}
+      <input
+        type="file"
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          if (file) loadProfile(await file.arrayBuffer());
+        }}
       />
+      <input
+        placeholder="Search…"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+      />
+      <button onClick={() => setMode(mode === "dark" ? "light" : "dark")}>
+        {mode === "dark" ? "☀️" : "🌙"}
+      </button>
+    </div>
+  );
+}
+
+function LaneSidebar() {
+  const { lanes, toggleVisibility } = useLanes();
+  return (
+    <ul>
+      {lanes.map((lane, i) => (
+        <li key={i}>
+          <label>
+            <input
+              type="checkbox"
+              checked={lane.visible}
+              onChange={() => toggleVisibility(i)}
+            />
+            {lane.name}
+          </label>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function DetailPanel() {
+  const { selected, clear } = useSelectedSpan();
+  if (!selected) return null;
+  return (
+    <div>
+      <strong>{selected.name}</strong>
+      <span> ({selected.end_us - selected.start_us}µs)</span>
+      <button onClick={clear}>×</button>
     </div>
   );
 }
@@ -40,39 +95,24 @@ function App() {
 
 ## API
 
-### `useFlameGraph()` → `FlameGraphController`
+### `<FlameCatProvider wasmUrl={string}>`
 
-Creates a controller. All methods can be called before WASM loads — they queue and flush on init.
+Context provider that initializes the WASM viewer. Wrap your app in this.
 
-```ts
-const flame = useFlameGraph();
+### `<FlameCanvas adaptive? className? style? onResize?>`
 
-flame.loadProfile(arrayBuffer);      // Load any supported profile format
-flame.setTheme("dark" | "light");    // Switch theme
-flame.setSearch("query");            // Filter/highlight spans
-flame.resetZoom();                   // Fit all data
-flame.ready;                         // boolean — true once WASM is initialized
-```
+The egui canvas rendering surface. Gets its store from context.
 
-### `<FlameGraph>`
+### Hooks
 
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `controller` | `FlameGraphController` | **required** | Controller from `useFlameGraph()` |
-| `wasmUrl` | `string` | **required** | URL to WASM JS glue from `trunk build` |
-| `width` | `number \| string` | `"100%"` | Container width |
-| `height` | `number \| string` | `"100%"` | Container height |
-| `className` | `string` | — | CSS class |
-| `style` | `CSSProperties` | — | Inline styles |
-| `onError` | `(error: Error) => void` | — | WASM init failure callback |
+| Hook | Returns | Description |
+|------|---------|-------------|
+| `useFlameGraph()` | `{ loadProfile, ready }` | Load profiles, check readiness |
+| `useProfile()` | `ProfileInfo \| null` | Profile metadata (name, format, duration, span count) |
+| `useLanes()` | `{ lanes, toggleVisibility }` | Lane list with visibility control |
+| `useViewport()` | `{ start, end, scroll_y, setViewport, resetZoom }` | Zoom/pan state |
+| `useSearch()` | `{ query, setQuery }` | Search filter |
+| `useTheme()` | `{ mode, setMode }` | Dark/light theme |
+| `useSelectedSpan()` | `{ selected, select, clear }` | Span selection |
 
-## Building the WASM Bundle
-
-```bash
-cd crates/ui && trunk build --release
-# Copy dist/ to your app's public/wasm/
-```
-
-## License
-
-MIT
+All hooks must be used within a `<FlameCatProvider>`.
