@@ -316,6 +316,54 @@ export function useSelectedSpan(): SelectionState {
   return { selected, select, clear };
 }
 
+// ── useSpanNavigation ──────────────────────────────────────────────────
+
+export interface SpanNavigationState {
+  /** Navigate to the parent of the currently selected span. */
+  goToParent(): void;
+  /** Navigate to the first child of the currently selected span. */
+  goToChild(): void;
+  /** Navigate to the next sibling of the currently selected span. */
+  goToNextSibling(): void;
+  /** Navigate to the previous sibling of the currently selected span. */
+  goToPrevSibling(): void;
+  /** Jump to the next search result. */
+  nextSearchResult(): void;
+  /** Jump to the previous search result. */
+  prevSearchResult(): void;
+}
+
+/** Span hierarchy and search result navigation. */
+export function useSpanNavigation(): SpanNavigationState {
+  const store = useFlameCatStore();
+
+  const goToParent = useCallback(() => {
+    store.exec((w) => w.navigateToParent());
+  }, [store]);
+
+  const goToChild = useCallback(() => {
+    store.exec((w) => w.navigateToChild());
+  }, [store]);
+
+  const goToNextSibling = useCallback(() => {
+    store.exec((w) => w.navigateToNextSibling());
+  }, [store]);
+
+  const goToPrevSibling = useCallback(() => {
+    store.exec((w) => w.navigateToPrevSibling());
+  }, [store]);
+
+  const nextSearchResult = useCallback(() => {
+    store.exec((w) => w.nextSearchResult());
+  }, [store]);
+
+  const prevSearchResult = useCallback(() => {
+    store.exec((w) => w.prevSearchResult());
+  }, [store]);
+
+  return { goToParent, goToChild, goToNextSibling, goToPrevSibling, nextSearchResult, prevSearchResult };
+}
+
 // ── useHoveredSpan ─────────────────────────────────────────────────────
 
 /** Currently hovered span (updates in real-time as user moves mouse). */

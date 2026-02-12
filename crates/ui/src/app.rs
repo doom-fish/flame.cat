@@ -62,6 +62,8 @@ pub struct FlameApp {
 #[derive(Clone)]
 struct ContextMenu {
     span_name: String,
+    frame_id: u64,
+    lane_index: usize,
     /// Viewport-fractional bounds for zoom-to-span.
     zoom_start: f64,
     zoom_end: f64,
@@ -1174,6 +1176,7 @@ impl FlameApp {
             // Scroll wheel: Ctrl/Cmd+scroll = zoom, plain scroll = vertical pan
             let scroll = ui.input(|i| i.smooth_scroll_delta);
             let ctrl_held = ui.input(|i| i.modifiers.ctrl || i.modifiers.command);
+            let shift_held = ui.input(|i| i.modifiers.shift);
 
             if ctrl_held && scroll.y.abs() > 0.1 {
                 // Ctrl+scroll = zoom (like Chrome DevTools / Perfetto)
@@ -1194,8 +1197,20 @@ impl FlameApp {
                 self.view_end = (self.view_start + new_span).min(1.0);
                 self.invalidate_commands();
             } else if !ctrl_held && scroll.y.abs() > 0.1 {
-                // Plain scroll = vertical scroll through lanes
-                self.scroll_y = (self.scroll_y - scroll.y).max(0.0);
+                if shift_held {
+                    // Shift+scroll = horizontal pan (for mouse wheel users)
+                    self.anim_target = None;
+                    let view_span = self.view_end - self.view_start;
+                    let dx_frac =
+                        -(scroll.y as f64) / (available.width() as f64) * view_span;
+                    let new_start = (self.view_start + dx_frac).clamp(0.0, 1.0 - view_span);
+                    self.view_start = new_start;
+                    self.view_end = new_start + view_span;
+                    self.invalidate_commands();
+                } else {
+                    // Plain scroll = vertical scroll through lanes
+                    self.scroll_y = (self.scroll_y - scroll.y).max(0.0);
+                }
             }
 
             // Horizontal scroll (trackpad two-finger) = horizontal pan
@@ -1274,6 +1289,12 @@ impl FlameApp {
                     self.selected_span = None;
                 }
             });
+
+            // Span hierarchy navigation: [ ] { } keys
+            self.handle_span_navigation(ui);
+
+            // Search result navigation: Enter / Shift+Enter
+            self.handle_search_navigation(ui);
 
             // Generate render commands AFTER all input (so invalidations are resolved)
             self.ensure_commands(available.width());
@@ -1417,6 +1438,8 @@ impl FlameApp {
                                             let pad = (abs_right - abs_left) * 0.15;
                                             self.context_menu = Some(ContextMenu {
                                                 span_name: name,
+                                                frame_id: hit.frame_id,
+                                                lane_index: i,
                                                 zoom_start: (abs_left - pad).max(0.0),
                                                 zoom_end: (abs_right + pad).min(1.0),
                                                 pos: hover_pos,
@@ -1665,10 +1688,17 @@ impl FlameApp {
                             ("-", "Zoom out"),
                             ("0", "Reset zoom"),
                             ("Ctrl+Scroll", "Zoom at cursor"),
+                            ("Shift+Scroll", "Pan horizontally"),
                             ("Drag", "Pan + vertical scroll"),
                             ("Double-click", "Zoom to span"),
                             ("Click", "Select span"),
                             ("Right-click", "Context menu"),
+                            ("[", "Select parent span"),
+                            ("]", "Select first child"),
+                            ("Shift+[", "Previous sibling"),
+                            ("Shift+]", "Next sibling"),
+                            ("Enter", "Next search result"),
+                            ("Shift+Enter", "Previous search result"),
                             ("Esc", "Deselect / close help"),
                             ("?", "Toggle this help"),
                         ];
@@ -1691,16 +1721,46 @@ impl FlameApp {
             return;
         };
 
+        // Look up span timing for "Copy Timing" and parent info for "Go to Parent"
+        let (timing_text, has_parent) = self
+            .session
+            .as_ref()
+            .and_then(|s| s.profiles().first())
+            .and_then(|e| {
+                let span = e.profile.span(menu.frame_id)?;
+                let timing = format!(
+                    "{} (self: {})",
+                    format_duration(span.duration()),
+                    format_duration(span.self_value),
+                );
+                Some((timing, span.parent.is_some()))
+            })
+            .unwrap_or_default();
+
         let area_resp = egui::Area::new(egui::Id::new("span_context_menu"))
             .order(egui::Order::Foreground)
             .current_pos(menu.pos)
             .show(ctx, |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.set_min_width(160.0);
+                    ui.set_min_width(180.0);
                     ui.label(egui::RichText::new(&menu.span_name).strong().size(12.0));
+                    if !timing_text.is_empty() {
+                        ui.label(
+                            egui::RichText::new(&timing_text)
+                                .weak()
+                                .size(11.0),
+                        );
+                    }
                     ui.separator();
                     if ui.button("📋 Copy Name").clicked() {
                         ui.ctx().copy_text(menu.span_name.clone());
+                        self.context_menu = None;
+                    }
+                    if ui.button("⏱ Copy Timing").clicked() {
+                        ui.ctx().copy_text(format!(
+                            "{}: {}",
+                            menu.span_name, timing_text
+                        ));
                         self.context_menu = None;
                     }
                     if ui.button("🔍 Zoom to Span").clicked() {
@@ -1708,6 +1768,16 @@ impl FlameApp {
                         self.context_menu = None;
                     }
                     if ui.button("🔎 Find Similar").clicked() {
+                        self.search_query = menu.span_name.clone();
+                        self.context_menu = None;
+                    }
+                    if has_parent {
+                        if ui.button("⬆ Go to Parent").clicked() {
+                            self.navigate_to_parent(menu.frame_id, menu.lane_index);
+                            self.context_menu = None;
+                        }
+                    }
+                    if ui.button("✦ Highlight All").clicked() {
                         self.search_query = menu.span_name.clone();
                         self.context_menu = None;
                     }
@@ -1726,6 +1796,165 @@ impl FlameApp {
                 }
             }
         }
+    }
+
+    /// Navigate to the parent of the given span, selecting it.
+    fn navigate_to_parent(&mut self, frame_id: u64, lane_index: usize) {
+        let Some(session) = &self.session else { return };
+        let Some(entry) = session.profiles().first() else { return };
+        let Some(span) = entry.profile.span(frame_id) else { return };
+        let Some(parent_id) = span.parent else { return };
+        let Some(parent) = entry.profile.span(parent_id) else { return };
+        self.selected_span = Some(SelectedSpan {
+            name: parent.name.to_string(),
+            frame_id: parent_id,
+            lane_index,
+            start_us: parent.start,
+            end_us: parent.end,
+        });
+        self.invalidate_commands();
+    }
+
+    /// Navigate to the first child of the selected span.
+    fn navigate_to_first_child(&mut self) {
+        let Some(sel) = self.selected_span.clone() else { return };
+        let Some(session) = &self.session else { return };
+        let Some(entry) = session.profiles().first() else { return };
+        let children = entry.profile.children(Some(sel.frame_id));
+        if let Some(child) = children.first() {
+            self.selected_span = Some(SelectedSpan {
+                name: child.name.to_string(),
+                frame_id: child.id,
+                lane_index: sel.lane_index,
+                start_us: child.start,
+                end_us: child.end,
+            });
+            self.invalidate_commands();
+        }
+    }
+
+    /// Navigate to the next or previous sibling of the selected span.
+    fn navigate_to_sibling(&mut self, forward: bool) {
+        let Some(sel) = self.selected_span.clone() else { return };
+        let Some(session) = &self.session else { return };
+        let Some(entry) = session.profiles().first() else { return };
+        let siblings = entry.profile.siblings(sel.frame_id);
+        let pos = siblings.iter().position(|s| s.id == sel.frame_id);
+        let next = pos.and_then(|p| {
+            if forward {
+                siblings.get(p + 1)
+            } else {
+                p.checked_sub(1).and_then(|i| siblings.get(i))
+            }
+        });
+        if let Some(sib) = next {
+            self.selected_span = Some(SelectedSpan {
+                name: sib.name.to_string(),
+                frame_id: sib.id,
+                lane_index: sel.lane_index,
+                start_us: sib.start,
+                end_us: sib.end,
+            });
+            self.invalidate_commands();
+        }
+    }
+
+    /// Handle span hierarchy navigation keyboard shortcuts.
+    fn handle_span_navigation(&mut self, ui: &egui::Ui) {
+        if self.selected_span.is_none() {
+            return;
+        }
+        let go_parent = ui.input(|i| i.key_pressed(egui::Key::OpenBracket));
+        let go_child = ui.input(|i| i.key_pressed(egui::Key::CloseBracket));
+        let go_prev = ui.input(|i| {
+            i.key_pressed(egui::Key::OpenBracket) && i.modifiers.shift
+        });
+        let go_next = ui.input(|i| {
+            i.key_pressed(egui::Key::CloseBracket) && i.modifiers.shift
+        });
+
+        if go_prev {
+            self.navigate_to_sibling(false);
+        } else if go_next {
+            self.navigate_to_sibling(true);
+        } else if go_parent {
+            if let Some(sel) = self.selected_span.clone() {
+                self.navigate_to_parent(sel.frame_id, sel.lane_index);
+            }
+        } else if go_child {
+            self.navigate_to_first_child();
+        }
+    }
+
+    /// Handle search result navigation with Enter / Shift+Enter.
+    fn handle_search_navigation(&mut self, ui: &egui::Ui) {
+        if self.search_query.is_empty() {
+            return;
+        }
+        let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
+        if !enter {
+            return;
+        }
+        let shift = ui.input(|i| i.modifiers.shift);
+        self.advance_search_result(!shift);
+    }
+
+    /// Advance to the next (forward=true) or previous (forward=false) search result.
+    fn advance_search_result(&mut self, forward: bool) {
+        let Some(session) = &self.session else { return };
+        let Some(entry) = session.profiles().first() else { return };
+
+        let query_lower = self.search_query.to_lowercase();
+        let mut matches: Vec<(u64, &str, usize, f64, f64)> = Vec::new();
+
+        for (lane_idx, lane) in self.lanes.iter().enumerate() {
+            if !lane.visible {
+                continue;
+            }
+            if let LaneKind::Thread(tid) = &lane.kind {
+                for thread in &entry.profile.threads {
+                    if thread.id == *tid {
+                        for span in &thread.spans {
+                            if span.name.to_lowercase().contains(&query_lower) {
+                                matches.push((
+                                    span.id,
+                                    &span.name,
+                                    lane_idx,
+                                    span.start,
+                                    span.end,
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if matches.is_empty() {
+            return;
+        }
+
+        matches.sort_by(|a, b| a.3.partial_cmp(&b.3).unwrap_or(std::cmp::Ordering::Equal));
+
+        let current_id = self.selected_span.as_ref().map(|s| s.frame_id);
+        let current_pos = current_id.and_then(|id| matches.iter().position(|m| m.0 == id));
+
+        let next_idx = match (current_pos, forward) {
+            (Some(pos), true) => (pos + 1) % matches.len(),
+            (Some(pos), false) => (pos + matches.len() - 1) % matches.len(),
+            (None, true) => 0,
+            (None, false) => matches.len() - 1,
+        };
+
+        let (id, name, lane_idx, start, end) = matches[next_idx];
+        self.selected_span = Some(SelectedSpan {
+            name: name.to_string(),
+            frame_id: id,
+            lane_index: lane_idx,
+            start_us: start,
+            end_us: end,
+        });
+        self.invalidate_commands();
     }
 }
 
@@ -1855,6 +2084,31 @@ impl eframe::App for FlameApp {
                         self.view_start = s;
                         self.view_end = e;
                         self.invalidate_commands();
+                    }
+                }
+                crate::AppCommand::NavigateToParent => {
+                    if let Some(sel) = self.selected_span.clone() {
+                        self.navigate_to_parent(sel.frame_id, sel.lane_index);
+                    }
+                }
+                crate::AppCommand::NavigateToChild => {
+                    self.navigate_to_first_child();
+                }
+                crate::AppCommand::NavigateToNextSibling => {
+                    self.navigate_to_sibling(true);
+                }
+                crate::AppCommand::NavigateToPrevSibling => {
+                    self.navigate_to_sibling(false);
+                }
+                crate::AppCommand::NextSearchResult => {
+                    // Simulate Enter search navigation
+                    if !self.search_query.is_empty() {
+                        self.advance_search_result(true);
+                    }
+                }
+                crate::AppCommand::PrevSearchResult => {
+                    if !self.search_query.is_empty() {
+                        self.advance_search_result(false);
                     }
                 }
             }

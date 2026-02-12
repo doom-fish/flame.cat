@@ -66,6 +66,12 @@ function mockWasm(): WasmExports {
       state.can_go_back = true;
       stateCallback?.();
     }),
+    navigateToParent: vi.fn(),
+    navigateToChild: vi.fn(),
+    navigateToNextSibling: vi.fn(),
+    navigateToPrevSibling: vi.fn(),
+    nextSearchResult: vi.fn(),
+    prevSearchResult: vi.fn(),
     exportProfile: vi.fn(() => '{"meta":{}}'),
     selectSpan: vi.fn((fid: number | undefined) => {
       state.selected = fid != null

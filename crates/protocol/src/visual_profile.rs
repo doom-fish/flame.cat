@@ -488,6 +488,36 @@ impl VisualProfile {
     pub fn children(&self, parent: Option<u64>) -> Vec<&Span> {
         self.all_spans().filter(|s| s.parent == parent).collect()
     }
+
+    /// Siblings of a span (same parent, same thread), sorted by start time.
+    pub fn siblings(&self, span_id: u64) -> Vec<&Span> {
+        let Some(span) = self.span(span_id) else {
+            return vec![];
+        };
+        let parent = span.parent;
+        let depth = span.depth;
+        // Find the thread this span belongs to.
+        for thread in &self.threads {
+            if thread.spans.iter().any(|s| s.id == span_id) {
+                let mut sibs: Vec<&Span> = thread
+                    .spans
+                    .iter()
+                    .filter(|s| s.parent == parent && s.depth == depth)
+                    .collect();
+                sibs.sort_by(|a, b| a.start.partial_cmp(&b.start).unwrap_or(std::cmp::Ordering::Equal));
+                return sibs;
+            }
+        }
+        vec![]
+    }
+
+    /// Find the thread id that contains the given span.
+    pub fn thread_of_span(&self, span_id: u64) -> Option<u32> {
+        self.threads
+            .iter()
+            .find(|t| t.spans.iter().any(|s| s.id == span_id))
+            .map(|t| t.id)
+    }
 }
 
 #[cfg(test)]

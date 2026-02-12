@@ -34,6 +34,12 @@ pub enum AppCommand {
     SetViewType(ViewType),
     NavigateBack,
     NavigateForward,
+    NavigateToParent,
+    NavigateToChild,
+    NavigateToNextSibling,
+    NavigateToPrevSibling,
+    NextSearchResult,
+    PrevSearchResult,
 }
 
 /// Global command queue drained by the app each frame.
@@ -336,6 +342,48 @@ pub fn navigate_forward() {
 #[wasm_bindgen(js_name = "selectSpan")]
 pub fn select_span(frame_id: Option<u64>) {
     push_command(AppCommand::SelectSpan(frame_id));
+    request_repaint();
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = "navigateToParent")]
+pub fn navigate_to_parent() {
+    push_command(AppCommand::NavigateToParent);
+    request_repaint();
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = "navigateToChild")]
+pub fn navigate_to_child() {
+    push_command(AppCommand::NavigateToChild);
+    request_repaint();
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = "navigateToNextSibling")]
+pub fn navigate_to_next_sibling() {
+    push_command(AppCommand::NavigateToNextSibling);
+    request_repaint();
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = "navigateToPrevSibling")]
+pub fn navigate_to_prev_sibling() {
+    push_command(AppCommand::NavigateToPrevSibling);
+    request_repaint();
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = "nextSearchResult")]
+pub fn next_search_result() {
+    push_command(AppCommand::NextSearchResult);
+    request_repaint();
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = "prevSearchResult")]
+pub fn prev_search_result() {
+    push_command(AppCommand::PrevSearchResult);
     request_repaint();
 }
 

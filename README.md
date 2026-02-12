@@ -82,8 +82,16 @@ The render command protocol is the central abstraction. Core never draws — it 
 | `-` | Zoom out |
 | `0` | Reset zoom |
 | `Ctrl+Scroll` | Zoom at cursor |
+| `Shift+Scroll` | Pan horizontally |
 | `Double-click` | Zoom to span |
 | `Click` | Select span |
+| `Right-click` | Context menu |
+| `[` | Select parent span |
+| `]` | Select first child |
+| `Shift+[` | Previous sibling |
+| `Shift+]` | Next sibling |
+| `Enter` | Next search result |
+| `Shift+Enter` | Previous search result |
 | `Esc` | Deselect |
 | `?` | Keyboard help |
 

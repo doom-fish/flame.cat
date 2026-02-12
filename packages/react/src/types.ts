@@ -64,6 +64,12 @@ export interface WasmExports {
   setViewType(viewType: string): void;
   navigateBack(): void;
   navigateForward(): void;
+  navigateToParent(): void;
+  navigateToChild(): void;
+  navigateToNextSibling(): void;
+  navigateToPrevSibling(): void;
+  nextSearchResult(): void;
+  prevSearchResult(): void;
   exportProfile(): string | undefined;
   onStateChange(callback: () => void): void;
   getState(): string;
