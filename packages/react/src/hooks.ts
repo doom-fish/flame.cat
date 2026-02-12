@@ -316,6 +316,80 @@ export function useSelectedSpan(): SelectionState {
   return { selected, select, clear };
 }
 
+// ── useHoveredSpan ─────────────────────────────────────────────────────
+
+/** Currently hovered span (updates in real-time as user moves mouse). */
+export function useHoveredSpan(): SelectedSpanInfo | null {
+  const store = useFlameCatStore();
+  return useSyncExternalStore(
+    store.subscribe,
+    () => store.getSnapshot().hovered ?? null,
+    () => null,
+  );
+}
+
+// ── useNavigation ──────────────────────────────────────────────────────
+
+export interface NavigationState {
+  /** Whether there is a previous zoom level to go back to. */
+  canGoBack: boolean;
+  /** Whether there is a next zoom level to go forward to. */
+  canGoForward: boolean;
+  /** Navigate to the previous zoom level. */
+  back(): void;
+  /** Navigate to the next zoom level. */
+  forward(): void;
+}
+
+/** Breadcrumb zoom history navigation. */
+export function useNavigation(): NavigationState {
+  const store = useFlameCatStore();
+
+  const canGoBack = useSyncExternalStore(
+    store.subscribe,
+    () => store.getSnapshot().can_go_back ?? false,
+    () => false,
+  );
+
+  const canGoForward = useSyncExternalStore(
+    store.subscribe,
+    () => store.getSnapshot().can_go_forward ?? false,
+    () => false,
+  );
+
+  const back = useCallback(() => {
+    store.exec((w) => w.navigateBack());
+  }, [store]);
+
+  const forward = useCallback(() => {
+    store.exec((w) => w.navigateForward());
+  }, [store]);
+
+  return { canGoBack, canGoForward, back, forward };
+}
+
+// ── useExport ──────────────────────────────────────────────────────────
+
+export interface ExportState {
+  /** Export the loaded profile as a JSON string (VisualProfile format). */
+  exportJSON(): string | null;
+}
+
+/** Profile export. */
+export function useExport(): ExportState {
+  const store = useFlameCatStore();
+
+  const exportJSON = useCallback((): string | null => {
+    let result: string | null = null;
+    store.exec((w) => {
+      result = w.exportProfile() ?? null;
+    });
+    return result;
+  }, [store]);
+
+  return { exportJSON };
+}
+
 // ── useHotkeys ─────────────────────────────────────────────────────────
 
 export interface HotkeyMap {

@@ -4,9 +4,12 @@ export interface StateSnapshot {
   lanes: LaneInfo[];
   viewport: ViewportInfo;
   selected: SelectedSpanInfo | null;
+  hovered: SelectedSpanInfo | null;
   search: string;
   theme: "dark" | "light";
   view_type: ViewType;
+  can_go_back: boolean;
+  can_go_forward: boolean;
 }
 
 /** Visualization mode. */
@@ -59,6 +62,9 @@ export interface WasmExports {
   reorderLanes(fromIndex: number, toIndex: number): void;
   selectSpan(frameId: number | undefined): void;
   setViewType(viewType: string): void;
+  navigateBack(): void;
+  navigateForward(): void;
+  exportProfile(): string | undefined;
   onStateChange(callback: () => void): void;
   getState(): string;
 }

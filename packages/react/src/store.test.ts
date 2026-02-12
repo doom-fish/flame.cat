@@ -16,6 +16,8 @@ function mockWasm(): WasmExports {
     search: "",
     theme: "dark",
     view_type: "time_order",
+    can_go_back: false,
+    can_go_forward: false,
   };
 
   return {
@@ -56,6 +58,15 @@ function mockWasm(): WasmExports {
       state.view_type = vt;
       stateCallback?.();
     }),
+    navigateBack: vi.fn(() => {
+      state.can_go_forward = true;
+      stateCallback?.();
+    }),
+    navigateForward: vi.fn(() => {
+      state.can_go_back = true;
+      stateCallback?.();
+    }),
+    exportProfile: vi.fn(() => '{"meta":{}}'),
     selectSpan: vi.fn((fid: number | undefined) => {
       state.selected = fid != null
         ? { name: "test", frame_id: fid, lane_index: 0, start_us: 0, end_us: 100 }

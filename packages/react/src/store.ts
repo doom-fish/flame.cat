@@ -8,9 +8,12 @@ const EMPTY_SNAPSHOT: StateSnapshot = {
   lanes: [],
   viewport: { start: 0, end: 1, scroll_y: 0 },
   selected: null,
+  hovered: null,
   search: "",
   theme: "dark",
   view_type: "time_order",
+  can_go_back: false,
+  can_go_forward: false,
 };
 
 /**

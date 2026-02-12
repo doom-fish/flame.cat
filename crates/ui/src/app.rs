@@ -51,6 +51,12 @@ pub struct FlameApp {
     anim_target: Option<(f64, f64)>,
     /// Context menu state: span info + screen position.
     context_menu: Option<ContextMenu>,
+    /// Currently hovered span (for JS event hooks).
+    hovered_span: Option<SelectedSpan>,
+    /// Zoom history for back/forward navigation.
+    zoom_history: Vec<(f64, f64)>,
+    /// Current position in zoom_history (index of last applied entry).
+    zoom_history_pos: usize,
 }
 
 #[derive(Clone)]
@@ -176,6 +182,9 @@ impl FlameApp {
             show_help: false,
             anim_target: None,
             context_menu: None,
+            hovered_span: None,
+            zoom_history: vec![(0.0, 1.0)],
+            zoom_history_pos: 0,
         }
     }
 
@@ -207,6 +216,9 @@ impl FlameApp {
                 }
 
                 self.setup_lanes(&profile);
+
+                // Cache serialized profile for export
+                crate::set_profile_json(serde_json::to_string(&profile).ok());
 
                 // Compute auto-zoom bounds before consuming profile
                 let zoom_bounds = compute_auto_zoom(&profile);
@@ -361,6 +373,24 @@ impl FlameApp {
 
     fn invalidate_commands(&mut self) {
         self.lane_commands.clear();
+    }
+
+    /// Push a zoom entry to history (truncate any forward history).
+    fn push_zoom(&mut self) {
+        let entry = (self.view_start, self.view_end);
+        // Skip duplicate entries
+        if self.zoom_history.last() == Some(&entry) {
+            return;
+        }
+        // Truncate forward history
+        self.zoom_history.truncate(self.zoom_history_pos + 1);
+        self.zoom_history.push(entry);
+        self.zoom_history_pos = self.zoom_history.len() - 1;
+        // Cap history at 100 entries
+        if self.zoom_history.len() > 100 {
+            self.zoom_history.remove(0);
+            self.zoom_history_pos = self.zoom_history.len() - 1;
+        }
     }
 
     fn ensure_commands(&mut self, canvas_width: f32) {
@@ -839,6 +869,7 @@ impl FlameApp {
             self.view_start = target_start;
             self.view_end = target_end;
             self.anim_target = None;
+            self.push_zoom();
             self.invalidate_commands();
             return false;
         }
@@ -1088,6 +1119,9 @@ impl FlameApp {
     }
 
     fn render_central_panel(&mut self, ctx: &egui::Context) {
+        // Clear hover state each frame
+        self.hovered_span = None;
+
         // Central panel: flame chart
         egui::CentralPanel::default().show(ctx, |ui| {
             if self.session.is_none() {
@@ -1348,6 +1382,15 @@ impl FlameApp {
                             for hit in &result.hit_regions {
                                 if hit.rect.contains(hover_pos) {
                                     if let Some(name) = find_span_label(cmds, hit.frame_id) {
+                                        // Update hovered span for JS hooks
+                                        self.hovered_span = Some(SelectedSpan {
+                                            name: name.to_string(),
+                                            frame_id: hit.frame_id,
+                                            lane_index: i,
+                                            start_us: hit.rect.left() as f64,
+                                            end_us: hit.rect.right() as f64,
+                                        });
+
                                         egui::Area::new(egui::Id::new("span_tooltip"))
                                             .order(egui::Order::Tooltip)
                                             .current_pos(hover_pos + egui::vec2(12.0, 12.0))
@@ -1721,11 +1764,13 @@ impl eframe::App for FlameApp {
                     self.view_start = 0.0;
                     self.view_end = 1.0;
                     self.scroll_y = 0.0;
+                    self.push_zoom();
                     self.invalidate_commands();
                 }
                 crate::AppCommand::SetViewport(start, end) => {
                     self.view_start = start.max(0.0);
                     self.view_end = end.min(1.0);
+                    self.push_zoom();
                     self.invalidate_commands();
                 }
                 crate::AppCommand::SetLaneVisibility(index, visible) => {
@@ -1793,6 +1838,24 @@ impl eframe::App for FlameApp {
                 crate::AppCommand::SetViewType(vt) => {
                     self.view_type = vt;
                     self.invalidate_commands();
+                }
+                crate::AppCommand::NavigateBack => {
+                    if self.zoom_history_pos > 0 {
+                        self.zoom_history_pos -= 1;
+                        let (s, e) = self.zoom_history[self.zoom_history_pos];
+                        self.view_start = s;
+                        self.view_end = e;
+                        self.invalidate_commands();
+                    }
+                }
+                crate::AppCommand::NavigateForward => {
+                    if self.zoom_history_pos + 1 < self.zoom_history.len() {
+                        self.zoom_history_pos += 1;
+                        let (s, e) = self.zoom_history[self.zoom_history_pos];
+                        self.view_start = s;
+                        self.view_end = e;
+                        self.invalidate_commands();
+                    }
                 }
             }
         }
@@ -1873,6 +1936,13 @@ impl FlameApp {
             start_us: s.start_us,
             end_us: s.end_us,
         });
+        let hovered = self.hovered_span.as_ref().map(|s| crate::SelectedSpanSnapshot {
+            name: s.name.clone(),
+            frame_id: s.frame_id,
+            lane_index: s.lane_index,
+            start_us: s.start_us,
+            end_us: s.end_us,
+        });
         let theme = match self.theme_mode {
             ThemeMode::Dark => "dark",
             ThemeMode::Light => "light",
@@ -1883,9 +1953,12 @@ impl FlameApp {
             lanes,
             viewport,
             selected,
+            hovered,
             search: self.search_query.clone(),
             theme,
             view_type: self.view_type,
+            can_go_back: self.zoom_history_pos > 0,
+            can_go_forward: self.zoom_history_pos + 1 < self.zoom_history.len(),
         });
     }
 }

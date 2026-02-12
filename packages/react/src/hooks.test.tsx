@@ -13,6 +13,9 @@ import {
   useSearch,
   useTheme,
   useSelectedSpan,
+  useHoveredSpan,
+  useNavigation,
+  useExport,
   useHotkeys,
 } from "./hooks";
 import type { WasmExports } from "./types";
@@ -38,6 +41,8 @@ function mockWasm(): WasmExports {
     search: "",
     theme: "dark",
     view_type: "time_order",
+    can_go_back: false,
+    can_go_forward: true,
   };
 
   return {
@@ -84,6 +89,16 @@ function mockWasm(): WasmExports {
       state.view_type = vt;
       stateCallback?.();
     }),
+    navigateBack: vi.fn(() => {
+      state.can_go_back = false;
+      state.can_go_forward = true;
+      stateCallback?.();
+    }),
+    navigateForward: vi.fn(() => {
+      state.can_go_forward = false;
+      stateCallback?.();
+    }),
+    exportProfile: vi.fn(() => '{"meta":{}}'),
     onStateChange: vi.fn((cb: () => void) => {
       stateCallback = cb;
     }),
@@ -279,6 +294,40 @@ describe("hooks integration", () => {
     expect(wasm.selectSpan).toHaveBeenCalledWith(7);
     act(() => result.current.clear());
     expect(wasm.selectSpan).toHaveBeenCalledWith(undefined);
+  });
+
+  // ── useHoveredSpan ─────────────────────────────────────────────────
+
+  it("useHoveredSpan returns null initially", () => {
+    const { result } = renderHook(() => useHoveredSpan(), {
+      wrapper: createWrapper(store),
+    });
+    expect(result.current).toBeNull();
+  });
+
+  // ── useNavigation ──────────────────────────────────────────────────
+
+  it("useNavigation exposes back/forward state and actions", () => {
+    const { result } = renderHook(() => useNavigation(), {
+      wrapper: createWrapper(store),
+    });
+    expect(result.current.canGoBack).toBe(false);
+    expect(result.current.canGoForward).toBe(true);
+    act(() => result.current.forward());
+    expect(wasm.navigateForward).toHaveBeenCalled();
+    act(() => result.current.back());
+    expect(wasm.navigateBack).toHaveBeenCalled();
+  });
+
+  // ── useExport ──────────────────────────────────────────────────────
+
+  it("useExport returns profile JSON", () => {
+    const { result } = renderHook(() => useExport(), {
+      wrapper: createWrapper(store),
+    });
+    const json = result.current.exportJSON();
+    expect(json).toBe('{"meta":{}}');
+    expect(wasm.exportProfile).toHaveBeenCalled();
   });
 
   // ── useHotkeys ─────────────────────────────────────────────────────

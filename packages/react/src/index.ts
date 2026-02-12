@@ -20,6 +20,9 @@ export {
   useSearch,
   useTheme,
   useSelectedSpan,
+  useHoveredSpan,
+  useNavigation,
+  useExport,
   useHotkeys,
 } from "./hooks";
 
@@ -32,6 +35,8 @@ export type {
   SearchState,
   ThemeState,
   SelectionState,
+  NavigationState,
+  ExportState,
   HotkeyMap,
 } from "./hooks";
 

@@ -32,6 +32,8 @@ pub enum AppCommand {
     ReorderLanes(usize, usize),
     SelectSpan(Option<u64>),
     SetViewType(ViewType),
+    NavigateBack,
+    NavigateForward,
 }
 
 /// Global command queue drained by the app each frame.
@@ -58,9 +60,12 @@ pub struct StateSnapshot {
     pub lanes: Vec<LaneSnapshot>,
     pub viewport: ViewportSnapshot,
     pub selected: Option<SelectedSpanSnapshot>,
+    pub hovered: Option<SelectedSpanSnapshot>,
     pub search: String,
     pub theme: String,
     pub view_type: ViewType,
+    pub can_go_back: bool,
+    pub can_go_forward: bool,
 }
 
 #[derive(serde::Serialize)]
@@ -108,10 +113,22 @@ static STATE: std::sync::Mutex<StateSnapshot> = std::sync::Mutex::new(StateSnaps
         scroll_y: 0.0,
     },
     selected: None,
+    hovered: None,
     search: String::new(),
     theme: String::new(),
     view_type: ViewType::TimeOrder,
+    can_go_back: false,
+    can_go_forward: false,
 });
+
+/// Cached serialized profile for export (set when profile loads).
+static PROFILE_JSON: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+pub fn set_profile_json(json: Option<String>) {
+    if let Ok(mut p) = PROFILE_JSON.lock() {
+        *p = json;
+    }
+}
 
 pub fn write_snapshot(snap: StateSnapshot) {
     let changed = if let Ok(mut s) = STATE.lock() {
@@ -121,6 +138,7 @@ pub fn write_snapshot(snap: StateSnapshot) {
             || s.search != snap.search
             || s.theme != snap.theme
             || s.selected.is_some() != snap.selected.is_some()
+            || s.hovered.is_some() != snap.hovered.is_some()
             || s.profile.is_some() != snap.profile.is_some()
             || s.lanes.len() != snap.lanes.len()
             || std::mem::discriminant(&s.view_type) != std::mem::discriminant(&snap.view_type);
@@ -301,6 +319,20 @@ pub fn set_view_type(view_type: &str) -> Result<(), JsValue> {
 }
 
 #[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = "navigateBack")]
+pub fn navigate_back() {
+    push_command(AppCommand::NavigateBack);
+    request_repaint();
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = "navigateForward")]
+pub fn navigate_forward() {
+    push_command(AppCommand::NavigateForward);
+    request_repaint();
+}
+
+#[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(js_name = "selectSpan")]
 pub fn select_span(frame_id: Option<u64>) {
     push_command(AppCommand::SelectSpan(frame_id));
@@ -313,6 +345,16 @@ pub fn on_state_change(callback: js_sys::Function) {
     STATE_CALLBACK.with(|cb| {
         *cb.borrow_mut() = Some(callback);
     });
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = "exportProfile")]
+pub fn export_profile() -> Option<String> {
+    if let Ok(p) = PROFILE_JSON.lock() {
+        p.clone()
+    } else {
+        None
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
