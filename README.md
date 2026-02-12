@@ -2,7 +2,7 @@
 
 High-performance flame graph visualization tool. Renders with egui (WebGL2/native) and uses Rust for all data processing.
 
-[![CI](https://github.com/user/flame.cat/actions/workflows/ci.yml/badge.svg)](https://github.com/user/flame.cat/actions/workflows/ci.yml)
+[![CI](https://github.com/doom-fish/flame.cat/actions/workflows/ci.yml/badge.svg)](https://github.com/doom-fish/flame.cat/actions/workflows/ci.yml)
 
 ## Features
 

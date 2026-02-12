@@ -8,47 +8,61 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
 
 jobs:
-  check:
-    name: Check & Test
+  rust:
+    name: Rust
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
           components: clippy, rustfmt
 
-      - name: Format check
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
         run: cargo fmt --check
 
-      - name: Clippy (core + protocol)
+      - name: Clippy
         run: cargo clippy -p flame-cat-core -p flame-cat-protocol -- -D warnings
 
-      - name: Tests
+      - name: Test
         run: cargo test -p flame-cat-core -p flame-cat-protocol
 
-      - name: WASM build
-        run: cargo build --target wasm32-unknown-unknown -p flame-cat-ui --release
+      - name: WASM check
+        run: cargo check -p flame-cat-ui --target wasm32-unknown-unknown
 
-      - name: Check WASM size
+      - name: WASM release build
+        run: cargo build -p flame-cat-ui --target wasm32-unknown-unknown --release
+
+      - name: WASM size
         run: |
           SIZE=$(stat -c%s target/wasm32-unknown-unknown/release/flame_cat_ui.wasm)
-          echo "WASM size: $((SIZE / 1024 / 1024))MB ($SIZE bytes)"
+          echo "WASM size: $((SIZE / 1024))KB ($SIZE bytes)"
           if [ "$SIZE" -gt 5242880 ]; then
             echo "::warning::WASM binary exceeds 5MB budget"
           fi
 
+  react:
+    name: React
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/react
+    steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+          cache-dependency-path: packages/react/package-lock.json
 
-      - name: React package — install
-        run: cd packages/react && npm ci
-
-      - name: React package — typecheck
-        run: cd packages/react && npm run lint
-
-      - name: React package — tests
-        run: cd packages/react && npm test
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
+      - run: npm run build
