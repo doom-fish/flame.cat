@@ -62,6 +62,7 @@ export function FlameCatProvider({
           setLaneHeight: mod.setLaneHeight,
           reorderLanes: mod.reorderLanes,
           selectSpan: mod.selectSpan,
+          setViewType: mod.setViewType,
           onStateChange: mod.onStateChange,
           getState: mod.getState,
         };

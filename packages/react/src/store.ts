@@ -10,6 +10,7 @@ const EMPTY_SNAPSHOT: StateSnapshot = {
   selected: null,
   search: "",
   theme: "dark",
+  view_type: "time_order",
 };
 
 /**

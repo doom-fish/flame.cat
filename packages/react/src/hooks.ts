@@ -1,7 +1,7 @@
 import { useSyncExternalStore, useCallback, useEffect } from "react";
 import { useFlameCatStore } from "./FlameCatProvider";
 import type { FlameCatStatus } from "./store";
-import type { ProfileInfo, LaneInfo, ViewportInfo, SelectedSpanInfo } from "./types";
+import type { ProfileInfo, LaneInfo, ViewportInfo, SelectedSpanInfo, ViewType } from "./types";
 
 // ── useFlameGraph ──────────────────────────────────────────────────────
 
@@ -71,6 +71,38 @@ export function useProfile(): ProfileInfo | null {
     () => store.getSnapshot().profile,
     () => null,
   );
+}
+
+// ── useViewType ────────────────────────────────────────────────────────
+
+export interface ViewTypeState {
+  /** Current view type. */
+  viewType: ViewType;
+  /** Switch visualization mode. */
+  setViewType(viewType: ViewType): void;
+}
+
+const VALID_VIEW_TYPES: ViewType[] = ["time_order", "left_heavy", "sandwich", "ranked"];
+
+/** View switching: time-order, left-heavy, sandwich, ranked. */
+export function useViewType(): ViewTypeState {
+  const store = useFlameCatStore();
+
+  const viewType = useSyncExternalStore(
+    store.subscribe,
+    () => store.getSnapshot().view_type || "time_order",
+    () => "time_order" as ViewType,
+  );
+
+  const setViewType = useCallback(
+    (vt: ViewType) => {
+      if (!VALID_VIEW_TYPES.includes(vt)) return;
+      store.exec((w) => w.setViewType(vt));
+    },
+    [store],
+  );
+
+  return { viewType: viewType as ViewType, setViewType };
 }
 
 // ── useLanes ───────────────────────────────────────────────────────────

@@ -6,7 +6,11 @@ export interface StateSnapshot {
   selected: SelectedSpanInfo | null;
   search: string;
   theme: "dark" | "light";
+  view_type: ViewType;
 }
+
+/** Visualization mode. */
+export type ViewType = "time_order" | "left_heavy" | "sandwich" | "ranked";
 
 export interface ProfileInfo {
   name: string | null;
@@ -18,9 +22,11 @@ export interface ProfileInfo {
   thread_count: number;
 }
 
+export type LaneKind = "thread" | "counter" | "async" | "markers" | "cpu_samples" | "frame_track" | "object_track" | "minimap";
+
 export interface LaneInfo {
   name: string;
-  kind: string;
+  kind: LaneKind;
   height: number;
   visible: boolean;
   span_count: number;
@@ -52,6 +58,7 @@ export interface WasmExports {
   setLaneHeight(index: number, height: number): void;
   reorderLanes(fromIndex: number, toIndex: number): void;
   selectSpan(frameId: number | undefined): void;
+  setViewType(viewType: string): void;
   onStateChange(callback: () => void): void;
   getState(): string;
 }

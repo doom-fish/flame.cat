@@ -27,6 +27,8 @@ pub struct FlameApp {
     view_end: f64,
     /// Theme mode.
     theme_mode: ThemeMode,
+    /// Active visualization mode.
+    view_type: crate::ViewType,
     /// Cached render commands per lane (invalidated on zoom/scroll/resize).
     lane_commands: Vec<Vec<RenderCommand>>,
     /// Global vertical scroll offset in pixels.
@@ -162,6 +164,7 @@ impl FlameApp {
             view_start: 0.0,
             view_end: 1.0,
             theme_mode: ThemeMode::Dark,
+            view_type: crate::ViewType::TimeOrder,
             lane_commands: Vec::new(),
             scroll_y: 0.0,
             selected_span: None,
@@ -396,13 +399,50 @@ impl FlameApp {
                 dpr: 1.0,
             };
             let cmds = match &lane.kind {
-                LaneKind::Thread(tid) => flame_cat_core::views::time_order::render_time_order(
-                    &entry.profile,
-                    &viewport,
-                    abs_start,
-                    abs_end,
-                    Some(*tid),
-                ),
+                LaneKind::Thread(tid) => match self.view_type {
+                    crate::ViewType::TimeOrder => {
+                        flame_cat_core::views::time_order::render_time_order(
+                            &entry.profile,
+                            &viewport,
+                            abs_start,
+                            abs_end,
+                            Some(*tid),
+                        )
+                    }
+                    crate::ViewType::LeftHeavy => {
+                        flame_cat_core::views::left_heavy::render_left_heavy(
+                            &entry.profile,
+                            &viewport,
+                            Some(*tid),
+                        )
+                    }
+                    crate::ViewType::Sandwich => {
+                        if let Some(ref sel) = self.selected_span {
+                            flame_cat_core::views::sandwich::render_sandwich(
+                                &entry.profile,
+                                sel.frame_id,
+                                &viewport,
+                            )
+                        } else {
+                            // No span selected — show time order as fallback
+                            flame_cat_core::views::time_order::render_time_order(
+                                &entry.profile,
+                                &viewport,
+                                abs_start,
+                                abs_end,
+                                Some(*tid),
+                            )
+                        }
+                    }
+                    crate::ViewType::Ranked => {
+                        flame_cat_core::views::ranked::render_ranked(
+                            &entry.profile,
+                            &viewport,
+                            flame_cat_core::views::ranked::RankedSort::SelfTime,
+                            false,
+                        )
+                    }
+                },
                 LaneKind::Counter(idx) => {
                     if let Some(counter) = entry.profile.counters.get(*idx) {
                         flame_cat_core::views::counter::render_counter_track(
@@ -864,6 +904,27 @@ impl FlameApp {
                         }
                     };
                     self.invalidate_commands();
+                }
+
+                ui.separator();
+
+                // View type tabs
+                if self.session.is_some() {
+                    let views = [
+                        (crate::ViewType::TimeOrder, "⏱ Time"),
+                        (crate::ViewType::LeftHeavy, "◀ Left Heavy"),
+                        (crate::ViewType::Sandwich, "🥪 Sandwich"),
+                        (crate::ViewType::Ranked, "📊 Ranked"),
+                    ];
+                    for (vt, label) in views {
+                        if ui
+                            .selectable_label(self.view_type == vt, label)
+                            .clicked()
+                        {
+                            self.view_type = vt;
+                            self.invalidate_commands();
+                        }
+                    }
                 }
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -1729,6 +1790,10 @@ impl eframe::App for FlameApp {
                         self.selected_span = None;
                     }
                 }
+                crate::AppCommand::SetViewType(vt) => {
+                    self.view_type = vt;
+                    self.invalidate_commands();
+                }
             }
         }
 
@@ -1820,6 +1885,7 @@ impl FlameApp {
             selected,
             search: self.search_query.clone(),
             theme,
+            view_type: self.view_type,
         });
     }
 }

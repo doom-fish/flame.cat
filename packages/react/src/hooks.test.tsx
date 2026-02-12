@@ -7,6 +7,7 @@ import {
   useFlameGraph,
   useStatus,
   useProfile,
+  useViewType,
   useLanes,
   useViewport,
   useSearch,
@@ -36,6 +37,7 @@ function mockWasm(): WasmExports {
     selected: null,
     search: "",
     theme: "dark",
+    view_type: "time_order",
   };
 
   return {
@@ -76,6 +78,10 @@ function mockWasm(): WasmExports {
       state.selected = fid != null
         ? { name: "render", frame_id: fid, lane_index: 0, start_us: 100, end_us: 500 }
         : null;
+      stateCallback?.();
+    }),
+    setViewType: vi.fn((vt: string) => {
+      state.view_type = vt;
       stateCallback?.();
     }),
     onStateChange: vi.fn((cb: () => void) => {
@@ -145,6 +151,25 @@ describe("hooks integration", () => {
     expect(result.current).toEqual(
       expect.objectContaining({ name: "test.json", span_count: 100 }),
     );
+  });
+
+  // ── useViewType ────────────────────────────────────────────────────
+
+  it("useViewType reads and sets view type", () => {
+    const { result } = renderHook(() => useViewType(), {
+      wrapper: createWrapper(store),
+    });
+    expect(result.current.viewType).toBe("time_order");
+    act(() => result.current.setViewType("left_heavy"));
+    expect(wasm.setViewType).toHaveBeenCalledWith("left_heavy");
+  });
+
+  it("useViewType validates input", () => {
+    const { result } = renderHook(() => useViewType(), {
+      wrapper: createWrapper(store),
+    });
+    act(() => result.current.setViewType("invalid" as any));
+    expect(wasm.setViewType).not.toHaveBeenCalled();
   });
 
   // ── useLanes ───────────────────────────────────────────────────────

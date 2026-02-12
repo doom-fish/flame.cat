@@ -4,6 +4,22 @@ mod theme;
 
 pub use app::FlameApp;
 
+/// Active visualization mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ViewType {
+    TimeOrder,
+    LeftHeavy,
+    Sandwich,
+    Ranked,
+}
+
+impl Default for ViewType {
+    fn default() -> Self {
+        Self::TimeOrder
+    }
+}
+
 /// Commands that can be sent from JS to the egui app.
 #[derive(Debug)]
 pub enum AppCommand {
@@ -15,6 +31,7 @@ pub enum AppCommand {
     SetLaneHeight(usize, f32),
     ReorderLanes(usize, usize),
     SelectSpan(Option<u64>),
+    SetViewType(ViewType),
 }
 
 /// Global command queue drained by the app each frame.
@@ -43,6 +60,7 @@ pub struct StateSnapshot {
     pub selected: Option<SelectedSpanSnapshot>,
     pub search: String,
     pub theme: String,
+    pub view_type: ViewType,
 }
 
 #[derive(serde::Serialize)]
@@ -92,6 +110,7 @@ static STATE: std::sync::Mutex<StateSnapshot> = std::sync::Mutex::new(StateSnaps
     selected: None,
     search: String::new(),
     theme: String::new(),
+    view_type: ViewType::TimeOrder,
 });
 
 pub fn write_snapshot(snap: StateSnapshot) {
@@ -103,7 +122,8 @@ pub fn write_snapshot(snap: StateSnapshot) {
             || s.theme != snap.theme
             || s.selected.is_some() != snap.selected.is_some()
             || s.profile.is_some() != snap.profile.is_some()
-            || s.lanes.len() != snap.lanes.len();
+            || s.lanes.len() != snap.lanes.len()
+            || std::mem::discriminant(&s.view_type) != std::mem::discriminant(&snap.view_type);
         *s = snap;
         changed
     } else {
@@ -259,6 +279,25 @@ pub fn set_lane_height(index: usize, height: f32) {
 pub fn reorder_lanes(from_index: usize, to_index: usize) {
     push_command(AppCommand::ReorderLanes(from_index, to_index));
     request_repaint();
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = "setViewType")]
+pub fn set_view_type(view_type: &str) -> Result<(), JsValue> {
+    let vt = match view_type {
+        "time_order" => ViewType::TimeOrder,
+        "left_heavy" => ViewType::LeftHeavy,
+        "sandwich" => ViewType::Sandwich,
+        "ranked" => ViewType::Ranked,
+        _ => {
+            return Err(JsValue::from_str(
+                "view_type must be 'time_order', 'left_heavy', 'sandwich', or 'ranked'",
+            ))
+        }
+    };
+    push_command(AppCommand::SetViewType(vt));
+    request_repaint();
+    Ok(())
 }
 
 #[cfg(target_arch = "wasm32")]

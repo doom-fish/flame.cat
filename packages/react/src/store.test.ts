@@ -15,6 +15,7 @@ function mockWasm(): WasmExports {
     selected: null,
     search: "",
     theme: "dark",
+    view_type: "time_order",
   };
 
   return {
@@ -49,6 +50,10 @@ function mockWasm(): WasmExports {
         const [lane] = state.lanes.splice(from, 1);
         state.lanes.splice(to, 0, lane);
       }
+      stateCallback?.();
+    }),
+    setViewType: vi.fn((vt: string) => {
+      state.view_type = vt;
       stateCallback?.();
     }),
     selectSpan: vi.fn((fid: number | undefined) => {
@@ -164,6 +169,15 @@ describe("FlameCatStore", () => {
     store.exec((w) => w.setViewport(0.2, 0.8));
     expect(store.getSnapshot().viewport.start).toBe(0.2);
     expect(store.getSnapshot().viewport.end).toBe(0.8);
+  });
+
+  // ── View Type ──────────────────────────────────────────────────────
+
+  it("handles setViewType", () => {
+    const wasm = mockWasm();
+    store.attach(wasm);
+    store.exec((w) => w.setViewType("left_heavy"));
+    expect(store.getSnapshot().view_type).toBe("left_heavy");
   });
 
   // ── Lanes ──────────────────────────────────────────────────────────

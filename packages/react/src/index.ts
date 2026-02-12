@@ -14,6 +14,7 @@ export {
   useFlameGraph,
   useStatus,
   useProfile,
+  useViewType,
   useLanes,
   useViewport,
   useSearch,
@@ -25,6 +26,7 @@ export {
 export type {
   FlameGraphController,
   StatusState,
+  ViewTypeState,
   LanesState,
   ViewportState,
   SearchState,
@@ -38,6 +40,8 @@ export type {
   StateSnapshot,
   ProfileInfo,
   LaneInfo,
+  LaneKind,
   ViewportInfo,
   SelectedSpanInfo,
+  ViewType,
 } from "./types";
