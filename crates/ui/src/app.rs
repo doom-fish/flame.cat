@@ -1661,6 +1661,8 @@ impl FlameApp {
             let mut deferred_zoom: Option<(f64, f64)> = None;
             // Collect tid → y_center for flow arrow rendering
             let mut tid_to_y: std::collections::HashMap<u64, f32> = std::collections::HashMap::new();
+            // Deferred lane labels — drawn last, on top of everything
+            let mut deferred_labels: Vec<(String, f32, f32)> = Vec::new(); // (name, x, y)
 
             for (i, lane) in self.lanes.iter().enumerate() {
                 if !lane.visible {
@@ -1848,8 +1850,7 @@ impl FlameApp {
 
                 painter.set_clip_rect(prev_clip);
 
-                // Inline lane label (top-left corner with opaque background pill)
-                // Skip for lane types that render their own title in commands
+                // Defer lane label for top-of-everything rendering
                 let self_labeled = matches!(
                     lane.kind,
                     LaneKind::Counter(_)
@@ -1858,54 +1859,9 @@ impl FlameApp {
                         | LaneKind::FrameTrack
                         | LaneKind::ObjectTrack
                 );
-                if !self_labeled {
-                let label_text = &lane.name;
-                let label_font = egui::FontId::proportional(10.0);
-                let label_text_color = crate::theme::resolve(
-                    flame_cat_protocol::ThemeToken::InlineLabelText,
-                    self.theme_mode,
-                );
-                let label_galley = painter.layout_no_wrap(
-                    label_text.clone(),
-                    label_font,
-                    label_text_color,
-                );
-                let label_w = label_galley.size().x + 8.0;
-                let label_h = label_galley.size().y + 4.0;
-                let label_rect = egui::Rect::from_min_size(
-                    egui::pos2(available.left() + 2.0, lane_top + 2.0),
-                    egui::vec2(label_w, label_h),
-                );
-                // Only draw if label fits within the lane vertically
-                if label_rect.bottom() <= lane_top + total_height
-                    && label_rect.intersects(available)
-                {
-                    // Opaque background to prevent text overlap with spans
-                    let lane_bg = crate::theme::resolve(
-                        flame_cat_protocol::ThemeToken::LaneBackground,
-                        self.theme_mode,
-                    );
-                    painter.rect_filled(
-                        label_rect.expand(1.0),
-                        egui::CornerRadius::same(3),
-                        lane_bg,
-                    );
-                    let label_bg_color = crate::theme::resolve(
-                        flame_cat_protocol::ThemeToken::InlineLabelBackground,
-                        self.theme_mode,
-                    );
-                    painter.rect_filled(
-                        label_rect,
-                        egui::CornerRadius::same(3),
-                        label_bg_color,
-                    );
-                    painter.galley(
-                        egui::pos2(available.left() + 6.0, lane_top + 4.0),
-                        label_galley,
-                        egui::Color32::TRANSPARENT,
-                    );
+                if !self_labeled && total_height >= 18.0 && lane_top + 2.0 >= available.top() {
+                    deferred_labels.push((lane.name.clone(), lane_top, total_height));
                 }
-                } // end !self_labeled
 
                 // Lane border
                 let border_color = crate::theme::resolve(
@@ -2006,6 +1962,53 @@ impl FlameApp {
                             ));
                             drawn += 1;
                         }
+                    }
+                }
+            }
+
+            // Draw deferred lane labels on top of everything
+            {
+                let label_font = egui::FontId::proportional(10.0);
+                let label_text_color = crate::theme::resolve(
+                    flame_cat_protocol::ThemeToken::InlineLabelText,
+                    self.theme_mode,
+                );
+                let label_bg = crate::theme::resolve(
+                    flame_cat_protocol::ThemeToken::InlineLabelBackground,
+                    self.theme_mode,
+                );
+                let lane_bg_color = crate::theme::resolve(
+                    flame_cat_protocol::ThemeToken::LaneBackground,
+                    self.theme_mode,
+                );
+                for (name, lane_top, total_height) in &deferred_labels {
+                    let galley = painter.layout_no_wrap(
+                        name.clone(),
+                        label_font.clone(),
+                        label_text_color,
+                    );
+                    let lw = galley.size().x + 8.0;
+                    let lh = galley.size().y + 4.0;
+                    let lrect = egui::Rect::from_min_size(
+                        egui::pos2(available.left() + 2.0, lane_top + 2.0),
+                        egui::vec2(lw, lh),
+                    );
+                    if lrect.bottom() <= lane_top + total_height {
+                        painter.rect_filled(
+                            lrect.expand(1.0),
+                            egui::CornerRadius::same(3),
+                            lane_bg_color,
+                        );
+                        painter.rect_filled(
+                            lrect,
+                            egui::CornerRadius::same(3),
+                            label_bg,
+                        );
+                        painter.galley(
+                            egui::pos2(available.left() + 6.0, lane_top + 4.0),
+                            galley,
+                            egui::Color32::TRANSPARENT,
+                        );
                     }
                 }
             }

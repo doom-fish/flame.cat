@@ -221,13 +221,29 @@ pub fn render_commands(
                     TextAlign::Right => Align2::RIGHT_CENTER,
                 };
 
-                painter.text(
-                    Pos2::new(x, y),
-                    anchor,
-                    text.as_ref(),
+                // Background pill behind text for readability over chart fills
+                let galley = painter.layout_no_wrap(
+                    text.as_ref().to_string(),
                     FontId::proportional(size),
                     text_color,
                 );
+                let text_pos = match anchor {
+                    Align2::LEFT_CENTER => Pos2::new(x, y - galley.size().y / 2.0),
+                    Align2::RIGHT_CENTER => {
+                        Pos2::new(x - galley.size().x, y - galley.size().y / 2.0)
+                    }
+                    _ => Pos2::new(x - galley.size().x / 2.0, y - galley.size().y / 2.0),
+                };
+                let bg_rect = Rect::from_min_size(
+                    text_pos - egui::vec2(3.0, 1.0),
+                    galley.size() + egui::vec2(6.0, 2.0),
+                );
+                let bg_color = match mode {
+                    ThemeMode::Dark => egui::Color32::from_rgba_unmultiplied(30, 30, 35, 190),
+                    ThemeMode::Light => egui::Color32::from_rgba_unmultiplied(250, 250, 252, 210),
+                };
+                painter.rect_filled(bg_rect, CornerRadius::same(2), bg_color);
+                painter.galley(text_pos, galley, text_color);
             }
 
             RenderCommand::DrawLine {
