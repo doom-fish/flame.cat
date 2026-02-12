@@ -12,6 +12,8 @@ pub enum AppCommand {
     ResetZoom,
     SetViewport(f64, f64),
     SetLaneVisibility(usize, bool),
+    SetLaneHeight(usize, f32),
+    ReorderLanes(usize, usize),
     SelectSpan(Option<u64>),
 }
 
@@ -60,6 +62,7 @@ pub struct LaneSnapshot {
     pub kind: String,
     pub height: f32,
     pub visible: bool,
+    pub span_count: usize,
 }
 
 #[derive(Default, serde::Serialize)]
@@ -241,6 +244,20 @@ pub fn set_viewport(start: f64, end: f64) {
 #[wasm_bindgen(js_name = "setLaneVisibility")]
 pub fn set_lane_visibility(index: usize, visible: bool) {
     push_command(AppCommand::SetLaneVisibility(index, visible));
+    request_repaint();
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = "setLaneHeight")]
+pub fn set_lane_height(index: usize, height: f32) {
+    push_command(AppCommand::SetLaneHeight(index, height));
+    request_repaint();
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = "reorderLanes")]
+pub fn reorder_lanes(from_index: usize, to_index: usize) {
+    push_command(AppCommand::ReorderLanes(from_index, to_index));
     request_repaint();
 }
 

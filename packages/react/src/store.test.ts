@@ -7,7 +7,10 @@ function mockWasm(): WasmExports {
   let stateCallback: (() => void) | null = null;
   const state = {
     profile: null,
-    lanes: [{ name: "Main", kind: "thread", height: 200, visible: true }],
+    lanes: [
+      { name: "Main", kind: "thread", height: 200, visible: true, span_count: 42 },
+      { name: "Worker", kind: "thread", height: 100, visible: true, span_count: 10 },
+    ],
     viewport: { start: 0, end: 1, scroll_y: 0 },
     selected: null,
     search: "",
@@ -32,6 +35,17 @@ function mockWasm(): WasmExports {
     }),
     setLaneVisibility: vi.fn((i: number, v: boolean) => {
       if (state.lanes[i]) state.lanes[i].visible = v;
+      stateCallback?.();
+    }),
+    setLaneHeight: vi.fn((i: number, h: number) => {
+      if (state.lanes[i]) state.lanes[i].height = h;
+      stateCallback?.();
+    }),
+    reorderLanes: vi.fn((from: number, to: number) => {
+      if (from < state.lanes.length && to < state.lanes.length) {
+        const [lane] = state.lanes.splice(from, 1);
+        state.lanes.splice(to, 0, lane);
+      }
       stateCallback?.();
     }),
     selectSpan: vi.fn((fid: number | undefined) => {
@@ -77,8 +91,9 @@ describe("FlameCatStore", () => {
   it("reads initial snapshot on attach", () => {
     const wasm = mockWasm();
     store.attach(wasm);
-    expect(store.getSnapshot().lanes).toHaveLength(1);
+    expect(store.getSnapshot().lanes).toHaveLength(2);
     expect(store.getSnapshot().lanes[0].name).toBe("Main");
+    expect(store.getSnapshot().lanes[0].span_count).toBe(42);
   });
 
   it("notifies subscribers on state change", () => {
@@ -149,5 +164,32 @@ describe("FlameCatStore", () => {
     store.exec((w) => w.selectSpan(42));
     store.exec((w) => w.selectSpan(undefined));
     expect(store.getSnapshot().selected).toBeNull();
+  });
+
+  it("handles setLaneHeight", () => {
+    const wasm = mockWasm();
+    store.attach(wasm);
+    store.exec((w) => w.setLaneHeight(0, 300));
+    expect(wasm.setLaneHeight).toHaveBeenCalledWith(0, 300);
+    expect(store.getSnapshot().lanes[0].height).toBe(300);
+  });
+
+  it("handles reorderLanes", () => {
+    const wasm = mockWasm();
+    store.attach(wasm);
+    expect(store.getSnapshot().lanes[0].name).toBe("Main");
+    expect(store.getSnapshot().lanes[1].name).toBe("Worker");
+
+    store.exec((w) => w.reorderLanes(0, 1));
+    expect(wasm.reorderLanes).toHaveBeenCalledWith(0, 1);
+    expect(store.getSnapshot().lanes[0].name).toBe("Worker");
+    expect(store.getSnapshot().lanes[1].name).toBe("Main");
+  });
+
+  it("exposes span_count per lane", () => {
+    const wasm = mockWasm();
+    store.attach(wasm);
+    expect(store.getSnapshot().lanes[0].span_count).toBe(42);
+    expect(store.getSnapshot().lanes[1].span_count).toBe(10);
   });
 });

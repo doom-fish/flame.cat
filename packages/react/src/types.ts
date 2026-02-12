@@ -23,6 +23,7 @@ export interface LaneInfo {
   kind: string;
   height: number;
   visible: boolean;
+  span_count: number;
 }
 
 export interface ViewportInfo {
@@ -48,6 +49,8 @@ export interface WasmExports {
   resetZoom(): void;
   setViewport(start: number, end: number): void;
   setLaneVisibility(index: number, visible: boolean): void;
+  setLaneHeight(index: number, height: number): void;
+  reorderLanes(fromIndex: number, toIndex: number): void;
   selectSpan(frameId: number | undefined): void;
   onStateChange(callback: () => void): void;
   getState(): string;

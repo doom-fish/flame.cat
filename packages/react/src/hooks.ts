@@ -48,10 +48,17 @@ export function useProfile(): ProfileInfo | null {
 
 export interface LanesState {
   lanes: LaneInfo[];
+  /** Toggle a lane's visibility. */
   toggleVisibility(index: number): void;
+  /** Set a lane's visibility explicitly. */
+  setVisibility(index: number, visible: boolean): void;
+  /** Set a lane's height in pixels (clamped 16–600). */
+  setHeight(index: number, height: number): void;
+  /** Move a lane from one position to another. */
+  reorder(fromIndex: number, toIndex: number): void;
 }
 
-/** Lane metadata with visibility control. */
+/** Lane metadata with visibility, height, and ordering control. */
 export function useLanes(): LanesState {
   const store = useFlameCatStore();
 
@@ -71,7 +78,28 @@ export function useLanes(): LanesState {
     [store],
   );
 
-  return { lanes, toggleVisibility };
+  const setVisibility = useCallback(
+    (index: number, visible: boolean) => {
+      store.exec((w) => w.setLaneVisibility(index, visible));
+    },
+    [store],
+  );
+
+  const setHeight = useCallback(
+    (index: number, height: number) => {
+      store.exec((w) => w.setLaneHeight(index, height));
+    },
+    [store],
+  );
+
+  const reorder = useCallback(
+    (fromIndex: number, toIndex: number) => {
+      store.exec((w) => w.reorderLanes(fromIndex, toIndex));
+    },
+    [store],
+  );
+
+  return { lanes, toggleVisibility, setVisibility, setHeight, reorder };
 }
 
 // ── useViewport ────────────────────────────────────────────────────────

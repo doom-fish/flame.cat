@@ -65,6 +65,8 @@ export function FlameCatProvider({
           resetZoom: mod.resetZoom,
           setViewport: mod.setViewport,
           setLaneVisibility: mod.setLaneVisibility,
+          setLaneHeight: mod.setLaneHeight,
+          reorderLanes: mod.reorderLanes,
           selectSpan: mod.selectSpan,
           onStateChange: mod.onStateChange,
           getState: mod.getState,

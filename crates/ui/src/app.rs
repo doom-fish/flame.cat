@@ -94,6 +94,7 @@ struct LaneState {
     name: String,
     height: f32,
     visible: bool,
+    span_count: usize,
 }
 
 impl FlameApp {
@@ -269,16 +270,19 @@ impl FlameApp {
                 name: format!("{} ({span_count} spans)", thread.name),
                 height: content_height,
                 visible: true,
+                span_count: *span_count,
             });
         }
 
         // Specialty tracks (between dense and sparse threads)
         if !profile.async_spans.is_empty() {
+            let count = profile.async_spans.len();
             self.lanes.push(LaneState {
                 kind: LaneKind::AsyncSpans,
-                name: format!("Async ({} spans)", profile.async_spans.len()),
+                name: format!("Async ({count} spans)"),
                 height: 60.0,
                 visible: true,
+                span_count: count,
             });
         }
 
@@ -288,15 +292,18 @@ impl FlameApp {
                 name: format!("📊 {}", counter.name),
                 height: 80.0,
                 visible: true,
+                span_count: counter.samples.len(),
             });
         }
 
         if !profile.markers.is_empty() {
+            let count = profile.markers.len();
             self.lanes.push(LaneState {
                 kind: LaneKind::Markers,
-                name: format!("Markers ({})", profile.markers.len()),
+                name: format!("Markers ({count})"),
                 height: 30.0,
                 visible: true,
+                span_count: count,
             });
         }
 
@@ -306,24 +313,29 @@ impl FlameApp {
                 name: "CPU Samples".to_string(),
                 height: 80.0,
                 visible: true,
+                span_count: profile.cpu_samples.as_ref().map_or(0, |s| s.timestamps.len()),
             });
         }
 
         if !profile.frames.is_empty() {
+            let count = profile.frames.len();
             self.lanes.push(LaneState {
                 kind: LaneKind::FrameTrack,
-                name: format!("Frames ({})", profile.frames.len()),
+                name: format!("Frames ({count})"),
                 height: 40.0,
                 visible: true,
+                span_count: count,
             });
         }
 
         if !profile.object_events.is_empty() {
+            let count = profile.object_events.len();
             self.lanes.push(LaneState {
                 kind: LaneKind::ObjectTrack,
-                name: format!("Objects ({})", profile.object_events.len()),
+                name: format!("Objects ({count})"),
                 height: 60.0,
                 visible: true,
+                span_count: count,
             });
         }
 
@@ -339,6 +351,7 @@ impl FlameApp {
                 name: format!("{} ({span_count} spans)", thread.name),
                 height: content_height,
                 visible: *span_count >= 3,
+                span_count: *span_count,
             });
         }
     }
@@ -1660,6 +1673,26 @@ impl eframe::App for FlameApp {
                         self.invalidate_commands();
                     }
                 }
+                crate::AppCommand::SetLaneHeight(index, height) => {
+                    if let Some(lane) = self.lanes.get_mut(index) {
+                        lane.height = height.max(16.0).min(600.0);
+                        self.invalidate_commands();
+                    }
+                }
+                crate::AppCommand::ReorderLanes(from, to) => {
+                    let len = self.lanes.len();
+                    if from < len && to < len && from != to {
+                        let lane = self.lanes.remove(from);
+                        self.lanes.insert(to, lane);
+                        // Also reorder cached commands
+                        if self.lane_commands.len() == len {
+                            let cmds = self.lane_commands.remove(from);
+                            self.lane_commands.insert(to, cmds);
+                        } else {
+                            self.invalidate_commands();
+                        }
+                    }
+                }
                 crate::AppCommand::SelectSpan(frame_id) => {
                     if let Some(fid) = frame_id {
                         // Find the span name from render commands
@@ -1760,6 +1793,7 @@ impl FlameApp {
                 },
                 height: l.height,
                 visible: l.visible,
+                span_count: l.span_count,
             })
             .collect();
         let viewport = crate::ViewportSnapshot {
