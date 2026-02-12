@@ -73,6 +73,7 @@ function mockWasm(): WasmExports {
     nextSearchResult: vi.fn(),
     prevSearchResult: vi.fn(),
     exportProfile: vi.fn(() => '{"meta":{}}'),
+    exportSVG: vi.fn(() => '<svg></svg>'),
     selectSpan: vi.fn((fid: number | undefined) => {
       state.selected = fid != null
         ? { name: "test", frame_id: fid, lane_index: 0, start_us: 0, end_us: 100 }

@@ -474,6 +474,13 @@ impl FlameApp {
                             false,
                         )
                     }
+                    crate::ViewType::Icicle => {
+                        flame_cat_core::views::left_heavy::render_icicle(
+                            &entry.profile,
+                            &viewport,
+                            Some(*tid),
+                        )
+                    }
                 },
                 LaneKind::Counter(idx) => {
                     if let Some(counter) = entry.profile.counters.get(*idx) {
@@ -524,6 +531,9 @@ impl FlameApp {
             };
             self.lane_commands.push(cmds);
         }
+
+        // Cache lane commands for SVG export
+        crate::set_lane_commands(self.lane_commands.clone());
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -946,6 +956,7 @@ impl FlameApp {
                     let views = [
                         (crate::ViewType::TimeOrder, "⏱ Time"),
                         (crate::ViewType::LeftHeavy, "◀ Left Heavy"),
+                        (crate::ViewType::Icicle, "▼ Icicle"),
                         (crate::ViewType::Sandwich, "🥪 Sandwich"),
                         (crate::ViewType::Ranked, "📊 Ranked"),
                     ];

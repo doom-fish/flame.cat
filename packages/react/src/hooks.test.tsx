@@ -105,6 +105,7 @@ function mockWasm(): WasmExports {
     nextSearchResult: vi.fn(),
     prevSearchResult: vi.fn(),
     exportProfile: vi.fn(() => '{"meta":{}}'),
+    exportSVG: vi.fn(() => '<svg></svg>'),
     onStateChange: vi.fn((cb: () => void) => {
       stateCallback = cb;
     }),
@@ -334,6 +335,15 @@ describe("hooks integration", () => {
     const json = result.current.exportJSON();
     expect(json).toBe('{"meta":{}}');
     expect(wasm.exportProfile).toHaveBeenCalled();
+  });
+
+  it("useExport returns SVG", () => {
+    const { result } = renderHook(() => useExport(), {
+      wrapper: createWrapper(store),
+    });
+    const svg = result.current.exportSVG(800, 400);
+    expect(svg).toBe("<svg></svg>");
+    expect(wasm.exportSVG).toHaveBeenCalledWith(800, 400);
   });
 
   // ── useHotkeys ─────────────────────────────────────────────────────

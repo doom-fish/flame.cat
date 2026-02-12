@@ -12,6 +12,7 @@ pub enum ViewType {
     LeftHeavy,
     Sandwich,
     Ranked,
+    Icicle,
 }
 
 impl Default for ViewType {
@@ -133,6 +134,16 @@ static PROFILE_JSON: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(No
 pub fn set_profile_json(json: Option<String>) {
     if let Ok(mut p) = PROFILE_JSON.lock() {
         *p = json;
+    }
+}
+
+/// Cached lane render commands for SVG export (set by app each render pass).
+static LANE_COMMANDS: std::sync::Mutex<Vec<Vec<flame_cat_protocol::RenderCommand>>> =
+    std::sync::Mutex::new(Vec::new());
+
+pub fn set_lane_commands(cmds: Vec<Vec<flame_cat_protocol::RenderCommand>>) {
+    if let Ok(mut lc) = LANE_COMMANDS.lock() {
+        *lc = cmds;
     }
 }
 
@@ -313,9 +324,10 @@ pub fn set_view_type(view_type: &str) -> Result<(), JsValue> {
         "left_heavy" => ViewType::LeftHeavy,
         "sandwich" => ViewType::Sandwich,
         "ranked" => ViewType::Ranked,
+        "icicle" => ViewType::Icicle,
         _ => {
             return Err(JsValue::from_str(
-                "view_type must be 'time_order', 'left_heavy', 'sandwich', or 'ranked'",
+                "view_type must be 'time_order', 'left_heavy', 'sandwich', 'ranked', or 'icicle'",
             ))
         }
     };
@@ -400,6 +412,25 @@ pub fn on_state_change(callback: js_sys::Function) {
 pub fn export_profile() -> Option<String> {
     if let Ok(p) = PROFILE_JSON.lock() {
         p.clone()
+    } else {
+        None
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = "exportSVG")]
+pub fn export_svg(width: f64, height: f64) -> Option<String> {
+    let dark = if let Ok(s) = STATE.lock() {
+        s.theme == "dark"
+    } else {
+        true
+    };
+    if let Ok(lc) = LANE_COMMANDS.lock() {
+        let all_cmds: Vec<_> = lc.iter().flatten().cloned().collect();
+        if all_cmds.is_empty() {
+            return None;
+        }
+        Some(flame_cat_core::svg::render_svg(&all_cmds, width, height, dark))
     } else {
         None
     }

@@ -13,7 +13,7 @@ export interface StateSnapshot {
 }
 
 /** Visualization mode. */
-export type ViewType = "time_order" | "left_heavy" | "sandwich" | "ranked";
+export type ViewType = "time_order" | "left_heavy" | "sandwich" | "ranked" | "icicle";
 
 export interface ProfileInfo {
   name: string | null;
@@ -71,6 +71,7 @@ export interface WasmExports {
   nextSearchResult(): void;
   prevSearchResult(): void;
   exportProfile(): string | undefined;
+  exportSVG(width: number, height: number): string | undefined;
   onStateChange(callback: () => void): void;
   getState(): string;
 }

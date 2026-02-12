@@ -47,6 +47,7 @@ export function App() {
 const VIEW_TYPES: { value: ViewType; label: string; icon: string }[] = [
   { value: "time_order", label: "Time", icon: "⏱" },
   { value: "left_heavy", label: "Left Heavy", icon: "◀" },
+  { value: "icicle", label: "Icicle", icon: "▼" },
   { value: "sandwich", label: "Sandwich", icon: "🥪" },
   { value: "ranked", label: "Ranked", icon: "📊" },
 ];
@@ -58,7 +59,7 @@ function Toolbar() {
   const { viewType, setViewType } = useViewType();
   const { canGoBack, canGoForward, back, forward } = useNavigation();
   const { resetZoom } = useViewport();
-  const { exportJSON } = useExport();
+  const { exportJSON, exportSVG } = useExport();
   const searchRef = useRef<HTMLInputElement>(null);
 
   useHotkeys({}, searchRef);
@@ -68,16 +69,16 @@ function Toolbar() {
     if (file) loadProfile(await file.arrayBuffer());
   };
 
-  const handleExport = () => {
+  const handleExportJSON = () => {
     const json = exportJSON();
     if (!json) return;
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "profile.json";
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(json, "profile.json", "application/json");
+  };
+
+  const handleExportSVG = () => {
+    const svg = exportSVG();
+    if (!svg) return;
+    downloadBlob(svg, "flamegraph.svg", "image/svg+xml");
   };
 
   return (
@@ -142,7 +143,8 @@ function Toolbar() {
         }}
       />
 
-      <button onClick={handleExport} title="Export profile" style={navBtn(mode)}>💾</button>
+      <button onClick={handleExportJSON} title="Export JSON" style={navBtn(mode)}>💾</button>
+      <button onClick={handleExportSVG} title="Export SVG" style={navBtn(mode)}>🖼</button>
       <button onClick={toggle} title="Toggle theme (t)" style={navBtn(mode)}>
         {mode === "dark" ? "☀️" : "🌙"}
       </button>
@@ -325,4 +327,14 @@ function formatDuration(us: number): string {
   if (us < 1000) return `${us.toFixed(1)}µs`;
   if (us < 1_000_000) return `${(us / 1000).toFixed(2)}ms`;
   return `${(us / 1_000_000).toFixed(2)}s`;
+}
+
+function downloadBlob(content: string, filename: string, mimeType: string) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }

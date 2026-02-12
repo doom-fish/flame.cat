@@ -82,7 +82,7 @@ export interface ViewTypeState {
   setViewType(viewType: ViewType): void;
 }
 
-const VALID_VIEW_TYPES: ViewType[] = ["time_order", "left_heavy", "sandwich", "ranked"];
+const VALID_VIEW_TYPES: ViewType[] = ["time_order", "left_heavy", "sandwich", "ranked", "icicle"];
 
 /** View switching: time-order, left-heavy, sandwich, ranked. */
 export function useViewType(): ViewTypeState {
@@ -421,9 +421,11 @@ export function useNavigation(): NavigationState {
 export interface ExportState {
   /** Export the loaded profile as a JSON string (VisualProfile format). */
   exportJSON(): string | null;
+  /** Export the current view as an SVG string. */
+  exportSVG(width?: number, height?: number): string | null;
 }
 
-/** Profile export. */
+/** Profile export (JSON and SVG). */
 export function useExport(): ExportState {
   const store = useFlameCatStore();
 
@@ -435,7 +437,18 @@ export function useExport(): ExportState {
     return result;
   }, [store]);
 
-  return { exportJSON };
+  const exportSVG = useCallback(
+    (width = 1200, height = 600): string | null => {
+      let result: string | null = null;
+      store.exec((w) => {
+        result = w.exportSVG(width, height) ?? null;
+      });
+      return result;
+    },
+    [store],
+  );
+
+  return { exportJSON, exportSVG };
 }
 
 // ── useHotkeys ─────────────────────────────────────────────────────────

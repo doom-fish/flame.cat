@@ -72,6 +72,7 @@ export function FlameCatProvider({
           nextSearchResult: mod.nextSearchResult,
           prevSearchResult: mod.prevSearchResult,
           exportProfile: mod.exportProfile,
+          exportSVG: mod.exportSVG,
           onStateChange: mod.onStateChange,
           getState: mod.getState,
         };

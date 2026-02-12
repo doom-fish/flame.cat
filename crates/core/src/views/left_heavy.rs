@@ -20,6 +20,25 @@ pub fn render_left_heavy(
     viewport: &Viewport,
     thread_id: Option<u32>,
 ) -> Vec<RenderCommand> {
+    render_left_heavy_inner(profile, viewport, thread_id, false)
+}
+
+/// Render an inverted (icicle) view: roots at the top, callees growing downward,
+/// stacks merged and sorted heaviest-first.
+pub fn render_icicle(
+    profile: &VisualProfile,
+    viewport: &Viewport,
+    thread_id: Option<u32>,
+) -> Vec<RenderCommand> {
+    render_left_heavy_inner(profile, viewport, thread_id, true)
+}
+
+fn render_left_heavy_inner(
+    profile: &VisualProfile,
+    viewport: &Viewport,
+    thread_id: Option<u32>,
+    inverted: bool,
+) -> Vec<RenderCommand> {
     let spans: Vec<&Span> = if let Some(tid) = thread_id {
         profile
             .threads
@@ -48,13 +67,22 @@ pub fn render_left_heavy(
 
     let x_scale = viewport.width / total_time;
 
+    let max_depth = if inverted {
+        tree_depth(&roots, 0)
+    } else {
+        0
+    };
+
+    let group_id = if inverted { "icicle" } else { "left-heavy" };
+    let group_label = if inverted { "Icicle" } else { "Left Heavy" };
+
     let mut commands = Vec::with_capacity(profile.span_count());
     commands.push(RenderCommand::BeginGroup {
-        id: "left-heavy".into(),
-        label: Some("Left Heavy".into()),
+        id: group_id.into(),
+        label: Some(group_label.into()),
     });
 
-    layout_nodes(&roots, 0, 0.0, x_scale, viewport, &mut commands);
+    layout_nodes(&roots, 0, 0.0, x_scale, viewport, inverted, max_depth, &mut commands);
 
     commands.push(RenderCommand::EndGroup);
     commands
@@ -117,15 +145,30 @@ fn re_merge(nodes: Vec<MergedNode>) -> Vec<MergedNode> {
     result
 }
 
+/// Compute the maximum depth of the merged tree.
+fn tree_depth(nodes: &[MergedNode], depth: u32) -> u32 {
+    let mut max = depth;
+    for node in nodes {
+        max = max.max(tree_depth(&node.children, depth + 1));
+    }
+    max
+}
+
 fn layout_nodes(
     nodes: &[MergedNode],
     depth: u32,
     mut x_offset: f64,
     x_scale: f64,
     viewport: &Viewport,
+    inverted: bool,
+    max_depth: u32,
     commands: &mut Vec<RenderCommand>,
 ) {
-    let y = f64::from(depth) * FRAME_HEIGHT;
+    let y = if inverted {
+        f64::from(max_depth - depth) * FRAME_HEIGHT
+    } else {
+        f64::from(depth) * FRAME_HEIGHT
+    };
 
     for node in nodes {
         let w = node.total_time * x_scale;
@@ -153,6 +196,8 @@ fn layout_nodes(
             x_offset,
             x_scale,
             viewport,
+            inverted,
+            max_depth,
             commands,
         );
         x_offset += w;
