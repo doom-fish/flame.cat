@@ -7,11 +7,37 @@ High-performance flame graph visualization tool. Renders with egui (WebGL2/nativ
 ## Features
 
 - **10 profile formats**: Chrome DevTools, Firefox Gecko, React DevTools, Speedscope, V8 CPU Profile, pprof, PIX, Tracy, eBPF/perf, Collapsed Stacks
+- **5 visualization modes**: Time Order, Left Heavy, Icicle (inverted), Sandwich, Ranked
+- **Color-by-package**: Consistent hue per module/package for instant readability (toggle to depth-based)
 - **Multi-lane visualization**: Thread flame charts, counter tracks, marker tracks, async spans, CPU samples, frame timing, object lifecycles
-- **Interactive minimap**: Density heatmap with draggable viewport
-- **Keyboard navigation**: WASD pan, +/- zoom, Ctrl+scroll zoom at cursor, double-click zoom to span
-- **Search**: Filter spans by name with real-time highlighting
+- **Interactive minimap**: Density heatmap with draggable viewport handles
+- **Drag-to-zoom**: Alt+drag to select a time range
+- **Zoom history**: Back/forward navigation through zoom levels
+- **Ancestor breadcrumbs**: Detail panel shows full parent chain
+- **Search**: Filter spans by name with real-time dimming
+- **Span navigation**: Parent/child/sibling traversal with keyboard
+- **Export**: Save profiles as JSON or render as SVG
+- **Keyboard-driven**: WASD pan, +/- zoom, Ctrl+scroll, double-click zoom, context menus
 - **Cross-platform**: Runs in any browser (WASM + WebGL2) — native desktop coming soon
+
+## React Component Library
+
+The `@flame-cat/react` package provides 15 composable hooks for building custom flame graph UIs:
+
+```sh
+npm install @flame-cat/react
+```
+
+```tsx
+<FlameCatProvider wasmUrl="/wasm/flame-cat-ui.js">
+  <FlameCatViewer />
+  <MyCustomToolbar />   {/* useSearch(), useTheme(), useViewType() */}
+  <MyCustomSidebar />   {/* useLanes(), useColorMode() */}
+  <MyCustomDetail />    {/* useSelectedSpan(), useHoveredSpan() */}
+</FlameCatProvider>
+```
+
+See [`packages/react/README.md`](packages/react/README.md) for full API documentation and [`packages/example/`](packages/example/) for a complete demo app.
 
 ## Quick Start
 
@@ -45,10 +71,14 @@ cargo clippy -p flame-cat-core -p flame-cat-protocol -- -D warnings
 
 ```
 crates/
-├── core/       # Profile parsers, view renderers → Vec<RenderCommand>
-├── protocol/   # RenderCommand, ThemeToken, geometric types (shared IR)
+├── core/       # Profile parsers, view transforms, SVG export
+├── protocol/   # RenderCommand, ThemeToken, VisualProfile (shared IR)
 ├── ui/         # egui app (eframe for WASM + native)
 └── tui/        # Terminal UI renderer (ratatui)
+
+packages/
+├── react/      # @flame-cat/react — 15 composable hooks + provider
+└── example/    # Full demo app using all hooks
 ```
 
 **Data flow**: `Profile bytes → Parser → VisualProfile → View Transform → Vec<RenderCommand> → egui Painter → Screen`
@@ -83,6 +113,7 @@ The render command protocol is the central abstraction. Core never draws — it 
 | `0` | Reset zoom |
 | `Ctrl+Scroll` | Zoom at cursor |
 | `Shift+Scroll` | Pan horizontally |
+| `Alt+Drag` | Drag to zoom selection |
 | `Double-click` | Zoom to span |
 | `Click` | Select span |
 | `Right-click` | Context menu |

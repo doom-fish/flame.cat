@@ -6,6 +6,7 @@ import {
   useStatus,
   useProfile,
   useViewType,
+  useColorMode,
   useLanes,
   useViewport,
   useSearch,
@@ -56,6 +57,7 @@ function Toolbar() {
   const { loadProfile, ready } = useFlameGraph();
   const { query, setQuery } = useSearch();
   const { mode, toggle } = useTheme();
+  const { colorMode, toggle: toggleColor } = useColorMode();
   const { viewType, setViewType } = useViewType();
   const { canGoBack, canGoForward, back, forward } = useNavigation();
   const { resetZoom } = useViewport();
@@ -145,6 +147,9 @@ function Toolbar() {
 
       <button onClick={handleExportJSON} title="Export JSON" style={navBtn(mode)}>💾</button>
       <button onClick={handleExportSVG} title="Export SVG" style={navBtn(mode)}>🖼</button>
+      <button onClick={toggleColor} title="Toggle color mode" style={navBtn(mode)}>
+        {colorMode === "by_name" ? "🎨" : "🔢"}
+      </button>
       <button onClick={toggle} title="Toggle theme (t)" style={navBtn(mode)}>
         {mode === "dark" ? "☀️" : "🌙"}
       </button>
