@@ -4,6 +4,8 @@ High-performance flame graph visualization tool. Renders with egui (WebGL2/nativ
 
 [![CI](https://github.com/doom-fish/flame.cat/actions/workflows/ci.yml/badge.svg)](https://github.com/doom-fish/flame.cat/actions/workflows/ci.yml)
 
+![flame.cat — Time Order view (dark theme)](docs/screenshots/demo-dark.png)
+
 ## Features
 
 - **10 profile formats**: Chrome DevTools, Firefox Gecko, React DevTools, Speedscope, V8 CPU Profile, pprof, PIX, Tracy, eBPF/perf, Collapsed Stacks
@@ -19,6 +21,23 @@ High-performance flame graph visualization tool. Renders with egui (WebGL2/nativ
 - **Export**: Save profiles as JSON or render as SVG
 - **Keyboard-driven**: WASD pan, +/- zoom, Ctrl+scroll, double-click zoom, context menus
 - **Cross-platform**: Runs in any browser (WASM + WebGL2) — native desktop coming soon
+
+## Screenshots
+
+<table>
+<tr>
+<td><strong>Time Order (dark)</strong><br><img src="docs/screenshots/demo-dark.png" width="400"></td>
+<td><strong>Time Order (light)</strong><br><img src="docs/screenshots/demo-light.png" width="400"></td>
+</tr>
+<tr>
+<td><strong>Left Heavy</strong><br><img src="docs/screenshots/left-heavy.png" width="400"></td>
+<td><strong>Icicle (inverted)</strong><br><img src="docs/screenshots/icicle.png" width="400"></td>
+</tr>
+<tr>
+<td><strong>Ranked</strong><br><img src="docs/screenshots/ranked.png" width="400"></td>
+<td><strong>Welcome</strong><br><img src="docs/screenshots/welcome.png" width="400"></td>
+</tr>
+</table>
 
 ## React Component Library
 
