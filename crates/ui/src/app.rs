@@ -95,8 +95,6 @@ enum LaneKind {
     FrameTrack,
     /// Object lifecycle track (GC objects, etc.).
     ObjectTrack,
-    /// Minimap overview.
-    Minimap,
 }
 
 struct LaneState {
@@ -330,7 +328,10 @@ impl FlameApp {
                 name: "CPU Samples".to_string(),
                 height: 80.0,
                 visible: true,
-                span_count: profile.cpu_samples.as_ref().map_or(0, |s| s.timestamps.len()),
+                span_count: profile
+                    .cpu_samples
+                    .as_ref()
+                    .map_or(0, |s| s.timestamps.len()),
             });
         }
 
@@ -466,21 +467,17 @@ impl FlameApp {
                             )
                         }
                     }
-                    crate::ViewType::Ranked => {
-                        flame_cat_core::views::ranked::render_ranked(
-                            &entry.profile,
-                            &viewport,
-                            flame_cat_core::views::ranked::RankedSort::SelfTime,
-                            false,
-                        )
-                    }
-                    crate::ViewType::Icicle => {
-                        flame_cat_core::views::left_heavy::render_icicle(
-                            &entry.profile,
-                            &viewport,
-                            Some(*tid),
-                        )
-                    }
+                    crate::ViewType::Ranked => flame_cat_core::views::ranked::render_ranked(
+                        &entry.profile,
+                        &viewport,
+                        flame_cat_core::views::ranked::RankedSort::SelfTime,
+                        false,
+                    ),
+                    crate::ViewType::Icicle => flame_cat_core::views::left_heavy::render_icicle(
+                        &entry.profile,
+                        &viewport,
+                        Some(*tid),
+                    ),
                 },
                 LaneKind::Counter(idx) => {
                     if let Some(counter) = entry.profile.counters.get(*idx) {
@@ -524,10 +521,6 @@ impl FlameApp {
                     abs_start,
                     abs_end,
                 ),
-                LaneKind::Minimap => {
-                    // Minimap is rendered separately as a fixed strip
-                    Vec::new()
-                }
             };
             self.lane_commands.push(cmds);
         }
@@ -961,10 +954,7 @@ impl FlameApp {
                         (crate::ViewType::Ranked, "📊 Ranked"),
                     ];
                     for (vt, label) in views {
-                        if ui
-                            .selectable_label(self.view_type == vt, label)
-                            .clicked()
-                        {
+                        if ui.selectable_label(self.view_type == vt, label).clicked() {
                             self.view_type = vt;
                             self.invalidate_commands();
                         }
@@ -1756,11 +1746,7 @@ impl FlameApp {
                     ui.set_min_width(180.0);
                     ui.label(egui::RichText::new(&menu.span_name).strong().size(12.0));
                     if !timing_text.is_empty() {
-                        ui.label(
-                            egui::RichText::new(&timing_text)
-                                .weak()
-                                .size(11.0),
-                        );
+                        ui.label(egui::RichText::new(&timing_text).weak().size(11.0));
                     }
                     ui.separator();
                     if ui.button("📋 Copy Name").clicked() {
@@ -1768,10 +1754,8 @@ impl FlameApp {
                         self.context_menu = None;
                     }
                     if ui.button("⏱ Copy Timing").clicked() {
-                        ui.ctx().copy_text(format!(
-                            "{}: {}",
-                            menu.span_name, timing_text
-                        ));
+                        ui.ctx()
+                            .copy_text(format!("{}: {}", menu.span_name, timing_text));
                         self.context_menu = None;
                     }
                     if ui.button("🔍 Zoom to Span").clicked() {
@@ -1812,10 +1796,16 @@ impl FlameApp {
     /// Navigate to the parent of the given span, selecting it.
     fn navigate_to_parent(&mut self, frame_id: u64, lane_index: usize) {
         let Some(session) = &self.session else { return };
-        let Some(entry) = session.profiles().first() else { return };
-        let Some(span) = entry.profile.span(frame_id) else { return };
+        let Some(entry) = session.profiles().first() else {
+            return;
+        };
+        let Some(span) = entry.profile.span(frame_id) else {
+            return;
+        };
         let Some(parent_id) = span.parent else { return };
-        let Some(parent) = entry.profile.span(parent_id) else { return };
+        let Some(parent) = entry.profile.span(parent_id) else {
+            return;
+        };
         self.selected_span = Some(SelectedSpan {
             name: parent.name.to_string(),
             frame_id: parent_id,
@@ -1828,9 +1818,13 @@ impl FlameApp {
 
     /// Navigate to the first child of the selected span.
     fn navigate_to_first_child(&mut self) {
-        let Some(sel) = self.selected_span.clone() else { return };
+        let Some(sel) = self.selected_span.clone() else {
+            return;
+        };
         let Some(session) = &self.session else { return };
-        let Some(entry) = session.profiles().first() else { return };
+        let Some(entry) = session.profiles().first() else {
+            return;
+        };
         let children = entry.profile.children(Some(sel.frame_id));
         if let Some(child) = children.first() {
             self.selected_span = Some(SelectedSpan {
@@ -1846,9 +1840,13 @@ impl FlameApp {
 
     /// Navigate to the next or previous sibling of the selected span.
     fn navigate_to_sibling(&mut self, forward: bool) {
-        let Some(sel) = self.selected_span.clone() else { return };
+        let Some(sel) = self.selected_span.clone() else {
+            return;
+        };
         let Some(session) = &self.session else { return };
-        let Some(entry) = session.profiles().first() else { return };
+        let Some(entry) = session.profiles().first() else {
+            return;
+        };
         let siblings = entry.profile.siblings(sel.frame_id);
         let pos = siblings.iter().position(|s| s.id == sel.frame_id);
         let next = pos.and_then(|p| {
@@ -1877,12 +1875,8 @@ impl FlameApp {
         }
         let go_parent = ui.input(|i| i.key_pressed(egui::Key::OpenBracket));
         let go_child = ui.input(|i| i.key_pressed(egui::Key::CloseBracket));
-        let go_prev = ui.input(|i| {
-            i.key_pressed(egui::Key::OpenBracket) && i.modifiers.shift
-        });
-        let go_next = ui.input(|i| {
-            i.key_pressed(egui::Key::CloseBracket) && i.modifiers.shift
-        });
+        let go_prev = ui.input(|i| i.key_pressed(egui::Key::OpenBracket) && i.modifiers.shift);
+        let go_next = ui.input(|i| i.key_pressed(egui::Key::CloseBracket) && i.modifiers.shift);
 
         if go_prev {
             self.navigate_to_sibling(false);
@@ -1913,7 +1907,9 @@ impl FlameApp {
     /// Advance to the next (forward=true) or previous (forward=false) search result.
     fn advance_search_result(&mut self, forward: bool) {
         let Some(session) = &self.session else { return };
-        let Some(entry) = session.profiles().first() else { return };
+        let Some(entry) = session.profiles().first() else {
+            return;
+        };
 
         let query_lower = self.search_query.to_lowercase();
         let mut matches: Vec<(u64, &str, usize, f64, f64)> = Vec::new();
@@ -1927,13 +1923,7 @@ impl FlameApp {
                     if thread.id == *tid {
                         for span in &thread.spans {
                             if span.name.to_lowercase().contains(&query_lower) {
-                                matches.push((
-                                    span.id,
-                                    &span.name,
-                                    lane_idx,
-                                    span.start,
-                                    span.end,
-                                ));
+                                matches.push((span.id, &span.name, lane_idx, span.start, span.end));
                             }
                         }
                     }
@@ -2182,7 +2172,6 @@ impl FlameApp {
                     LaneKind::CpuSamples => "cpu_samples".to_string(),
                     LaneKind::FrameTrack => "frame_track".to_string(),
                     LaneKind::ObjectTrack => "object_track".to_string(),
-                    LaneKind::Minimap => "minimap".to_string(),
                 },
                 height: l.height,
                 visible: l.visible,
@@ -2194,20 +2183,26 @@ impl FlameApp {
             end: self.view_end,
             scroll_y: self.scroll_y,
         };
-        let selected = self.selected_span.as_ref().map(|s| crate::SelectedSpanSnapshot {
-            name: s.name.clone(),
-            frame_id: s.frame_id,
-            lane_index: s.lane_index,
-            start_us: s.start_us,
-            end_us: s.end_us,
-        });
-        let hovered = self.hovered_span.as_ref().map(|s| crate::SelectedSpanSnapshot {
-            name: s.name.clone(),
-            frame_id: s.frame_id,
-            lane_index: s.lane_index,
-            start_us: s.start_us,
-            end_us: s.end_us,
-        });
+        let selected = self
+            .selected_span
+            .as_ref()
+            .map(|s| crate::SelectedSpanSnapshot {
+                name: s.name.clone(),
+                frame_id: s.frame_id,
+                lane_index: s.lane_index,
+                start_us: s.start_us,
+                end_us: s.end_us,
+            });
+        let hovered = self
+            .hovered_span
+            .as_ref()
+            .map(|s| crate::SelectedSpanSnapshot {
+                name: s.name.clone(),
+                frame_id: s.frame_id,
+                lane_index: s.lane_index,
+                start_us: s.start_us,
+                end_us: s.end_us,
+            });
         let theme = match self.theme_mode {
             ThemeMode::Dark => "dark",
             ThemeMode::Light => "light",

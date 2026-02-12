@@ -184,7 +184,7 @@ static PENDING_DATA: std::sync::OnceLock<std::sync::Arc<std::sync::Mutex<Option<
 #[cfg(target_arch = "wasm32")]
 static EGUI_CTX: std::sync::OnceLock<egui::Context> = std::sync::OnceLock::new();
 
-/// Store JS callback in thread-local (WASM is single-threaded).
+// Store JS callback in thread-local (WASM is single-threaded).
 #[cfg(target_arch = "wasm32")]
 thread_local! {
     static STATE_CALLBACK: std::cell::RefCell<Option<js_sys::Function>> =
@@ -319,18 +319,17 @@ pub fn reorder_lanes(from_index: usize, to_index: usize) {
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(js_name = "setViewType")]
 pub fn set_view_type(view_type: &str) -> Result<(), JsValue> {
-    let vt = match view_type {
-        "time_order" => ViewType::TimeOrder,
-        "left_heavy" => ViewType::LeftHeavy,
-        "sandwich" => ViewType::Sandwich,
-        "ranked" => ViewType::Ranked,
-        "icicle" => ViewType::Icicle,
-        _ => {
-            return Err(JsValue::from_str(
+    let vt =
+        match view_type {
+            "time_order" => ViewType::TimeOrder,
+            "left_heavy" => ViewType::LeftHeavy,
+            "sandwich" => ViewType::Sandwich,
+            "ranked" => ViewType::Ranked,
+            "icicle" => ViewType::Icicle,
+            _ => return Err(JsValue::from_str(
                 "view_type must be 'time_order', 'left_heavy', 'sandwich', 'ranked', or 'icicle'",
-            ))
-        }
-    };
+            )),
+        };
     push_command(AppCommand::SetViewType(vt));
     request_repaint();
     Ok(())
@@ -430,7 +429,9 @@ pub fn export_svg(width: f64, height: f64) -> Option<String> {
         if all_cmds.is_empty() {
             return None;
         }
-        Some(flame_cat_core::svg::render_svg(&all_cmds, width, height, dark))
+        Some(flame_cat_core::svg::render_svg(
+            &all_cmds, width, height, dark,
+        ))
     } else {
         None
     }

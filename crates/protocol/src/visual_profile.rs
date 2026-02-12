@@ -504,7 +504,11 @@ impl VisualProfile {
                     .iter()
                     .filter(|s| s.parent == parent && s.depth == depth)
                     .collect();
-                sibs.sort_by(|a, b| a.start.partial_cmp(&b.start).unwrap_or(std::cmp::Ordering::Equal));
+                sibs.sort_by(|a, b| {
+                    a.start
+                        .partial_cmp(&b.start)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
                 return sibs;
             }
         }

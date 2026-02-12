@@ -67,14 +67,17 @@ fn render_left_heavy_inner(
 
     let x_scale = viewport.width / total_time;
 
-    let max_depth = if inverted {
-        tree_depth(&roots, 0)
-    } else {
-        0
-    };
+    let max_depth = if inverted { tree_depth(&roots, 0) } else { 0 };
 
     let group_id = if inverted { "icicle" } else { "left-heavy" };
     let group_label = if inverted { "Icicle" } else { "Left Heavy" };
+
+    let ctx = LayoutCtx {
+        x_scale,
+        viewport,
+        inverted,
+        max_depth,
+    };
 
     let mut commands = Vec::with_capacity(profile.span_count());
     commands.push(RenderCommand::BeginGroup {
@@ -82,7 +85,7 @@ fn render_left_heavy_inner(
         label: Some(group_label.into()),
     });
 
-    layout_nodes(&roots, 0, 0.0, x_scale, viewport, inverted, max_depth, &mut commands);
+    layout_nodes(&roots, 0, 0.0, &ctx, &mut commands);
 
     commands.push(RenderCommand::EndGroup);
     commands
@@ -154,26 +157,33 @@ fn tree_depth(nodes: &[MergedNode], depth: u32) -> u32 {
     max
 }
 
+struct LayoutCtx<'a> {
+    x_scale: f64,
+    viewport: &'a Viewport,
+    inverted: bool,
+    max_depth: u32,
+}
+
 fn layout_nodes(
     nodes: &[MergedNode],
     depth: u32,
     mut x_offset: f64,
-    x_scale: f64,
-    viewport: &Viewport,
-    inverted: bool,
-    max_depth: u32,
+    ctx: &LayoutCtx<'_>,
     commands: &mut Vec<RenderCommand>,
 ) {
-    let y = if inverted {
-        f64::from(max_depth - depth) * FRAME_HEIGHT
+    let y = if ctx.inverted {
+        f64::from(ctx.max_depth - depth) * FRAME_HEIGHT
     } else {
         f64::from(depth) * FRAME_HEIGHT
     };
 
     for node in nodes {
-        let w = node.total_time * x_scale;
+        let w = node.total_time * ctx.x_scale;
 
-        if w >= 0.5 && y + FRAME_HEIGHT >= viewport.y && y <= viewport.y + viewport.height {
+        if w >= 0.5
+            && y + FRAME_HEIGHT >= ctx.viewport.y
+            && y <= ctx.viewport.y + ctx.viewport.height
+        {
             let color = match depth % 4 {
                 0 => ThemeToken::FlameHot,
                 1 => ThemeToken::FlameWarm,
@@ -190,16 +200,7 @@ fn layout_nodes(
             });
         }
 
-        layout_nodes(
-            &node.children,
-            depth + 1,
-            x_offset,
-            x_scale,
-            viewport,
-            inverted,
-            max_depth,
-            commands,
-        );
+        layout_nodes(&node.children, depth + 1, x_offset, ctx, commands);
         x_offset += w;
     }
 }

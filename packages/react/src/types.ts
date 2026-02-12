@@ -25,7 +25,7 @@ export interface ProfileInfo {
   thread_count: number;
 }
 
-export type LaneKind = "thread" | "counter" | "async" | "markers" | "cpu_samples" | "frame_track" | "object_track" | "minimap";
+export type LaneKind = "thread" | "counter" | "async" | "markers" | "cpu_samples" | "frame_track" | "object_track";
 
 export interface LaneInfo {
   name: string;
