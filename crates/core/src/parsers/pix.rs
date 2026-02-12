@@ -28,9 +28,6 @@ struct PixExport {
 struct PixInfo {
     #[serde(default, rename = "captureTitle")]
     capture_title: Option<String>,
-    #[serde(default)]
-    #[allow(dead_code)]
-    device: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

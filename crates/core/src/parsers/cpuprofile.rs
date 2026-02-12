@@ -19,26 +19,14 @@ struct CpuProfileNode {
     call_frame: CallFrame,
     #[serde(default)]
     children: Vec<u64>,
-    #[serde(default)]
-    #[allow(dead_code)]
-    hit_count: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
 struct CallFrame {
     #[serde(rename = "functionName")]
     function_name: String,
-    #[serde(default, rename = "scriptId")]
-    #[allow(dead_code)]
-    script_id: Option<String>,
     #[serde(default)]
     url: Option<String>,
-    #[serde(default, rename = "lineNumber")]
-    #[allow(dead_code)]
-    line_number: Option<i64>,
-    #[serde(default, rename = "columnNumber")]
-    #[allow(dead_code)]
-    column_number: Option<i64>,
 }
 
 /// V8 CPU profile top-level structure (.cpuprofile files).

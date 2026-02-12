@@ -15,9 +15,6 @@ pub enum SpeedscopeParseError {
 /// Schema: https://www.speedscope.app/file-format-spec.json
 #[derive(Debug, Deserialize)]
 struct SpeedscopeFile {
-    #[serde(rename = "$schema")]
-    #[allow(dead_code)]
-    schema: Option<String>,
     #[serde(default)]
     shared: Option<SharedData>,
     profiles: Vec<SpeedscopeProfile>,
@@ -35,12 +32,6 @@ struct SpeedscopeFrame {
     name: String,
     #[serde(default)]
     file: Option<String>,
-    #[serde(default)]
-    #[allow(dead_code)]
-    line: Option<u64>,
-    #[serde(default)]
-    #[allow(dead_code)]
-    col: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -48,10 +39,6 @@ struct SpeedscopeFrame {
 enum SpeedscopeProfile {
     #[serde(rename = "evented")]
     Evented {
-        #[allow(dead_code)]
-        name: Option<String>,
-        #[allow(dead_code)]
-        unit: String,
         #[serde(rename = "startValue")]
         start_value: f64,
         #[serde(rename = "endValue")]
@@ -60,10 +47,6 @@ enum SpeedscopeProfile {
     },
     #[serde(rename = "sampled")]
     Sampled {
-        #[allow(dead_code)]
-        name: Option<String>,
-        #[allow(dead_code)]
-        unit: String,
         #[serde(rename = "startValue")]
         start_value: f64,
         #[serde(rename = "endValue")]

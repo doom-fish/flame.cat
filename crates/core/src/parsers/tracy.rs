@@ -30,9 +30,6 @@ struct TracyExport {
 struct TracyInfo {
     #[serde(default, rename = "appName")]
     app_name: Option<String>,
-    #[serde(default, rename = "captureTime")]
-    #[allow(dead_code)]
-    capture_time: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -46,9 +43,7 @@ struct TracyThread {
 #[derive(Debug, Deserialize)]
 struct TracyZone {
     name: String,
-    #[serde(rename = "srcloc")]
-    #[allow(dead_code)]
-    src_loc: Option<String>,
+
     start: f64,
     end: f64,
     #[serde(default)]

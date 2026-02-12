@@ -15,9 +15,6 @@ pub enum ReactParseError {
 /// Supports both the legacy commit-based profiler and timeline data.
 #[derive(Debug, Deserialize)]
 struct ReactProfileExport {
-    #[serde(default)]
-    #[allow(dead_code)]
-    version: Option<u32>,
     #[serde(rename = "dataForRoots")]
     data_for_roots: Vec<ReactRoot>,
 }
@@ -28,41 +25,21 @@ struct ReactRoot {
     commit_data: Vec<ReactCommit>,
     #[serde(rename = "displayName")]
     display_name: Option<String>,
-    #[serde(rename = "rootID")]
-    #[allow(dead_code)]
-    root_id: Option<u64>,
     /// Initial component tree snapshot — Map<fiberID, SnapshotNode> as tuples.
     #[serde(default)]
     snapshots: Vec<(u64, SnapshotNode)>,
     /// Tree mutations per commit — used to reconstruct the tree at each commit.
     #[serde(default)]
-    #[allow(dead_code)]
     operations: Vec<Vec<i64>>,
-    /// Baseline render durations — Map<fiberID, duration> as tuples.
-    #[serde(default, rename = "initialTreeBaseDurations")]
-    #[allow(dead_code)]
-    initial_tree_base_durations: Vec<(u64, f64)>,
 }
 
 /// A node in the React component tree snapshot.
 #[derive(Debug, Clone, Deserialize)]
 struct SnapshotNode {
-    #[allow(dead_code)]
-    id: u64,
     #[serde(default)]
     children: Vec<u64>,
     #[serde(rename = "displayName")]
     display_name: Option<String>,
-    #[serde(rename = "hocDisplayNames")]
-    #[serde(default)]
-    #[allow(dead_code)]
-    hoc_display_names: Option<Vec<String>>,
-    #[serde(default)]
-    #[allow(dead_code)]
-    key: Option<serde_json::Value>,
-    #[serde(rename = "type")]
-    #[allow(dead_code)]
-    element_type: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -75,20 +52,11 @@ struct ReactCommit {
     duration: f64,
     #[serde(default, rename = "changeDescriptions")]
     change_descriptions: Option<Vec<(u64, ChangeDescription)>>,
-    #[serde(default, rename = "priorityLevel")]
-    #[allow(dead_code)]
-    priority_level: Option<String>,
-    #[serde(default)]
-    #[allow(dead_code)]
-    updaters: Option<Vec<serde_json::Value>>,
 }
 
 /// What caused a component to re-render.
 #[derive(Debug, Clone, Deserialize)]
 struct ChangeDescription {
-    #[serde(default)]
-    #[allow(dead_code)]
-    context: Option<serde_json::Value>,
     #[serde(default, rename = "didHooksChange")]
     did_hooks_change: bool,
     #[serde(default, rename = "isFirstMount")]
@@ -97,9 +65,6 @@ struct ChangeDescription {
     props: Option<Vec<String>>,
     #[serde(default)]
     state: Option<Vec<String>>,
-    #[serde(default)]
-    #[allow(dead_code)]
-    hooks: Option<Vec<u32>>,
 }
 
 /// Reconstructed component tree at a given commit point.
@@ -174,12 +139,8 @@ impl FiberTree {
                         self.nodes.insert(
                             id,
                             SnapshotNode {
-                                id,
                                 children: vec![],
                                 display_name: None,
-                                hoc_display_names: None,
-                                key: None,
-                                element_type: Some(element_type),
                             },
                         );
                     } else {
@@ -206,12 +167,8 @@ impl FiberTree {
                         }
 
                         let node = SnapshotNode {
-                            id,
                             children: vec![],
                             display_name,
-                            hoc_display_names: None,
-                            key: None,
-                            element_type: Some(element_type),
                         };
                         self.nodes.insert(id, node);
 
@@ -786,22 +743,18 @@ mod tests {
     #[test]
     fn change_description_formatting() {
         let mount = ChangeDescription {
-            context: None,
             did_hooks_change: false,
             is_first_mount: true,
             props: None,
             state: None,
-            hooks: None,
         };
         assert_eq!(format_change_description(&mount), "react.mount");
 
         let props_update = ChangeDescription {
-            context: None,
             did_hooks_change: false,
             is_first_mount: false,
             props: Some(vec!["count".to_string(), "label".to_string()]),
             state: None,
-            hooks: None,
         };
         assert_eq!(
             format_change_description(&props_update),
@@ -809,12 +762,10 @@ mod tests {
         );
 
         let hooks_update = ChangeDescription {
-            context: None,
             did_hooks_change: true,
             is_first_mount: false,
             props: None,
             state: Some(vec!["value".to_string()]),
-            hooks: None,
         };
         assert_eq!(
             format_change_description(&hooks_update),
@@ -1003,12 +954,8 @@ mod tests {
         let mut tree = FiberTree::from_snapshots(&[(
             1,
             SnapshotNode {
-                id: 1,
                 children: vec![],
                 display_name: Some("Root".to_string()),
-                hoc_display_names: None,
-                key: None,
-                element_type: Some(5),
             },
         )]);
 
@@ -1037,23 +984,15 @@ mod tests {
             (
                 1,
                 SnapshotNode {
-                    id: 1,
                     children: vec![2],
                     display_name: Some("Root".to_string()),
-                    hoc_display_names: None,
-                    key: None,
-                    element_type: Some(5),
                 },
             ),
             (
                 2,
                 SnapshotNode {
-                    id: 2,
                     children: vec![],
                     display_name: Some("Child".to_string()),
-                    hoc_display_names: None,
-                    key: None,
-                    element_type: Some(5),
                 },
             ),
         ]);

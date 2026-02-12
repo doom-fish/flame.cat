@@ -39,3 +39,16 @@ jobs:
           if [ "$SIZE" -gt 5242880 ]; then
             echo "::warning::WASM binary exceeds 5MB budget"
           fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: React package — install
+        run: cd packages/react && npm ci
+
+      - name: React package — typecheck
+        run: cd packages/react && npm run lint
+
+      - name: React package — tests
+        run: cd packages/react && npm test

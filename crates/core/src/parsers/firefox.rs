@@ -54,9 +54,6 @@ struct GeckoStackTable {
 #[derive(Debug, Deserialize)]
 struct GeckoFrameTable {
     func: Vec<usize>,
-    #[serde(default)]
-    #[allow(dead_code)]
-    category: Vec<Option<usize>>,
 }
 
 #[derive(Debug, Deserialize)]

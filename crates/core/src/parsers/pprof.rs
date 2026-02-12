@@ -17,9 +17,6 @@ pub enum PprofParseError {
 /// convert first with `go tool pprof -proto` then export to JSON.
 #[derive(Debug, Deserialize)]
 struct PprofJson {
-    #[serde(default, rename = "sampleType")]
-    #[allow(dead_code)]
-    sample_type: Vec<PprofValueType>,
     #[serde(default)]
     samples: Vec<PprofSample>,
     #[serde(default)]
@@ -30,16 +27,6 @@ struct PprofJson {
     string_table: Vec<String>,
     #[serde(default, rename = "durationNanos")]
     duration_nanos: Option<u64>,
-}
-
-#[derive(Debug, Deserialize)]
-struct PprofValueType {
-    #[serde(default, rename = "type")]
-    #[allow(dead_code)]
-    value_type: Option<u64>,
-    #[serde(default)]
-    #[allow(dead_code)]
-    unit: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]

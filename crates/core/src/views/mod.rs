@@ -1,7 +1,6 @@
 pub mod async_track;
 pub mod counter;
 pub mod cpu_samples;
-pub mod flow_arrows;
 pub mod frame_track;
 pub mod left_heavy;
 pub mod markers;
