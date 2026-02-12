@@ -2,6 +2,7 @@
 node_modules/
 web/dist/
 web/node_modules/
+packages/react/dist/
 *.wasm
 pkg/
 
