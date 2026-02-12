@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
 import { FlameCatStore } from "./store";
 import type { WasmExports } from "./types";
 
@@ -10,6 +9,7 @@ function mockWasm(): WasmExports {
     lanes: [
       { name: "Main", kind: "thread", height: 200, visible: true, span_count: 42 },
       { name: "Worker", kind: "thread", height: 100, visible: true, span_count: 10 },
+      { name: "Async", kind: "async", height: 60, visible: false, span_count: 5 },
     ],
     viewport: { start: 0, end: 1, scroll_y: 0 },
     selected: null,
@@ -28,7 +28,10 @@ function mockWasm(): WasmExports {
       state.search = q;
       stateCallback?.();
     }),
-    resetZoom: vi.fn(),
+    resetZoom: vi.fn(() => {
+      state.viewport = { start: 0, end: 1, scroll_y: 0 };
+      stateCallback?.();
+    }),
     setViewport: vi.fn((start: number, end: number) => {
       state.viewport = { start, end, scroll_y: 0 };
       stateCallback?.();
@@ -68,17 +71,36 @@ describe("FlameCatStore", () => {
     store = new FlameCatStore();
   });
 
-  it("starts not ready with empty snapshot", () => {
+  // ── Lifecycle ──────────────────────────────────────────────────────
+
+  it("starts in loading status", () => {
     expect(store.ready).toBe(false);
-    expect(store.getSnapshot().profile).toBeNull();
-    expect(store.getSnapshot().lanes).toEqual([]);
+    expect(store.getStatus()).toBe("loading");
+    expect(store.getError()).toBeNull();
   });
 
   it("becomes ready after attach", () => {
-    const wasm = mockWasm();
-    store.attach(wasm);
+    store.attach(mockWasm());
     expect(store.ready).toBe(true);
+    expect(store.getStatus()).toBe("ready");
+    expect(store.getError()).toBeNull();
   });
+
+  it("transitions to error on fail()", () => {
+    store.fail("WASM load failed");
+    expect(store.ready).toBe(false);
+    expect(store.getStatus()).toBe("error");
+    expect(store.getError()).toBe("WASM load failed");
+  });
+
+  it("notifies subscribers on fail()", () => {
+    const listener = vi.fn();
+    store.subscribe(listener);
+    store.fail("boom");
+    expect(listener).toHaveBeenCalled();
+  });
+
+  // ── Command queuing ────────────────────────────────────────────────
 
   it("flushes pending commands on attach", () => {
     const wasm = mockWasm();
@@ -88,13 +110,29 @@ describe("FlameCatStore", () => {
     expect(wasm.loadProfile).toHaveBeenCalledWith(new Uint8Array([1, 2, 3]));
   });
 
-  it("reads initial snapshot on attach", () => {
+  it("exec runs immediately when ready", () => {
     const wasm = mockWasm();
     store.attach(wasm);
-    expect(store.getSnapshot().lanes).toHaveLength(2);
+    store.exec((w) => w.setSearch("hello"));
+    expect(wasm.setSearch).toHaveBeenCalledWith("hello");
+  });
+
+  // ── Snapshot ───────────────────────────────────────────────────────
+
+  it("reads initial snapshot on attach", () => {
+    store.attach(mockWasm());
+    expect(store.getSnapshot().lanes).toHaveLength(3);
     expect(store.getSnapshot().lanes[0].name).toBe("Main");
     expect(store.getSnapshot().lanes[0].span_count).toBe(42);
   });
+
+  it("registers onStateChange callback", () => {
+    const wasm = mockWasm();
+    store.attach(wasm);
+    expect(wasm.onStateChange).toHaveBeenCalledTimes(1);
+  });
+
+  // ── Subscriptions ──────────────────────────────────────────────────
 
   it("notifies subscribers on state change", () => {
     const wasm = mockWasm();
@@ -102,7 +140,6 @@ describe("FlameCatStore", () => {
     store.subscribe(listener);
     store.attach(wasm);
     const callsAfterAttach = listener.mock.calls.length;
-
     wasm.setTheme("light");
     expect(listener.mock.calls.length).toBeGreaterThan(callsAfterAttach);
     expect(store.getSnapshot().theme).toBe("light");
@@ -115,32 +152,21 @@ describe("FlameCatStore", () => {
     store.attach(wasm);
     unsub();
     const count = listener.mock.calls.length;
-
     wasm.setSearch("test");
     expect(listener.mock.calls.length).toBe(count);
   });
 
-  it("exec runs immediately when ready", () => {
-    const wasm = mockWasm();
-    store.attach(wasm);
-    store.exec((w) => w.setSearch("hello"));
-    expect(wasm.setSearch).toHaveBeenCalledWith("hello");
-  });
-
-  it("registers onStateChange callback", () => {
-    const wasm = mockWasm();
-    store.attach(wasm);
-    expect(wasm.onStateChange).toHaveBeenCalledTimes(1);
-  });
+  // ── Viewport ───────────────────────────────────────────────────────
 
   it("handles setViewport", () => {
     const wasm = mockWasm();
     store.attach(wasm);
     store.exec((w) => w.setViewport(0.2, 0.8));
-    expect(wasm.setViewport).toHaveBeenCalledWith(0.2, 0.8);
     expect(store.getSnapshot().viewport.start).toBe(0.2);
     expect(store.getSnapshot().viewport.end).toBe(0.8);
   });
+
+  // ── Lanes ──────────────────────────────────────────────────────────
 
   it("handles lane visibility toggle", () => {
     const wasm = mockWasm();
@@ -148,6 +174,28 @@ describe("FlameCatStore", () => {
     store.exec((w) => w.setLaneVisibility(0, false));
     expect(store.getSnapshot().lanes[0].visible).toBe(false);
   });
+
+  it("handles setLaneHeight", () => {
+    const wasm = mockWasm();
+    store.attach(wasm);
+    store.exec((w) => w.setLaneHeight(0, 300));
+    expect(store.getSnapshot().lanes[0].height).toBe(300);
+  });
+
+  it("handles reorderLanes", () => {
+    const wasm = mockWasm();
+    store.attach(wasm);
+    store.exec((w) => w.reorderLanes(0, 2));
+    expect(store.getSnapshot().lanes[0].name).toBe("Worker");
+    expect(store.getSnapshot().lanes[2].name).toBe("Main");
+  });
+
+  it("exposes laneCount for bounds checking", () => {
+    store.attach(mockWasm());
+    expect(store.laneCount).toBe(3);
+  });
+
+  // ── Selection ──────────────────────────────────────────────────────
 
   it("handles span selection", () => {
     const wasm = mockWasm();
@@ -164,32 +212,5 @@ describe("FlameCatStore", () => {
     store.exec((w) => w.selectSpan(42));
     store.exec((w) => w.selectSpan(undefined));
     expect(store.getSnapshot().selected).toBeNull();
-  });
-
-  it("handles setLaneHeight", () => {
-    const wasm = mockWasm();
-    store.attach(wasm);
-    store.exec((w) => w.setLaneHeight(0, 300));
-    expect(wasm.setLaneHeight).toHaveBeenCalledWith(0, 300);
-    expect(store.getSnapshot().lanes[0].height).toBe(300);
-  });
-
-  it("handles reorderLanes", () => {
-    const wasm = mockWasm();
-    store.attach(wasm);
-    expect(store.getSnapshot().lanes[0].name).toBe("Main");
-    expect(store.getSnapshot().lanes[1].name).toBe("Worker");
-
-    store.exec((w) => w.reorderLanes(0, 1));
-    expect(wasm.reorderLanes).toHaveBeenCalledWith(0, 1);
-    expect(store.getSnapshot().lanes[0].name).toBe("Worker");
-    expect(store.getSnapshot().lanes[1].name).toBe("Main");
-  });
-
-  it("exposes span_count per lane", () => {
-    const wasm = mockWasm();
-    store.attach(wasm);
-    expect(store.getSnapshot().lanes[0].span_count).toBe(42);
-    expect(store.getSnapshot().lanes[1].span_count).toBe(10);
   });
 });

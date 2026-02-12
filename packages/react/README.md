@@ -1,6 +1,6 @@
 # @flame-cat/react
 
-Composable React hooks for the [flame.cat](https://flame.cat) flame graph viewer (egui/WASM).
+Composable React hooks for the [flame.cat](https://flame.cat) egui/WASM flame graph viewer.
 
 ## Install
 
@@ -13,21 +13,26 @@ npm install @flame-cat/react
 ```tsx
 import {
   FlameCatProvider,
-  FlameCanvas,
+  FlameCatViewer,
   useFlameGraph,
+  useStatus,
   useSearch,
   useTheme,
   useLanes,
   useSelectedSpan,
+  useHotkeys,
 } from "@flame-cat/react";
 
 function App() {
   return (
-    <FlameCatProvider wasmUrl="/wasm/flame-cat-ui.js">
+    <FlameCatProvider
+      wasmUrl="/wasm/flame-cat-ui.js"
+      onError={(err) => console.error("WASM failed:", err)}
+    >
       <Toolbar />
       <div style={{ display: "flex", height: "100vh" }}>
         <LaneSidebar />
-        <FlameCanvas adaptive />
+        <FlameCatViewer />
       </div>
       <DetailPanel />
     </FlameCatProvider>
@@ -36,8 +41,14 @@ function App() {
 
 function Toolbar() {
   const { loadProfile } = useFlameGraph();
+  const { status, error } = useStatus();
   const { query, setQuery } = useSearch();
-  const { mode, setMode } = useTheme();
+  const { toggle } = useTheme();
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useHotkeys({}, searchRef); // keyboard shortcuts
+
+  if (status === "error") return <div>Error: {error}</div>;
 
   return (
     <div>
@@ -49,34 +60,35 @@ function Toolbar() {
         }}
       />
       <input
-        placeholder="Search…"
+        ref={searchRef}
+        placeholder="Search… (press /)"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
-      <button onClick={() => setMode(mode === "dark" ? "light" : "dark")}>
-        {mode === "dark" ? "☀️" : "🌙"}
-      </button>
+      <button onClick={toggle}>Toggle theme</button>
     </div>
   );
 }
 
 function LaneSidebar() {
-  const { lanes, toggleVisibility } = useLanes();
+  const { lanes, toggleVisibility, showAll, hideAll, setHeight, reorder } = useLanes();
   return (
-    <ul>
-      {lanes.map((lane, i) => (
-        <li key={i}>
-          <label>
+    <div>
+      <button onClick={showAll}>Show all</button>
+      <button onClick={hideAll}>Hide all</button>
+      <ul>
+        {lanes.map((lane, i) => (
+          <li key={i}>
             <input
               type="checkbox"
               checked={lane.visible}
               onChange={() => toggleVisibility(i)}
             />
-            {lane.name}
-          </label>
-        </li>
-      ))}
-    </ul>
+            {lane.name} ({lane.span_count} spans)
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -95,24 +107,38 @@ function DetailPanel() {
 
 ## API
 
-### `<FlameCatProvider wasmUrl={string}>`
+### `<FlameCatProvider wasmUrl onError?>`
 
-Context provider that initializes the WASM viewer. Wrap your app in this.
+Context provider. Initializes WASM and creates the reactive store.
 
-### `<FlameCanvas adaptive? className? style? onResize?>`
+| Prop | Type | Description |
+|------|------|-------------|
+| `wasmUrl` | `string` | URL to WASM JS glue file |
+| `onError` | `(error: Error) => void` | Called on initialization failure |
 
-The egui canvas rendering surface. Gets its store from context.
+### `<FlameCatViewer className? style? ariaLabel?>`
+
+The egui rendering surface. Size it with CSS on the container — eframe handles the rest.
 
 ### Hooks
 
 | Hook | Returns | Description |
 |------|---------|-------------|
 | `useFlameGraph()` | `{ loadProfile, ready }` | Load profiles, check readiness |
-| `useProfile()` | `ProfileInfo \| null` | Profile metadata (name, format, duration, span count) |
-| `useLanes()` | `{ lanes, toggleVisibility }` | Lane list with visibility control |
-| `useViewport()` | `{ start, end, scroll_y, setViewport, resetZoom }` | Zoom/pan state |
+| `useStatus()` | `{ status, error }` | Lifecycle: `"loading"` → `"ready"` or `"error"` |
+| `useProfile()` | `ProfileInfo \| null` | Profile metadata |
+| `useLanes()` | `{ lanes, toggleVisibility, setVisibility, setHeight, reorder, showAll, hideAll }` | Full lane control |
+| `useViewport()` | `{ start, end, scroll_y, setViewport, resetZoom }` | Zoom/pan (values clamped 0–1) |
 | `useSearch()` | `{ query, setQuery }` | Search filter |
-| `useTheme()` | `{ mode, setMode }` | Dark/light theme |
+| `useTheme()` | `{ mode, setMode, toggle }` | Dark/light theme |
 | `useSelectedSpan()` | `{ selected, select, clear }` | Span selection |
+| `useHotkeys(map?, searchRef?)` | `void` | Keyboard shortcuts (`0`=reset zoom, `t`=theme, `/`=search, `Esc`=clear) |
+
+### Input Validation
+
+- `setViewport` clamps to `[0, 1]`
+- `setHeight` clamps to `[16, 600]`
+- `reorder`, `setVisibility`, `setHeight` silently no-op on out-of-bounds indices
+- `useHotkeys(false)` disables all shortcuts
 
 All hooks must be used within a `<FlameCatProvider>`.

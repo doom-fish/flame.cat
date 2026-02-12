@@ -1,5 +1,8 @@
 import type { StateSnapshot, WasmExports } from "./types";
 
+/** Status of the WASM viewer lifecycle. */
+export type FlameCatStatus = "loading" | "ready" | "error";
+
 const EMPTY_SNAPSHOT: StateSnapshot = {
   profile: null,
   lanes: [],
@@ -18,10 +21,11 @@ export class FlameCatStore {
   private snapshot: StateSnapshot = EMPTY_SNAPSHOT;
   private listeners = new Set<() => void>();
   private pending: Array<(w: WasmExports) => void> = [];
-  private _ready = false;
+  private _status: FlameCatStatus = "loading";
+  private _error: string | null = null;
 
   get ready(): boolean {
-    return this._ready;
+    return this._status === "ready";
   }
 
   /** Subscribe to state changes (used by useSyncExternalStore). */
@@ -36,13 +40,22 @@ export class FlameCatStore {
   };
 
   getReady = (): boolean => {
-    return this._ready;
+    return this._status === "ready";
+  };
+
+  getStatus = (): FlameCatStatus => {
+    return this._status;
+  };
+
+  getError = (): string | null => {
+    return this._error;
   };
 
   /** Called when WASM module is loaded and ready. */
   attach(wasm: WasmExports): void {
     this.wasm = wasm;
-    this._ready = true;
+    this._status = "ready";
+    this._error = null;
 
     // Register state change callback
     wasm.onStateChange(() => {
@@ -57,6 +70,13 @@ export class FlameCatStore {
     this.refresh();
   }
 
+  /** Mark the store as failed with an error message. */
+  fail(message: string): void {
+    this._status = "error";
+    this._error = message;
+    this.notify();
+  }
+
   /** Queue a command; executes immediately if WASM is ready, otherwise defers. */
   exec(fn: (w: WasmExports) => void): void {
     if (this.wasm) {
@@ -64,6 +84,11 @@ export class FlameCatStore {
     } else {
       this.pending.push(fn);
     }
+  }
+
+  /** Total number of lanes. Used for bounds checking. */
+  get laneCount(): number {
+    return this.snapshot.lanes.length;
   }
 
   private refresh(): void {

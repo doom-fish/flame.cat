@@ -3,7 +3,6 @@ import {
   useContext,
   useEffect,
   useRef,
-  useState,
   type ReactNode,
 } from "react";
 import { FlameCatStore } from "./store";
@@ -22,16 +21,14 @@ export function useFlameCatStore(): FlameCatStore {
 export interface FlameCatProviderProps {
   /** URL to the flame-cat WASM JS glue file (e.g. "/wasm/flame-cat-ui.js"). */
   wasmUrl: string;
-  /** Optional canvas DOM ID. Defaults to an auto-generated unique ID. */
-  canvasId?: string;
+  /** Called when WASM initialization fails. */
+  onError?: (error: Error) => void;
   children: ReactNode;
 }
 
-let providerCounter = 0;
-
 export function FlameCatProvider({
   wasmUrl,
-  canvasId,
+  onError,
   children,
 }: FlameCatProviderProps) {
   const storeRef = useRef<FlameCatStore | null>(null);
@@ -39,8 +36,6 @@ export function FlameCatProvider({
     storeRef.current = new FlameCatStore();
   }
   const store = storeRef.current;
-  const [error, setError] = useState<string | null>(null);
-  const idRef = useRef(canvasId ?? `flame_cat_${++providerCounter}`);
 
   useEffect(() => {
     let cancelled = false;
@@ -50,7 +45,6 @@ export function FlameCatProvider({
         const mod = await import(/* @vite-ignore */ wasmUrl);
         if (cancelled) return;
 
-        // Initialize WASM module
         if (typeof mod.default === "function") {
           const wasmBinaryUrl = wasmUrl.replace(/\.js$/, "_bg.wasm");
           await mod.default(wasmBinaryUrl);
@@ -75,7 +69,9 @@ export function FlameCatProvider({
         store.attach(wasm);
       } catch (e) {
         if (cancelled) return;
-        setError(e instanceof Error ? e.message : String(e));
+        const err = e instanceof Error ? e : new Error(String(e));
+        store.fail(err.message);
+        onError?.(err);
       }
     }
 
@@ -83,22 +79,7 @@ export function FlameCatProvider({
     return () => {
       cancelled = true;
     };
-  }, [wasmUrl, store]);
-
-  if (error) {
-    return (
-      <div
-        style={{
-          color: "#ef4444",
-          fontFamily: "system-ui, sans-serif",
-          fontSize: 14,
-          padding: 16,
-        }}
-      >
-        flame-cat failed to initialize: {error}
-      </div>
-    );
-  }
+  }, [wasmUrl, store, onError]);
 
   return (
     <FlameCatContext.Provider value={store}>
