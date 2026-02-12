@@ -59,6 +59,14 @@ pub struct FlameApp {
     zoom_history: Vec<(f64, f64)>,
     /// Current position in zoom_history (index of last applied entry).
     zoom_history_pos: usize,
+    /// Cache key for ensure_commands (viewport + view_type hash).
+    last_cache_key: Option<(
+        usize,
+        u64,
+        u64,
+        u32,
+        std::mem::Discriminant<crate::ViewType>,
+    )>,
     /// Generation counter — incremented on any state change, used to skip snapshot rebuild.
     state_gen: u64,
     /// Last generation that was emitted as a snapshot.
@@ -190,6 +198,7 @@ impl FlameApp {
             context_menu: None,
             hovered_span: None,
             drag_select_start: None,
+            last_cache_key: None,
             zoom_history: vec![(0.0, 1.0)],
             zoom_history_pos: 0,
             state_gen: 0,
@@ -385,6 +394,7 @@ impl FlameApp {
 
     fn invalidate_commands(&mut self) {
         self.lane_commands.clear();
+        self.last_cache_key = None;
         self.state_gen += 1;
     }
 
@@ -414,9 +424,18 @@ impl FlameApp {
             return;
         };
 
-        if self.lane_commands.len() == self.lanes.len() {
-            return; // Already cached — no work needed
+        // Check if cached commands are still valid
+        let cache_key = (
+            self.lanes.len(),
+            self.view_start.to_bits(),
+            self.view_end.to_bits(),
+            canvas_width.to_bits(),
+            std::mem::discriminant(&self.view_type),
+        );
+        if self.lane_commands.len() == self.lanes.len() && self.last_cache_key == Some(cache_key) {
+            return; // Already cached with same parameters
         }
+        self.last_cache_key = Some(cache_key);
 
         let session_start = session.start_time();
         let session_end = session.end_time();

@@ -68,6 +68,26 @@ pub fn render_commands(
 
     let search_lower = search.to_lowercase();
 
+    // Pre-compute which labels match the search to avoid per-rect to_lowercase()
+    let search_active = !search_lower.is_empty();
+    let matching_labels: std::collections::HashSet<usize> = if search_active {
+        commands
+            .iter()
+            .enumerate()
+            .filter_map(|(i, cmd)| {
+                if let RenderCommand::DrawRect { label: Some(l), .. } = cmd {
+                    if l.as_ref().to_lowercase().contains(&search_lower) {
+                        return Some(i);
+                    }
+                }
+                None
+            })
+            .collect()
+    } else {
+        std::collections::HashSet::new()
+    };
+
+    let mut cmd_index: usize = 0;
     for cmd in commands {
         let tf = transform_stack
             .last()
@@ -100,10 +120,7 @@ pub fn render_commands(
                 let fill = theme::resolve(*color, mode);
 
                 // Dim non-matching spans when search is active
-                let search_match = search_lower.is_empty()
-                    || label
-                        .as_ref()
-                        .is_some_and(|l| l.as_ref().to_lowercase().contains(&search_lower));
+                let search_match = !search_active || matching_labels.contains(&cmd_index);
                 let fill = if search_match {
                     fill
                 } else {
@@ -232,6 +249,7 @@ pub fn render_commands(
                 // Groups are semantic — no visual effect in egui
             }
         }
+        cmd_index += 1;
     }
 
     RenderResult { hit_regions }
