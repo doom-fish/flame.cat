@@ -163,7 +163,8 @@ pub fn render_commands(
                     let label_str: &str = label_text;
                     if !label_str.is_empty() && w > 6.0 && h > 8.0 {
                         let font_size = (h - 4.0).min(11.0).max(6.0);
-                        let text_color = theme::resolve(ThemeToken::TextPrimary, mode);
+                        // WCAG: choose text color based on fill luminance
+                        let text_color = contrast_text_color(fill);
                         let text_rect = egui_rect.shrink2(egui::vec2(2.0, 0.0));
                         let galley = painter.layout_no_wrap(
                             label_str.to_string(),
@@ -342,4 +343,25 @@ fn hsl_to_color32(h: f32, s: f32, l: f32) -> egui::Color32 {
         ((g + m) * 255.0) as u8,
         ((b + m) * 255.0) as u8,
     )
+}
+
+/// Choose white or dark text based on background luminance (WCAG).
+fn contrast_text_color(bg: egui::Color32) -> egui::Color32 {
+    // Relative luminance per WCAG 2.1
+    fn srgb(c: u8) -> f32 {
+        let v = c as f32 / 255.0;
+        if v <= 0.04045 {
+            v / 12.92
+        } else {
+            ((v + 0.055) / 1.055).powf(2.4)
+        }
+    }
+    let lum = 0.2126 * srgb(bg.r()) + 0.7152 * srgb(bg.g()) + 0.0722 * srgb(bg.b());
+    // Use dark text on bright backgrounds, white text on dark backgrounds
+    // Threshold chosen so white text on mid-luminance still passes AA-large (3:1)
+    if lum > 0.18 {
+        egui::Color32::from_rgb(20, 20, 24)
+    } else {
+        egui::Color32::from_rgb(240, 240, 245)
+    }
 }
