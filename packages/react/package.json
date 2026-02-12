@@ -1,7 +1,7 @@
 {
   "name": "@flame-cat/react",
   "version": "0.1.0",
-  "description": "High-performance flame graph React component with Canvas2D rendering",
+  "description": "Flame graph React component powered by flame.cat egui/WASM renderer",
   "type": "module",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
@@ -45,7 +45,8 @@
     "flame-graph",
     "profiler",
     "react",
-    "canvas",
+    "egui",
+    "wasm",
     "performance"
   ],
   "license": "MIT",

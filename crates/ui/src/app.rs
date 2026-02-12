@@ -175,6 +175,11 @@ impl FlameApp {
         }
     }
 
+    /// Get a clone of the pending_data handle for JS interop.
+    pub fn pending_data_handle(&self) -> std::sync::Arc<std::sync::Mutex<Option<Vec<u8>>>> {
+        self.pending_data.clone()
+    }
+
     fn load_profile(&mut self, data: &[u8]) {
         #[cfg(target_arch = "wasm32")]
         web_sys::console::log_1(&format!("flame.cat: parsing {} bytes...", data.len()).into());

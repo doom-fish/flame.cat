@@ -1,48 +1,28 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render } from "@testing-library/react";
 import { FlameGraph } from "./FlameGraph";
-import type { FlameSpan } from "./types";
-
-const spans: FlameSpan[] = [
-  { id: 1, name: "main", start: 0, end: 100, depth: 0 },
-  { id: 2, name: "foo", start: 10, end: 60, depth: 1 },
-  { id: 3, name: "bar", start: 60, end: 90, depth: 1 },
-];
 
 describe("FlameGraph component", () => {
-  it("renders a canvas element", () => {
+  it("renders a canvas element with unique ID", () => {
     const { container } = render(
-      <FlameGraph spans={spans} width={800} height={200} />,
+      <FlameGraph wasmUrl="/wasm/flame-cat-ui.js" />,
     );
     const canvas = container.querySelector("canvas");
     expect(canvas).toBeTruthy();
+    expect(canvas?.id).toMatch(/^flame_cat_canvas_\d+$/);
   });
 
-  it("renders with empty spans", () => {
+  it("shows loading indicator initially", () => {
     const { container } = render(
-      <FlameGraph spans={[]} width={400} height={100} />,
+      <FlameGraph wasmUrl="/wasm/flame-cat-ui.js" />,
     );
-    const canvas = container.querySelector("canvas");
-    expect(canvas).toBeTruthy();
-  });
-
-  it("auto-assigns IDs when missing", () => {
-    const noIdSpans: FlameSpan[] = [
-      { name: "a", start: 0, end: 50, depth: 0 },
-      { name: "b", start: 50, end: 100, depth: 0 },
-    ];
-    const { container } = render(
-      <FlameGraph spans={noIdSpans} width={400} height={100} />,
-    );
-    expect(container.querySelector("canvas")).toBeTruthy();
+    expect(container.textContent).toContain("Loading flame graph");
   });
 
   it("applies className and style", () => {
     const { container } = render(
       <FlameGraph
-        spans={spans}
-        width={400}
-        height={100}
+        wasmUrl="/wasm/flame-cat-ui.js"
         className="my-flame"
         style={{ border: "1px solid red" }}
       />,
@@ -50,5 +30,26 @@ describe("FlameGraph component", () => {
     const div = container.firstElementChild as HTMLElement;
     expect(div.className).toBe("my-flame");
     expect(div.style.border).toBe("1px solid red");
+  });
+
+  it("applies width and height", () => {
+    const { container } = render(
+      <FlameGraph wasmUrl="/wasm/flame-cat-ui.js" width={800} height={400} />,
+    );
+    const div = container.firstElementChild as HTMLElement;
+    expect(div.style.width).toBe("800px");
+    expect(div.style.height).toBe("400px");
+  });
+
+  it("renders multiple instances with unique canvas IDs", () => {
+    const { container } = render(
+      <div>
+        <FlameGraph wasmUrl="/wasm/a.js" />
+        <FlameGraph wasmUrl="/wasm/b.js" />
+      </div>,
+    );
+    const canvases = container.querySelectorAll("canvas");
+    expect(canvases.length).toBe(2);
+    expect(canvases[0].id).not.toBe(canvases[1].id);
   });
 });

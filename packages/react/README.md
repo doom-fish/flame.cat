@@ -1,6 +1,6 @@
 # @flame-cat/react
 
-High-performance flame graph React component with Canvas2D rendering. Zero dependencies beyond React.
+Flame graph React component powered by the flame.cat egui/WASM renderer. Embeds the full flame.cat viewer — with all interaction, themes, lanes, minimap, search, and profile format support — as a React component.
 
 ## Install
 
@@ -8,24 +8,42 @@ High-performance flame graph React component with Canvas2D rendering. Zero depen
 npm install @flame-cat/react
 ```
 
+## Prerequisites
+
+Build the WASM bundle from the flame.cat repo:
+
+```bash
+cd crates/ui
+trunk build --release
+# Output in crates/ui/dist/
+```
+
+Copy the built files to your app's public directory (or serve them from a CDN).
+
 ## Quick Start
 
 ```tsx
 import { FlameGraph } from "@flame-cat/react";
 
-const spans = [
-  { id: 1, name: "main", start: 0, end: 100, depth: 0 },
-  { id: 2, name: "handleRequest", start: 5, end: 85, depth: 1 },
-  { id: 3, name: "queryDB", start: 10, end: 60, depth: 2 },
-  { id: 4, name: "serialize", start: 65, end: 80, depth: 2 },
-];
-
 function App() {
+  const [profileData, setProfileData] = useState<ArrayBuffer | null>(null);
+
   return (
-    <FlameGraph
-      spans={spans}
-      onSpanClick={(e) => console.log("Clicked:", e.span.name)}
-    />
+    <div>
+      <input
+        type="file"
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          if (file) setProfileData(await file.arrayBuffer());
+        }}
+      />
+      <FlameGraph
+        wasmUrl="/wasm/flame-cat-ui.js"
+        data={profileData}
+        width="100%"
+        height={600}
+      />
+    </div>
   );
 }
 ```
@@ -34,105 +52,52 @@ function App() {
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `spans` | `FlameSpan[]` | required | Array of spans to render |
-| `width` | `number` | auto | Width in CSS pixels. Auto-fills container if omitted |
-| `height` | `number` | auto | Height in CSS pixels. Auto-computed from depth if omitted |
-| `theme` | `FlameTheme` | `DARK_THEME` | Color theme |
-| `search` | `string` | — | Highlight matching spans, dim non-matching |
-| `viewport` | `FlameViewport` | — | Controlled viewport (zoom/pan state) |
-| `onSpanClick` | `(e: SpanEvent) => void` | — | Called when a span is clicked |
-| `onSpanHover` | `(e: SpanEvent \| null) => void` | — | Called on hover |
-| `onViewportChange` | `(vp: FlameViewport) => void` | — | Called on zoom/pan |
-| `minZoom` | `number` | `0.0001` | Minimum zoom fraction |
+| `wasmUrl` | `string` | **required** | URL to the flame-cat WASM JS glue file |
+| `data` | `ArrayBuffer \| Uint8Array \| null` | — | Profile data to load. Supports Chrome DevTools, React DevTools, Firefox, perf, etc. |
+| `width` | `number \| string` | `"100%"` | Container width |
+| `height` | `number \| string` | `600` | Container height |
 | `className` | `string` | — | CSS class for wrapper div |
 | `style` | `CSSProperties` | — | Inline styles for wrapper div |
+| `onReady` | `() => void` | — | Called when WASM finishes loading |
+| `onError` | `(error: Error) => void` | — | Called if WASM loading fails |
 
-## Interaction
-
-- **Drag** to pan horizontally
-- **Ctrl+Scroll** to zoom (centered on cursor)
-- **Shift+Scroll** to pan horizontally
-- **Scroll** to scroll vertically
-- **Double-click** a span to zoom to it
-- **Double-click** empty space to reset zoom
-
-## FlameSpan
-
-```ts
-interface FlameSpan {
-  id?: number;       // Auto-assigned if omitted
-  name: string;      // Display label
-  start: number;     // Start time/value
-  end: number;       // End time/value
-  depth: number;     // Stack depth (0 = root)
-  category?: string; // Optional grouping
-  selfTime?: number; // Exclusive time
-}
-```
-
-## Themes
-
-Two built-in themes: `DARK_THEME` (default) and `LIGHT_THEME`.
+## Ref API
 
 ```tsx
-import { FlameGraph, LIGHT_THEME } from "@flame-cat/react";
+const flameRef = useRef<FlameGraphRef>(null);
 
-<FlameGraph spans={spans} theme={LIGHT_THEME} />
+<FlameGraph ref={flameRef} wasmUrl="/wasm/flame-cat-ui.js" />
+
+// Programmatic profile loading
+flameRef.current?.loadProfile(arrayBuffer);
+
+// Access the WASM module directly
+flameRef.current?.getWasmModule()?.loadProfile(uint8Array);
 ```
 
-Custom themes:
+## Supported Profile Formats
 
-```tsx
-const customTheme: FlameTheme = {
-  background: "#0d1117",
-  flamePalette: ["#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff"],
-  textColor: "#c9d1d9",
-  borderColor: "#30363d",
-  hoverColor: "rgba(255,255,255,0.1)",
-  selectedColor: "#58a6ff",
-  dimmedAlpha: 0.2,
-  tooltipBackground: "#161b22",
-  tooltipText: "#c9d1d9",
-  tooltipBorder: "#30363d",
-};
-```
+The embedded WASM viewer parses all formats supported by flame.cat:
 
-## Controlled Viewport
+- Chrome DevTools Performance traces
+- React DevTools Profiler exports
+- Firefox Profiler
+- Node.js CPU profiles (`.cpuprofile`)
+- Linux `perf` script output
+- Apple Instruments traces
+- V8 CPU profile samples
 
-```tsx
-const [viewport, setViewport] = useState({ start: 0, end: 1, scrollY: 0 });
+## Features
 
-<FlameGraph
-  spans={spans}
-  viewport={viewport}
-  onViewportChange={setViewport}
-/>
+All features from the flame.cat viewer are available:
 
-// Programmatic zoom:
-<button onClick={() => setViewport({ start: 0.2, end: 0.5, scrollY: 0 })}>
-  Zoom to 20%-50%
-</button>
-```
-
-## Headless Rendering
-
-Use `renderFlameGraph()` directly for custom Canvas integration:
-
-```tsx
-import { renderFlameGraph, DARK_THEME } from "@flame-cat/react";
-
-const ctx = canvas.getContext("2d")!;
-const result = renderFlameGraph(ctx, {
-  spans,
-  theme: DARK_THEME,
-  viewport: { start: 0, end: 1, scrollY: 0 },
-  width: 800,
-  height: 400,
-  dpr: window.devicePixelRatio,
-});
-
-// result.hitRegions can be used for custom interaction
-```
+- **Zoom/Pan**: Scroll wheel, drag, keyboard (WASD, +/-, 0 to reset)
+- **Search**: Type to filter spans, matching highlighted
+- **Minimap**: Density heatmap with draggable viewport
+- **Lanes**: Thread lanes, CPU samples, counters, markers, async spans
+- **Context menu**: Right-click for Copy Name, Zoom to Span, Find Similar
+- **Themes**: Dark/light with automatic `prefers-color-scheme` detection
+- **Flow arrows**: Visualize cross-thread relationships
 
 ## License
 
