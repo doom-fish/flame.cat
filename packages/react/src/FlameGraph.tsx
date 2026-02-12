@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, type CSSProperties } from "react";
+import { useRef, useEffect, useState, useCallback, type CSSProperties } from "react";
 import type { FlameGraphController } from "./useFlameGraph";
 
 export interface FlameGraphProps {
@@ -13,12 +13,19 @@ export interface FlameGraphProps {
   width?: number | string;
   /** Height. Defaults to "100%". */
   height?: number | string;
+  /**
+   * When true, the canvas automatically resizes to fill its container
+   * using ResizeObserver. Overrides width/height props.
+   */
+  adaptive?: boolean;
   /** CSS class for the container. */
   className?: string;
   /** Inline styles for the container. */
   style?: CSSProperties;
   /** Called if WASM initialization fails. */
   onError?: (error: Error) => void;
+  /** Called when the container resizes (only with adaptive={true}). */
+  onResize?: (width: number, height: number) => void;
 }
 
 let instanceCounter = 0;
@@ -28,12 +35,44 @@ export function FlameGraph({
   wasmUrl,
   width = "100%",
   height = "100%",
+  adaptive = false,
   className,
   style,
   onError,
+  onResize,
 }: FlameGraphProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const canvasIdRef = useRef(`flame_cat_${++instanceCounter}`);
   const [error, setError] = useState<string | null>(null);
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+
+  // ResizeObserver for adaptive sizing
+  useEffect(() => {
+    if (!adaptive) return;
+    const el = containerRef.current;
+    if (!el) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width: w, height: h } = entry.contentRect;
+        setSize({ w, h });
+        onResize?.(w, h);
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [adaptive, onResize]);
+
+  // Resize canvas to match observed size
+  const resizeCanvas = useCallback(() => {
+    if (!adaptive || !size) return;
+    const canvas = document.getElementById(canvasIdRef.current) as HTMLCanvasElement | null;
+    if (!canvas) return;
+    canvas.style.width = `${size.w}px`;
+    canvas.style.height = `${size.h}px`;
+  }, [adaptive, size]);
+
+  useEffect(resizeCanvas, [resizeCanvas]);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,20 +114,22 @@ export function FlameGraph({
     };
   }, [wasmUrl, controller]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const containerStyle: CSSProperties = adaptive
+    ? { position: "relative", width: "100%", height: "100%", overflow: "hidden", ...style }
+    : { position: "relative", width, height, overflow: "hidden", ...style };
+
   if (error) {
     return (
       <div
         className={className}
         style={{
-          width,
-          height,
+          ...containerStyle,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           color: "#ef4444",
           fontFamily: "system-ui, sans-serif",
           fontSize: 14,
-          ...style,
         }}
       >
         Failed to load flame graph: {error}
@@ -97,10 +138,7 @@ export function FlameGraph({
   }
 
   return (
-    <div
-      className={className}
-      style={{ position: "relative", width, height, overflow: "hidden", ...style }}
-    >
+    <div ref={containerRef} className={className} style={containerStyle}>
       <canvas id={canvasIdRef.current} style={{ width: "100%", height: "100%" }} />
       {!controller.ready && (
         <div

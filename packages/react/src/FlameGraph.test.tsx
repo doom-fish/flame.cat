@@ -1,7 +1,18 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeAll } from "vitest";
 import { render, renderHook, act } from "@testing-library/react";
 import { FlameGraph } from "./FlameGraph";
 import { useFlameGraph } from "./useFlameGraph";
+
+// jsdom doesn't provide ResizeObserver
+beforeAll(() => {
+  if (typeof globalThis.ResizeObserver === "undefined") {
+    globalThis.ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+  }
+});
 
 describe("useFlameGraph", () => {
   it("returns a stable controller", () => {
@@ -113,5 +124,15 @@ describe("FlameGraph component", () => {
     const ids = Array.from(container.querySelectorAll("canvas")).map((c) => c.id);
     expect(ids.length).toBe(2);
     expect(ids[0]).not.toBe(ids[1]);
+  });
+
+  it("uses 100% sizing in adaptive mode", () => {
+    const { result } = renderHook(() => useFlameGraph());
+    const { container } = render(
+      <FlameGraph controller={result.current} wasmUrl="/fc.js" adaptive />,
+    );
+    const div = container.firstElementChild as HTMLElement;
+    expect(div.style.width).toBe("100%");
+    expect(div.style.height).toBe("100%");
   });
 });
