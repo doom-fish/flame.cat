@@ -53,6 +53,8 @@ pub struct FlameApp {
     context_menu: Option<ContextMenu>,
     /// Currently hovered span (for JS event hooks).
     hovered_span: Option<SelectedSpan>,
+    /// Drag-to-zoom selection: start X position in viewport fraction.
+    drag_select_start: Option<f64>,
     /// Zoom history for back/forward navigation.
     zoom_history: Vec<(f64, f64)>,
     /// Current position in zoom_history (index of last applied entry).
@@ -183,6 +185,7 @@ impl FlameApp {
             anim_target: None,
             context_menu: None,
             hovered_span: None,
+            drag_select_start: None,
             zoom_history: vec![(0.0, 1.0)],
             zoom_history_pos: 0,
         }
@@ -1137,52 +1140,79 @@ impl FlameApp {
                     ui.separator();
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         let mut changed = false;
-                        for lane in &mut self.lanes {
+                        let mut swap: Option<(usize, usize)> = None;
+                        let lane_count = self.lanes.len();
+                        for idx in 0..lane_count {
+                            let lane = &self.lanes[idx];
                             let mut vis = lane.visible;
+                            let icon = match &lane.kind {
+                                LaneKind::Thread(_) => "🧵",
+                                LaneKind::Counter(_) => "📊",
+                                LaneKind::AsyncSpans => "⚡",
+                                LaneKind::Markers => "📍",
+                                LaneKind::CpuSamples => "🔬",
+                                LaneKind::FrameTrack => "🎞",
+                                LaneKind::ObjectTrack => "📦",
+                            };
+                            let full_name = lane.name.clone();
+                            let span_count = lane.span_count;
                             ui.horizontal(|ui| {
                                 if ui.checkbox(&mut vis, "").changed() {
-                                    lane.visible = vis;
                                     changed = true;
                                 }
-                                // Lane type icon
-                                let icon = match &lane.kind {
-                                    LaneKind::Thread(_) => "🧵",
-                                    LaneKind::Counter(_) => "📊",
-                                    LaneKind::AsyncSpans => "⚡",
-                                    LaneKind::Markers => "📍",
-                                    LaneKind::CpuSamples => "🔬",
-                                    LaneKind::FrameTrack => "🎞",
-                                    LaneKind::ObjectTrack => "📦",
-                                };
                                 ui.label(egui::RichText::new(icon).size(10.0));
-                                // Truncate long names (safe for multi-byte chars)
-                                let full_name = &lane.name;
-                                let display_name = if full_name.chars().count() > 20 {
+                                let display_name = if full_name.chars().count() > 18 {
                                     let end = full_name
                                         .char_indices()
-                                        .nth(19)
+                                        .nth(17)
                                         .map_or(full_name.len(), |(i, _)| i);
                                     format!("{}…", &full_name[..end])
                                 } else {
                                     full_name.clone()
                                 };
                                 let label = ui.label(egui::RichText::new(&display_name).size(11.0));
-                                // Full name tooltip on truncated labels
                                 if display_name.len() < full_name.len() {
-                                    label.on_hover_text(full_name);
+                                    label.on_hover_text(&full_name);
                                 }
-                                // Span count (right-aligned, muted)
                                 ui.with_layout(
                                     egui::Layout::right_to_left(egui::Align::Center),
                                     |ui| {
+                                        if idx + 1 < lane_count {
+                                            if ui
+                                                .small_button("▾")
+                                                .on_hover_text("Move down")
+                                                .clicked()
+                                            {
+                                                swap = Some((idx, idx + 1));
+                                            }
+                                        }
+                                        if idx > 0 {
+                                            if ui
+                                                .small_button("▴")
+                                                .on_hover_text("Move up")
+                                                .clicked()
+                                            {
+                                                swap = Some((idx, idx - 1));
+                                            }
+                                        }
                                         ui.label(
-                                            egui::RichText::new(format!("{}", lane.span_count))
+                                            egui::RichText::new(format!("{span_count}"))
                                                 .size(9.0)
                                                 .weak(),
                                         );
                                     },
                                 );
                             });
+                            if vis != lane.visible {
+                                self.lanes[idx].visible = vis;
+                            }
+                        }
+                        if let Some((from, to)) = swap {
+                            self.lanes.swap(from, to);
+                            if self.lane_commands.len() == lane_count {
+                                self.lane_commands.swap(from, to);
+                            }
+                            changed = true;
                         }
                         if changed {
                             self.invalidate_commands();
@@ -1233,16 +1263,87 @@ impl FlameApp {
             let response = ui.allocate_rect(available, egui::Sense::click_and_drag());
 
             if response.dragged() {
-                self.anim_target = None;
-                let delta = response.drag_delta();
-                let view_span = self.view_end - self.view_start;
-                let dx_frac = -(delta.x as f64) / (available.width() as f64) * view_span;
-                let new_start = (self.view_start + dx_frac).clamp(0.0, 1.0 - view_span);
-                self.view_start = new_start;
-                self.view_end = new_start + view_span;
-                self.scroll_y -= delta.y;
-                self.scroll_y = self.scroll_y.max(0.0);
-                self.invalidate_commands();
+                let alt_held = ui.input(|i| i.modifiers.alt);
+                if alt_held {
+                    // Alt+drag = drag-to-zoom selection
+                    if self.drag_select_start.is_none() {
+                        if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+                            let frac = ((pos.x - available.left()) as f64
+                                / available.width() as f64)
+                                .clamp(0.0, 1.0);
+                            self.drag_select_start = Some(frac);
+                        }
+                    }
+                } else {
+                    // Normal drag = pan
+                    self.anim_target = None;
+                    self.drag_select_start = None;
+                    let delta = response.drag_delta();
+                    let view_span = self.view_end - self.view_start;
+                    let dx_frac =
+                        -(delta.x as f64) / (available.width() as f64) * view_span;
+                    let new_start =
+                        (self.view_start + dx_frac).clamp(0.0, 1.0 - view_span);
+                    self.view_start = new_start;
+                    self.view_end = new_start + view_span;
+                    self.scroll_y -= delta.y;
+                    self.scroll_y = self.scroll_y.max(0.0);
+                    self.invalidate_commands();
+                }
+            }
+
+            // Draw drag-to-zoom selection overlay
+            if let Some(start_frac) = self.drag_select_start {
+                if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+                    let end_frac = ((pos.x - available.left()) as f64
+                        / available.width() as f64)
+                        .clamp(0.0, 1.0);
+                    let left = start_frac.min(end_frac);
+                    let right = start_frac.max(end_frac);
+                    let sel_rect = egui::Rect::from_min_max(
+                        egui::pos2(
+                            available.left() + left as f32 * available.width(),
+                            available.top(),
+                        ),
+                        egui::pos2(
+                            available.left() + right as f32 * available.width(),
+                            available.bottom(),
+                        ),
+                    );
+                    let painter = ui.painter();
+                    painter.rect_filled(
+                        sel_rect,
+                        egui::CornerRadius::ZERO,
+                        egui::Color32::from_rgba_unmultiplied(100, 140, 255, 30),
+                    );
+                    painter.rect_stroke(
+                        sel_rect,
+                        egui::CornerRadius::ZERO,
+                        egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(100, 140, 255, 120)),
+                        egui::StrokeKind::Outside,
+                    );
+                }
+
+                // On drag release, zoom to selection
+                if !response.dragged() {
+                    if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+                        let end_frac = ((pos.x - available.left()) as f64
+                            / available.width() as f64)
+                            .clamp(0.0, 1.0);
+                        let left = start_frac.min(end_frac);
+                        let right = start_frac.max(end_frac);
+                        // Only zoom if selection is meaningful (>1% of view)
+                        if right - left > 0.01 {
+                            let view_span = self.view_end - self.view_start;
+                            let new_start = self.view_start + left * view_span;
+                            let new_end = self.view_start + right * view_span;
+                            self.push_zoom();
+                            self.anim_target = Some((new_start, new_end));
+                            ctx.request_repaint();
+                        }
+                    }
+                    self.drag_select_start = None;
+                }
             }
 
             // Scroll wheel: Ctrl/Cmd+scroll = zoom, plain scroll = vertical pan
@@ -1781,6 +1882,7 @@ impl FlameApp {
                             ("Ctrl+Scroll", "Zoom at cursor"),
                             ("Shift+Scroll", "Pan horizontally"),
                             ("Drag", "Pan + vertical scroll"),
+                            ("Alt+Drag", "Drag to zoom selection"),
                             ("Double-click", "Zoom to span"),
                             ("Click", "Select span"),
                             ("Right-click", "Context menu"),
