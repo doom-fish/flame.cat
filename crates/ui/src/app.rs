@@ -1228,14 +1228,47 @@ impl FlameApp {
 
         // Central panel: flame chart
         egui::CentralPanel::default().show(ctx, |ui| {
+            if self.loading {
+                ui.centered_and_justified(|ui| {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(ui.available_height() / 3.0);
+                        ui.spinner();
+                        ui.label("Parsing profile…");
+                    });
+                });
+                return;
+            }
+
             if self.session.is_none() {
                 // Welcome screen
                 ui.centered_and_justified(|ui| {
                     ui.vertical_centered(|ui| {
-                        ui.add_space(ui.available_height() / 3.0);
-                        ui.heading("🔥");
-                        ui.heading("Drop a profile here or click Open");
-                        ui.label("Supports: Chrome DevTools, Firefox, Speedscope, pprof, Tracy, React DevTools, and more");
+                        ui.add_space(ui.available_height() / 4.0);
+                        ui.heading(egui::RichText::new("🔥").size(48.0));
+                        ui.add_space(8.0);
+                        ui.heading("flame.cat");
+                        ui.add_space(4.0);
+                        ui.label("High-performance flame graph visualization");
+                        ui.add_space(16.0);
+                        ui.label(
+                            egui::RichText::new("Drop a profile here or click Open")
+                                .size(14.0)
+                                .strong(),
+                        );
+                        ui.add_space(8.0);
+                        ui.label(
+                            egui::RichText::new(
+                                "Supports: Chrome DevTools · Firefox · Speedscope · pprof · Tracy · React DevTools · eBPF · V8 CPU",
+                            )
+                            .size(11.0)
+                            .weak(),
+                        );
+                        ui.add_space(16.0);
+                        ui.label(
+                            egui::RichText::new("Press ? for keyboard shortcuts")
+                                .size(11.0)
+                                .weak(),
+                        );
                     });
                 });
                 return;
@@ -1243,6 +1276,36 @@ impl FlameApp {
 
             // Time axis ruler
             let time_axis_height = 24.0_f32;
+
+            // Sandwich hint when no span is selected
+            if self.view_type == crate::ViewType::Sandwich && self.selected_span.is_none() {
+                let hint_height = 24.0_f32;
+                let (hint_rect, _) = ui.allocate_exact_size(
+                    egui::vec2(ui.available_width(), hint_height),
+                    egui::Sense::hover(),
+                );
+                let painter = ui.painter();
+                let bg = crate::theme::resolve(
+                    flame_cat_protocol::ThemeToken::SearchHighlight,
+                    self.theme_mode,
+                );
+                painter.rect_filled(
+                    hint_rect,
+                    egui::CornerRadius::ZERO,
+                    bg.gamma_multiply(0.2),
+                );
+                painter.text(
+                    hint_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    "Click a span to see its callers and callees in sandwich view",
+                    egui::FontId::proportional(11.0),
+                    crate::theme::resolve(
+                        flame_cat_protocol::ThemeToken::TextPrimary,
+                        self.theme_mode,
+                    ),
+                );
+            }
+
             let (time_rect, _) = ui.allocate_exact_size(
                 egui::vec2(ui.available_width(), time_axis_height),
                 egui::Sense::hover(),
@@ -1256,6 +1319,7 @@ impl FlameApp {
                 egui::Sense::click_and_drag(),
             );
             self.draw_minimap(ui, minimap_rect, &minimap_resp);
+            minimap_resp.on_hover_text("Span density overview — drag to navigate, handles to resize viewport");
 
             let available = ui.available_rect_before_wrap();
 
