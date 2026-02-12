@@ -151,13 +151,24 @@ pub fn render_commands(
                             FontId::proportional(font_size),
                             text_color,
                         );
-                        // Truncate: only draw if text fits
+                        let text_pos = Pos2::new(
+                            text_rect.left(),
+                            text_rect.center().y - galley.size().y / 2.0,
+                        );
                         if galley.size().x <= text_rect.width() + 2.0 {
-                            let text_pos = Pos2::new(
-                                text_rect.left(),
-                                text_rect.center().y - galley.size().y / 2.0,
-                            );
                             painter.galley(text_pos, galley, text_color);
+                        } else if text_rect.width() > 20.0 {
+                            // Truncate with ellipsis for medium-width spans
+                            let avail = text_rect.width() - 8.0;
+                            let ratio = avail / galley.size().x;
+                            let take = ((label_str.chars().count() as f32 * ratio) as usize).max(1);
+                            let truncated: String = label_str.chars().take(take).collect();
+                            let ellipsis_galley = painter.layout_no_wrap(
+                                format!("{truncated}…"),
+                                FontId::proportional(font_size),
+                                text_color,
+                            );
+                            painter.galley(text_pos, ellipsis_galley, text_color);
                         }
                     }
                 }

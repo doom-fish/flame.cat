@@ -893,10 +893,17 @@ impl FlameApp {
         let Some((target_start, target_end)) = self.anim_target else {
             return false;
         };
-        // Exponential ease-out: approach target by 20% each frame (~60fps → ~150ms to settle)
-        let t = 0.2;
-        let new_start = self.view_start + (target_start - self.view_start) * t;
-        let new_end = self.view_end + (target_end - self.view_end) * t;
+        // Smooth ease-out: faster approach when far, graceful settle when close
+        let t = 0.25;
+        let progress_start =
+            (target_start - self.view_start).abs() / (target_end - target_start).abs().max(1e-12);
+        let progress_end =
+            (target_end - self.view_end).abs() / (target_end - target_start).abs().max(1e-12);
+        let max_progress = progress_start.max(progress_end);
+        // Ease-out cubic: accelerate when far, decelerate near target
+        let ease = if max_progress > 0.5 { t * 1.5 } else { t };
+        let new_start = self.view_start + (target_start - self.view_start) * ease;
+        let new_end = self.view_end + (target_end - self.view_end) * ease;
         // Snap when close enough (sub-pixel precision at any zoom)
         let epsilon = (target_end - target_start) * 1e-4;
         if (new_start - target_start).abs() < epsilon && (new_end - target_end).abs() < epsilon {
@@ -1046,12 +1053,18 @@ impl FlameApp {
         });
     }
 
-    fn render_status_bar(&self, ctx: &egui::Context) {
+    fn render_status_bar(&mut self, ctx: &egui::Context) {
         // Status bar
         egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                if let Some(err) = &self.error {
-                    ui.colored_label(egui::Color32::RED, err);
+                if let Some(err) = self.error.clone() {
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("🚨").size(12.0));
+                        ui.colored_label(egui::Color32::RED, &err);
+                        if ui.small_button("✕").on_hover_text("Dismiss").clicked() {
+                            self.error = None;
+                        }
+                    });
                 } else if let Some(session) = &self.session {
                     let duration_us = session.duration();
                     let view_span = self.view_end - self.view_start;
@@ -1137,6 +1150,56 @@ impl FlameApp {
                                         });
                                         if let Some(cat) = &span.category {
                                             ui.label(format!("Category: {}", cat.name));
+                                        }
+                                        // Ancestor breadcrumbs
+                                        if span.parent.is_some() {
+                                            ui.horizontal(|ui| {
+                                                ui.label(
+                                                    egui::RichText::new("📍 ")
+                                                        .size(11.0)
+                                                        .weak(),
+                                                );
+                                                let mut chain: Vec<(u64, String)> = Vec::new();
+                                                let mut cur = span.parent;
+                                                while let Some(pid) = cur {
+                                                    if let Some(p) = thread.spans.iter().find(|s| s.id == pid) {
+                                                        chain.push((p.id, p.name.to_string()));
+                                                        cur = p.parent;
+                                                    } else {
+                                                        break;
+                                                    }
+                                                    if chain.len() > 10 {
+                                                        break;
+                                                    }
+                                                }
+                                                chain.reverse();
+                                                for (idx, (_fid, name)) in chain.iter().enumerate() {
+                                                    if idx > 0 {
+                                                        ui.label(
+                                                            egui::RichText::new(" › ")
+                                                                .size(10.0)
+                                                                .weak(),
+                                                        );
+                                                    }
+                                                    ui.label(
+                                                        egui::RichText::new(name)
+                                                            .size(10.0)
+                                                            .weak(),
+                                                    );
+                                                }
+                                                if !chain.is_empty() {
+                                                    ui.label(
+                                                        egui::RichText::new(" › ")
+                                                            .size(10.0)
+                                                            .weak(),
+                                                    );
+                                                }
+                                                ui.label(
+                                                    egui::RichText::new(&selected_clone.name)
+                                                        .size(10.0)
+                                                        .strong(),
+                                                );
+                                            });
                                         }
                                     }
                                 }
@@ -1693,6 +1756,22 @@ impl FlameApp {
                                             start_us: hit_start_us,
                                             end_us: hit_end_us,
                                         });
+
+                                        // Hover highlight overlay
+                                        let hover_color = crate::theme::resolve(
+                                            flame_cat_protocol::ThemeToken::HoverHighlight,
+                                            self.theme_mode,
+                                        );
+                                        painter.rect_filled(
+                                            hit.rect,
+                                            egui::CornerRadius::ZERO,
+                                            egui::Color32::from_rgba_unmultiplied(
+                                                hover_color.r(),
+                                                hover_color.g(),
+                                                hover_color.b(),
+                                                40,
+                                            ),
+                                        );
 
                                         egui::Area::new(egui::Id::new("span_tooltip"))
                                             .order(egui::Order::Tooltip)
