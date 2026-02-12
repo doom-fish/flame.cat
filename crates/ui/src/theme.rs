@@ -66,8 +66,8 @@ fn resolve_dark(token: ThemeToken) -> ResolvedColor {
         ToolbarTabActive => ResolvedColor::rgb(66, 135, 245),
         ToolbarTabHover => ResolvedColor::rgba(255, 255, 255, 20),
 
-        MinimapBackground => ResolvedColor::rgb(25, 25, 32),
-        MinimapViewport => ResolvedColor::rgba(100, 160, 255, 25),
+        MinimapBackground => ResolvedColor::rgb(20, 20, 28),
+        MinimapViewport => ResolvedColor::rgba(100, 160, 255, 50),
         MinimapDensity => ResolvedColor::rgb(100, 170, 255),
         MinimapHandle => ResolvedColor::rgb(180, 200, 255),
 
@@ -130,7 +130,7 @@ fn resolve_light(token: ThemeToken) -> ResolvedColor {
         ToolbarTabHover => ResolvedColor::rgba(0, 0, 0, 10),
 
         MinimapBackground => ResolvedColor::rgb(240, 240, 245),
-        MinimapViewport => ResolvedColor::rgba(50, 110, 220, 30),
+        MinimapViewport => ResolvedColor::rgba(50, 110, 220, 50),
         MinimapDensity => ResolvedColor::rgb(50, 110, 220),
         MinimapHandle => ResolvedColor::rgb(40, 80, 180),
 

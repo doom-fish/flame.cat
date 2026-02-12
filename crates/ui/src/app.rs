@@ -325,7 +325,7 @@ impl FlameApp {
         for (i, counter) in profile.counters.iter().enumerate() {
             self.lanes.push(LaneState {
                 kind: LaneKind::Counter(i),
-                name: format!("📊 {}", counter.name),
+                name: counter.name.to_string(),
                 height: 80.0,
                 visible: true,
                 span_count: counter.samples.len(),
@@ -928,10 +928,10 @@ impl FlameApp {
         // Top toolbar
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.heading("🔥 flame.cat");
+                ui.heading("flame.cat");
                 ui.separator();
 
-                if ui.button("📂 Open").clicked() {
+                if ui.button("Open").clicked() {
                     #[cfg(not(target_arch = "wasm32"))]
                     {
                         if let Some(path) = rfd::FileDialog::new()
@@ -964,8 +964,8 @@ impl FlameApp {
                 ui.separator();
 
                 let theme_label = match self.theme_mode {
-                    ThemeMode::Dark => "🌙 Dark",
-                    ThemeMode::Light => "☀ Light",
+                    ThemeMode::Dark => "Dark",
+                    ThemeMode::Light => "Light",
                 };
                 if ui.button(theme_label).clicked() {
                     self.theme_mode = match self.theme_mode {
@@ -983,8 +983,8 @@ impl FlameApp {
 
                 // Color mode toggle
                 let color_label = match self.color_mode {
-                    renderer::ColorMode::ByName => "🎨 By Name",
-                    renderer::ColorMode::Theme => "🎨 By Depth",
+                    renderer::ColorMode::ByName => "By Name",
+                    renderer::ColorMode::Theme => "By Depth",
                 };
                 if ui
                     .button(color_label)
@@ -1002,11 +1002,11 @@ impl FlameApp {
                 // View type tabs
                 if self.session.is_some() {
                     let views = [
-                        (crate::ViewType::TimeOrder, "⏱ Time"),
-                        (crate::ViewType::LeftHeavy, "◀ Left Heavy"),
-                        (crate::ViewType::Icicle, "▼ Icicle"),
-                        (crate::ViewType::Sandwich, "🥪 Sandwich"),
-                        (crate::ViewType::Ranked, "📊 Ranked"),
+                        (crate::ViewType::TimeOrder, "Time"),
+                        (crate::ViewType::LeftHeavy, "Left Heavy"),
+                        (crate::ViewType::Icicle, "Icicle"),
+                        (crate::ViewType::Sandwich, "Sandwich"),
+                        (crate::ViewType::Ranked, "Ranked"),
                     ];
                     for (vt, label) in views {
                         if ui.selectable_label(self.view_type == vt, label).clicked() {
@@ -1021,7 +1021,7 @@ impl FlameApp {
                     let can_back = self.zoom_history_pos > 0;
                     let can_fwd = self.zoom_history_pos + 1 < self.zoom_history.len();
                     if ui
-                        .add_enabled(can_back, egui::Button::new("◁"))
+                        .add_enabled(can_back, egui::Button::new("<"))
                         .on_hover_text("Back (zoom history)")
                         .clicked()
                     {
@@ -1032,7 +1032,7 @@ impl FlameApp {
                         self.invalidate_commands();
                     }
                     if ui
-                        .add_enabled(can_fwd, egui::Button::new("▷"))
+                        .add_enabled(can_fwd, egui::Button::new(">"))
                         .on_hover_text("Forward (zoom history)")
                         .clicked()
                     {
@@ -1050,7 +1050,7 @@ impl FlameApp {
                     ui.separator();
 
                     if ui
-                        .button("❓")
+                        .button("?")
                         .on_hover_text("Keyboard shortcuts (?)")
                         .clicked()
                     {
@@ -1061,7 +1061,7 @@ impl FlameApp {
                     // Search box
                     let search_response = ui.add(
                         egui::TextEdit::singleline(&mut self.search_query)
-                            .hint_text("🔍 Search spans…")
+                            .hint_text("Search spans...")
                             .desired_width(150.0),
                     );
                     if search_response.changed() {
@@ -1078,9 +1078,9 @@ impl FlameApp {
             ui.horizontal(|ui| {
                 if let Some(err) = self.error.clone() {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("🚨").size(12.0));
+                        ui.label(egui::RichText::new("!").strong().size(12.0).color(egui::Color32::RED));
                         ui.colored_label(egui::Color32::RED, &err);
-                        if ui.small_button("✕").on_hover_text("Dismiss").clicked() {
+                        if ui.small_button("x").on_hover_text("Dismiss").clicked() {
                             self.error = None;
                         }
                     });
@@ -1122,9 +1122,9 @@ impl FlameApp {
                 .resizable(true)
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
-                        ui.heading("📋 Detail");
+                        ui.heading("Detail");
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("✕").clicked() {
+                            if ui.button("x").clicked() {
                                 self.selected_span = None;
                             }
                         });
@@ -1174,7 +1174,7 @@ impl FlameApp {
                                         if span.parent.is_some() {
                                             ui.horizontal(|ui| {
                                                 ui.label(
-                                                    egui::RichText::new("📍 ")
+                                                    egui::RichText::new("> ")
                                                         .size(11.0)
                                                         .weak(),
                                                 );
@@ -1252,28 +1252,19 @@ impl FlameApp {
                         for idx in 0..lane_count {
                             let lane = &self.lanes[idx];
                             let mut vis = lane.visible;
-                            let icon = match &lane.kind {
-                                LaneKind::Thread(_) => "🧵",
-                                LaneKind::Counter(_) => "📊",
-                                LaneKind::AsyncSpans => "⚡",
-                                LaneKind::Markers => "📍",
-                                LaneKind::CpuSamples => "🔬",
-                                LaneKind::FrameTrack => "🎞",
-                                LaneKind::ObjectTrack => "📦",
-                            };
                             let full_name = lane.name.clone();
                             ui.horizontal(|ui| {
                                 if ui.checkbox(&mut vis, "").changed() {
                                     changed = true;
                                 }
-                                let display_name = if full_name.chars().count() > 22 {
+                                let display_name = if full_name.chars().count() > 24 {
                                     let end = full_name
                                         .char_indices()
-                                        .nth(21)
+                                        .nth(23)
                                         .map_or(full_name.len(), |(i, _)| i);
-                                    format!("{icon} {}…", &full_name[..end])
+                                    format!("{}…", &full_name[..end])
                                 } else {
-                                    format!("{icon} {full_name}")
+                                    full_name.clone()
                                 };
                                 let resp = ui.label(
                                     egui::RichText::new(&display_name).size(11.0).color(if vis {
@@ -1282,7 +1273,7 @@ impl FlameApp {
                                         ui.visuals().weak_text_color()
                                     }),
                                 );
-                                if display_name.len() < full_name.len() + icon.len() + 2 {
+                                if display_name.len() < full_name.len() {
                                     resp.on_hover_text(&full_name);
                                 }
                             });
@@ -1320,7 +1311,7 @@ impl FlameApp {
                 ui.centered_and_justified(|ui| {
                     ui.vertical_centered(|ui| {
                         ui.add_space(ui.available_height() / 4.0);
-                        ui.heading(egui::RichText::new("🔥").size(48.0));
+                        ui.heading(egui::RichText::new("flame.cat").size(32.0).strong());
                         ui.add_space(8.0);
                         ui.heading("flame.cat");
                         ui.add_space(4.0);
@@ -2137,20 +2128,20 @@ impl FlameApp {
                         ui.label(egui::RichText::new(&timing_text).weak().size(11.0));
                     }
                     ui.separator();
-                    if ui.button("📋 Copy Name").clicked() {
+                    if ui.button("Copy Name").clicked() {
                         ui.ctx().copy_text(menu.span_name.clone());
                         self.context_menu = None;
                     }
-                    if ui.button("⏱ Copy Timing").clicked() {
+                    if ui.button("Copy Timing").clicked() {
                         ui.ctx()
                             .copy_text(format!("{}: {}", menu.span_name, timing_text));
                         self.context_menu = None;
                     }
-                    if ui.button("🔍 Zoom to Span").clicked() {
+                    if ui.button("Zoom to Span").clicked() {
                         self.animate_to(menu.zoom_start, menu.zoom_end);
                         self.context_menu = None;
                     }
-                    if ui.button("🔎 Find Similar").clicked() {
+                    if ui.button("Find Similar").clicked() {
                         self.search_query = menu.span_name.clone();
                         self.context_menu = None;
                     }
@@ -2160,7 +2151,7 @@ impl FlameApp {
                             self.context_menu = None;
                         }
                     }
-                    if ui.button("✦ Highlight All").clicked() {
+                    if ui.button("Highlight All").clicked() {
                         self.search_query = menu.span_name.clone();
                         self.context_menu = None;
                     }
