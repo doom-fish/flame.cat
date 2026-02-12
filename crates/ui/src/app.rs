@@ -236,6 +236,11 @@ impl FlameApp {
                     profile.meta.end_time = data_end;
                 }
 
+                // Synthesize frame timings if none exist
+                if profile.frames.is_empty() {
+                    profile.frames = synthesize_frame_timings(&profile);
+                }
+
                 self.setup_lanes(&profile);
 
                 // Cache serialized profile for export
@@ -769,7 +774,7 @@ impl FlameApp {
             painter.rect_filled(
                 bar_rect,
                 egui::CornerRadius::ZERO,
-                bar_color.gamma_multiply(0.4 + 0.6 * frac),
+                bar_color.gamma_multiply(0.5 + 0.5 * frac),
             );
         }
 
@@ -780,6 +785,21 @@ impl FlameApp {
             egui::pos2(vp_left, rect.top()),
             egui::pos2(vp_right, rect.bottom()),
         );
+
+        // Dim area outside viewport
+        let dim_color = egui::Color32::from_rgba_unmultiplied(0, 0, 0, 120);
+        if vp_left > rect.left() {
+            let left_rect =
+                egui::Rect::from_min_max(rect.left_top(), egui::pos2(vp_left, rect.bottom()));
+            painter.rect_filled(left_rect, egui::CornerRadius::ZERO, dim_color);
+        }
+        if vp_right < rect.right() {
+            let right_rect =
+                egui::Rect::from_min_max(egui::pos2(vp_right, rect.top()), rect.right_bottom());
+            painter.rect_filled(right_rect, egui::CornerRadius::ZERO, dim_color);
+        }
+
+        // Viewport fill
         let vp_color = crate::theme::resolve(
             flame_cat_protocol::ThemeToken::MinimapViewport,
             self.theme_mode,
@@ -2671,6 +2691,50 @@ fn format_tick_label(us: f64, interval: f64) -> String {
 
 /// Find the densest time window in the busiest thread.
 /// Returns `Some((lo, hi))` in µs, or `None` if no spans.
+/// Synthesize frame timings from the densest thread's top-level spans.
+/// Used when the profile doesn't have explicit frame timing data.
+fn synthesize_frame_timings(
+    profile: &flame_cat_protocol::VisualProfile,
+) -> Vec<flame_cat_protocol::FrameTiming> {
+    // Find the main/renderer thread (highest span count)
+    let Some(thread) = profile.threads.iter().max_by_key(|t| t.spans.len()) else {
+        return Vec::new();
+    };
+
+    // Collect top-level (depth=0) spans, sorted by start time
+    let mut tops: Vec<(f64, f64)> = thread
+        .spans
+        .iter()
+        .filter(|s| s.depth == 0)
+        .map(|s| (s.start, s.end))
+        .collect();
+    tops.sort_by(|a, b| a.0.total_cmp(&b.0));
+
+    if tops.len() < 2 {
+        return Vec::new();
+    }
+
+    // Each gap between consecutive top-level spans is a "frame"
+    let mut timings = Vec::with_capacity(tops.len());
+    for i in 0..tops.len() {
+        let start = tops[i].0;
+        let end = tops[i].1;
+        let duration = end - start;
+        if duration <= 0.0 {
+            continue;
+        }
+        // 60fps budget = 16667µs
+        let dropped = duration > 16_667.0;
+        timings.push(flame_cat_protocol::FrameTiming {
+            start,
+            end,
+            duration,
+            dropped,
+        });
+    }
+    timings
+}
+
 fn compute_auto_zoom(profile: &VisualProfile) -> Option<(f64, f64)> {
     let thread = profile.threads.iter().max_by_key(|t| t.spans.len())?;
     if thread.spans.is_empty() {
