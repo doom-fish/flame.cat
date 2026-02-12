@@ -10,3 +10,4 @@ pkg/
 chrome-profile.json
 *.cpuprofile
 .vite/
+packages/example/node_modules/
