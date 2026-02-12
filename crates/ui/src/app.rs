@@ -1240,15 +1240,14 @@ impl FlameApp {
         // Sidebar: lane visibility toggles
         if self.session.is_some() {
             egui::SidePanel::left("lane_sidebar")
-                .default_width(160.0)
-                .min_width(100.0)
+                .default_width(180.0)
+                .min_width(120.0)
                 .resizable(true)
                 .show(ctx, |ui| {
                     ui.heading("Lanes");
                     ui.separator();
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         let mut changed = false;
-                        let mut swap: Option<(usize, usize)> = None;
                         let lane_count = self.lanes.len();
                         for idx in 0..lane_count {
                             let lane = &self.lanes[idx];
@@ -1263,64 +1262,33 @@ impl FlameApp {
                                 LaneKind::ObjectTrack => "📦",
                             };
                             let full_name = lane.name.clone();
-                            let span_count = lane.span_count;
                             ui.horizontal(|ui| {
                                 if ui.checkbox(&mut vis, "").changed() {
                                     changed = true;
                                 }
-                                ui.label(egui::RichText::new(icon).size(10.0));
-                                let display_name = if full_name.chars().count() > 18 {
+                                let display_name = if full_name.chars().count() > 22 {
                                     let end = full_name
                                         .char_indices()
-                                        .nth(17)
+                                        .nth(21)
                                         .map_or(full_name.len(), |(i, _)| i);
-                                    format!("{}…", &full_name[..end])
+                                    format!("{icon} {}…", &full_name[..end])
                                 } else {
-                                    full_name.clone()
+                                    format!("{icon} {full_name}")
                                 };
-                                let label = ui.label(egui::RichText::new(&display_name).size(11.0));
-                                if display_name.len() < full_name.len() {
-                                    label.on_hover_text(&full_name);
-                                }
-                                ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::Center),
-                                    |ui| {
-                                        if idx + 1 < lane_count {
-                                            if ui
-                                                .small_button("▾")
-                                                .on_hover_text("Move down")
-                                                .clicked()
-                                            {
-                                                swap = Some((idx, idx + 1));
-                                            }
-                                        }
-                                        if idx > 0 {
-                                            if ui
-                                                .small_button("▴")
-                                                .on_hover_text("Move up")
-                                                .clicked()
-                                            {
-                                                swap = Some((idx, idx - 1));
-                                            }
-                                        }
-                                        ui.label(
-                                            egui::RichText::new(format!("{span_count}"))
-                                                .size(9.0)
-                                                .weak(),
-                                        );
-                                    },
+                                let resp = ui.label(
+                                    egui::RichText::new(&display_name).size(11.0).color(if vis {
+                                        ui.visuals().text_color()
+                                    } else {
+                                        ui.visuals().weak_text_color()
+                                    }),
                                 );
+                                if display_name.len() < full_name.len() + icon.len() + 2 {
+                                    resp.on_hover_text(&full_name);
+                                }
                             });
                             if vis != lane.visible {
                                 self.lanes[idx].visible = vis;
                             }
-                        }
-                        if let Some((from, to)) = swap {
-                            self.lanes.swap(from, to);
-                            if self.lane_commands.len() == lane_count {
-                                self.lane_commands.swap(from, to);
-                            }
-                            changed = true;
                         }
                         if changed {
                             self.invalidate_commands();
@@ -1938,19 +1906,30 @@ impl FlameApp {
                     let session_start = session.start_time();
                     let session_duration = session.end_time() - session_start;
                     if session_duration > 0.0 && !profile.flow_arrows.is_empty() {
-                        let arrow_color = crate::theme::resolve(
-                            flame_cat_protocol::ThemeToken::FlowArrow,
-                            self.theme_mode,
-                        );
-                        let head_color = crate::theme::resolve(
-                            flame_cat_protocol::ThemeToken::FlowArrowHead,
-                            self.theme_mode,
-                        );
+                        let arrow_color = {
+                            let c = crate::theme::resolve(
+                                flame_cat_protocol::ThemeToken::FlowArrow,
+                                self.theme_mode,
+                            );
+                            egui::Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), 50)
+                        };
+                        let head_color = {
+                            let c = crate::theme::resolve(
+                                flame_cat_protocol::ThemeToken::FlowArrowHead,
+                                self.theme_mode,
+                            );
+                            egui::Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), 80)
+                        };
                         let view_span = self.view_end - self.view_start;
 
                         painter.set_clip_rect(available);
 
+                        let mut drawn = 0_usize;
+                        let max_arrows = 50;
                         for arrow in &profile.flow_arrows {
+                            if drawn >= max_arrows {
+                                break;
+                            }
                             let from_y = tid_to_y.get(&arrow.from_tid);
                             let to_y = tid_to_y.get(&arrow.to_tid);
                             let (Some(&from_y), Some(&to_y)) = (from_y, to_y) else {
@@ -1985,12 +1964,12 @@ impl FlameApp {
                                 [p1, p2, p3, p4],
                                 false,
                                 egui::Color32::TRANSPARENT,
-                                egui::Stroke::new(1.5, arrow_color),
+                                egui::Stroke::new(1.0, arrow_color),
                             );
                             painter.add(bezier);
 
                             // Small arrowhead triangle at destination
-                            let arrow_size = 5.0_f32;
+                            let arrow_size = 4.0_f32;
                             let dir = (p4 - p3).normalized();
                             let perp = egui::vec2(-dir.y, dir.x);
                             let tip = p4;
@@ -2001,6 +1980,7 @@ impl FlameApp {
                                 head_color,
                                 egui::Stroke::NONE,
                             ));
+                            drawn += 1;
                         }
                     }
                 }
