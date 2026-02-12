@@ -40,8 +40,9 @@ pub fn render_svg(commands: &[RenderCommand], width: f64, height: f64, dark: boo
                     let tx = rect.x + 3.0;
                     let ty = rect.y + rect.h * 0.75;
                     let max_chars = (rect.w / 7.0) as usize;
-                    let text = if label.len() > max_chars && max_chars > 2 {
-                        format!("{}…", &label[..max_chars - 1])
+                    let text = if label.chars().count() > max_chars && max_chars > 2 {
+                        let truncated: String = label.chars().take(max_chars - 1).collect();
+                        format!("{truncated}…")
                     } else {
                         label.to_string()
                     };
@@ -137,6 +138,7 @@ fn escape_xml(s: &str) -> String {
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
+        .replace('\'', "&apos;")
 }
 
 #[cfg(test)]

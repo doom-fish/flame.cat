@@ -68,7 +68,7 @@ export function useProfile(): ProfileInfo | null {
   const store = useFlameCatStore();
   return useSyncExternalStore(
     store.subscribe,
-    () => store.getSnapshot().profile,
+    store.getProfile,
     () => null,
   );
 }
@@ -90,7 +90,7 @@ export function useViewType(): ViewTypeState {
 
   const viewType = useSyncExternalStore(
     store.subscribe,
-    () => store.getSnapshot().view_type || "time_order",
+    store.getViewType,
     () => "time_order" as ViewType,
   );
 
@@ -129,7 +129,7 @@ export function useLanes(): LanesState {
 
   const lanes = useSyncExternalStore(
     store.subscribe,
-    () => store.getSnapshot().lanes,
+    store.getLanes,
     () => [] as LaneInfo[],
   );
 
@@ -203,7 +203,7 @@ export function useViewport(): ViewportState {
 
   const viewport = useSyncExternalStore(
     store.subscribe,
-    () => store.getSnapshot().viewport,
+    store.getViewport,
     () => ({ start: 0, end: 1, scroll_y: 0 }),
   );
 
@@ -236,7 +236,7 @@ export function useSearch(): SearchState {
 
   const query = useSyncExternalStore(
     store.subscribe,
-    () => store.getSnapshot().search,
+    store.getSearch,
     () => "",
   );
 
@@ -265,7 +265,7 @@ export function useTheme(): ThemeState {
 
   const mode = useSyncExternalStore(
     store.subscribe,
-    () => store.getSnapshot().theme || "dark",
+    store.getTheme,
     () => "dark" as const,
   );
 
@@ -298,7 +298,7 @@ export function useSelectedSpan(): SelectionState {
 
   const selected = useSyncExternalStore(
     store.subscribe,
-    () => store.getSnapshot().selected,
+    store.getSelected,
     () => null,
   );
 
@@ -371,7 +371,7 @@ export function useHoveredSpan(): SelectedSpanInfo | null {
   const store = useFlameCatStore();
   return useSyncExternalStore(
     store.subscribe,
-    () => store.getSnapshot().hovered ?? null,
+    store.getHovered,
     () => null,
   );
 }
@@ -395,13 +395,13 @@ export function useNavigation(): NavigationState {
 
   const canGoBack = useSyncExternalStore(
     store.subscribe,
-    () => store.getSnapshot().can_go_back ?? false,
+    store.getCanGoBack,
     () => false,
   );
 
   const canGoForward = useSyncExternalStore(
     store.subscribe,
-    () => store.getSnapshot().can_go_forward ?? false,
+    store.getCanGoForward,
     () => false,
   );
 

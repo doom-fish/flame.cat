@@ -1,4 +1,4 @@
-import type { StateSnapshot, WasmExports } from "./types";
+import type { StateSnapshot, WasmExports, ProfileInfo, LaneInfo, ViewportInfo, SelectedSpanInfo } from "./types";
 
 /** Status of the WASM viewer lifecycle. */
 export type FlameCatStatus = "loading" | "ready" | "error";
@@ -54,6 +54,19 @@ export class FlameCatStore {
   getError = (): string | null => {
     return this._error;
   };
+
+  // Stable property getters — return same reference if snapshot hasn't changed.
+  // This avoids unnecessary re-renders with useSyncExternalStore.
+  getProfile = (): ProfileInfo | null => this.snapshot.profile;
+  getLanes = (): LaneInfo[] => this.snapshot.lanes;
+  getViewport = (): ViewportInfo => this.snapshot.viewport;
+  getSelected = (): SelectedSpanInfo | null => this.snapshot.selected;
+  getHovered = (): SelectedSpanInfo | null => this.snapshot.hovered ?? null;
+  getSearch = (): string => this.snapshot.search;
+  getTheme = (): string => this.snapshot.theme || "dark";
+  getViewType = (): string => this.snapshot.view_type || "time_order";
+  getCanGoBack = (): boolean => this.snapshot.can_go_back ?? false;
+  getCanGoForward = (): boolean => this.snapshot.can_go_forward ?? false;
 
   /** Called when WASM module is loaded and ready. */
   attach(wasm: WasmExports): void {

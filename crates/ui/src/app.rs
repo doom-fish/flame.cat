@@ -1181,6 +1181,7 @@ impl FlameApp {
 
             if ctrl_held && scroll.y.abs() > 0.1 {
                 // Ctrl+scroll = zoom (like Chrome DevTools / Perfetto)
+                self.push_zoom(); // Save position before zoom starts
                 self.anim_target = None;
                 let zoom_factor = 2.0_f64.powf(-(scroll.y as f64) * 0.01);
                 let mouse_frac = if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
@@ -1229,6 +1230,7 @@ impl FlameApp {
             // Also handle pinch zoom gesture
             let zoom_delta = ui.input(|i| i.zoom_delta());
             if (zoom_delta - 1.0).abs() > 0.001 {
+                self.push_zoom(); // Save position before pinch zoom
                 self.anim_target = None;
                 let mouse_frac = if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
                     ((pos.x - available.left()) as f64 / available.width() as f64)
@@ -1404,13 +1406,30 @@ impl FlameApp {
                             for hit in &result.hit_regions {
                                 if hit.rect.contains(hover_pos) {
                                     if let Some(name) = find_span_label(cmds, hit.frame_id) {
+                                        // Convert pixel positions to time (µs)
+                                        let span_left_frac = (hit.rect.left() - available.left()) as f64
+                                            / available.width() as f64;
+                                        let span_right_frac = (hit.rect.right() - available.left()) as f64
+                                            / available.width() as f64;
+                                        let view_span = self.view_end - self.view_start;
+                                        let frac_left = self.view_start + span_left_frac * view_span;
+                                        let frac_right = self.view_start + span_right_frac * view_span;
+                                        let (hit_start_us, hit_end_us) =
+                                            if let Some(ref s) = self.session {
+                                                let ss = s.start_time();
+                                                let d = s.end_time() - ss;
+                                                (ss + frac_left * d, ss + frac_right * d)
+                                            } else {
+                                                (frac_left, frac_right)
+                                            };
+
                                         // Update hovered span for JS hooks
                                         self.hovered_span = Some(SelectedSpan {
                                             name: name.to_string(),
                                             frame_id: hit.frame_id,
                                             lane_index: i,
-                                            start_us: hit.rect.left() as f64,
-                                            end_us: hit.rect.right() as f64,
+                                            start_us: hit_start_us,
+                                            end_us: hit_end_us,
                                         });
 
                                         egui::Area::new(egui::Id::new("span_tooltip"))
@@ -1427,8 +1446,8 @@ impl FlameApp {
                                                 name,
                                                 frame_id: hit.frame_id,
                                                 lane_index: i,
-                                                start_us: hit.rect.left() as f64,
-                                                end_us: hit.rect.right() as f64,
+                                                start_us: hit_start_us,
+                                                end_us: hit_end_us,
                                             });
                                         } else if right_clicked {
                                             let span_left = (hit.rect.left() - available.left()) as f64 / available.width() as f64;
