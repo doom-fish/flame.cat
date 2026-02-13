@@ -21,6 +21,15 @@ const MAX_BREADCRUMB_DEPTH: usize = 10;
 /// Lane names longer than this are truncated with ellipsis in the sidebar.
 const SIDEBAR_NAME_MAX_CHARS: usize = 24;
 
+// ── Typography scale ───────────────────────────────────────────────────────
+
+const FONT_DISPLAY: f32 = 32.0;
+const FONT_TITLE: f32 = 18.0;
+const FONT_EMPHASIS: f32 = 14.0;
+const FONT_BODY: f32 = 12.0;
+const FONT_CAPTION: f32 = 11.0;
+const FONT_TINY: f32 = 10.0;
+
 /// Format a duration in µs to human-readable string.
 fn format_duration(us: f64) -> String {
     if us < 1000.0 {
@@ -140,6 +149,7 @@ impl FlameApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // Catapult/Perfetto-inspired dark theme for egui widgets
         cc.egui_ctx.set_visuals(catapult_dark_visuals());
+        apply_catapult_typography(&cc.egui_ctx);
 
         let pending_data: std::sync::Arc<std::sync::Mutex<Option<Vec<u8>>>> =
             std::sync::Arc::new(std::sync::Mutex::new(None));
@@ -698,7 +708,7 @@ impl FlameApp {
                 egui::pos2(x, rect.center().y),
                 egui::Align2::CENTER_CENTER,
                 &label,
-                egui::FontId::proportional(10.0),
+                egui::FontId::proportional(FONT_CAPTION),
                 text_color,
             );
 
@@ -994,10 +1004,18 @@ impl FlameApp {
         // Top toolbar
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.heading("flame.cat");
+                ui.label(
+                    egui::RichText::new("flame.cat")
+                        .size(FONT_TITLE)
+                        .strong()
+                        .color(crate::theme::resolve(
+                            flame_cat_protocol::ThemeToken::ToolbarText,
+                            self.theme_mode,
+                        )),
+                );
                 ui.separator();
 
-                if ui.button("Open").clicked() {
+                if ui.button("Open…").clicked() {
                     #[cfg(not(target_arch = "wasm32"))]
                     {
                         if let Some(path) = rfd::FileDialog::new()
@@ -1044,6 +1062,7 @@ impl FlameApp {
                             ThemeMode::Dark
                         }
                     };
+                    apply_catapult_typography(ctx);
                     self.invalidate_commands();
                 }
 
@@ -1111,8 +1130,16 @@ impl FlameApp {
                 }
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let zoom_pct = 100.0 / (self.view_end - self.view_start);
-                    ui.label(format!("{zoom_pct:.0}%"));
+                    let zoom_pct = 100.0 / (self.view_end - self.view_start).max(MIN_VIEW_SPAN);
+                    ui.label(
+                        egui::RichText::new(format!("{zoom_pct:.0}%"))
+                            .monospace()
+                            .size(FONT_CAPTION)
+                            .color(crate::theme::resolve(
+                                flame_cat_protocol::ThemeToken::TextSecondary,
+                                self.theme_mode,
+                            )),
+                    );
                     ui.separator();
 
                     if ui
@@ -1141,17 +1168,19 @@ impl FlameApp {
                         } else {
                             format!("{count} matches")
                         };
-                        ui.label(egui::RichText::new(label).small().color(if count > 0 {
-                            crate::theme::resolve(
-                                flame_cat_protocol::ThemeToken::TextSecondary,
-                                self.theme_mode,
-                            )
-                        } else {
-                            crate::theme::resolve(
-                                flame_cat_protocol::ThemeToken::FrameDropped,
-                                self.theme_mode,
-                            )
-                        }));
+                        ui.label(egui::RichText::new(label).size(FONT_CAPTION).color(
+                            if count > 0 {
+                                crate::theme::resolve(
+                                    flame_cat_protocol::ThemeToken::TextSecondary,
+                                    self.theme_mode,
+                                )
+                            } else {
+                                crate::theme::resolve(
+                                    flame_cat_protocol::ThemeToken::FrameDropped,
+                                    self.theme_mode,
+                                )
+                            },
+                        ));
                     }
                 });
             });
@@ -1162,8 +1191,7 @@ impl FlameApp {
         // Status bar
         egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                if let Some(err) = self.error.as_deref() {
-                    let err_text = err.to_string();
+                if let Some(err) = self.error.clone() {
                     let err_color = crate::theme::resolve(
                         flame_cat_protocol::ThemeToken::FrameDropped,
                         self.theme_mode,
@@ -1172,10 +1200,10 @@ impl FlameApp {
                         ui.label(
                             egui::RichText::new("!")
                                 .strong()
-                                .size(12.0)
+                                .size(FONT_BODY)
                                 .color(err_color),
                         );
-                        ui.colored_label(err_color, err_text);
+                        ui.colored_label(err_color, err);
                         if ui.small_button("x").on_hover_text("Dismiss").clicked() {
                             self.error = None;
                         }
@@ -1218,7 +1246,7 @@ impl FlameApp {
                 .resizable(true)
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
-                        ui.heading("Detail");
+                        ui.label(egui::RichText::new("Detail").size(FONT_BODY).strong());
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.button("x").clicked() {
                                 self.selected_span = None;
@@ -1244,7 +1272,7 @@ impl FlameApp {
                                                 ui.label(
                                                     egui::RichText::new(&selected_clone.name)
                                                         .strong()
-                                                        .size(13.0),
+                                                        .size(FONT_EMPHASIS),
                                                 );
                                             });
                                             ui.horizontal(|ui| {
@@ -1277,7 +1305,7 @@ impl FlameApp {
                                                 ui.horizontal(|ui| {
                                                     ui.label(
                                                         egui::RichText::new("> ")
-                                                            .size(11.0)
+                                                            .size(FONT_CAPTION)
                                                             .weak(),
                                                     );
                                                     let mut chain: Vec<(u64, String)> = Vec::new();
@@ -1300,26 +1328,26 @@ impl FlameApp {
                                                         if idx > 0 {
                                                             ui.label(
                                                                 egui::RichText::new(" › ")
-                                                                    .size(10.0)
+                                                                    .size(FONT_TINY)
                                                                     .weak(),
                                                             );
                                                         }
                                                         ui.label(
                                                             egui::RichText::new(name)
-                                                                .size(10.0)
+                                                                .size(FONT_TINY)
                                                                 .weak(),
                                                         );
                                                     }
                                                     if !chain.is_empty() {
                                                         ui.label(
                                                             egui::RichText::new(" › ")
-                                                                .size(10.0)
+                                                                .size(FONT_TINY)
                                                                 .weak(),
                                                         );
                                                     }
                                                     ui.label(
                                                         egui::RichText::new(&selected_clone.name)
-                                                            .size(10.0)
+                                                            .size(FONT_TINY)
                                                             .strong(),
                                                     );
                                                 });
@@ -1331,7 +1359,7 @@ impl FlameApp {
                                     ui.label(
                                         egui::RichText::new(&selected_clone.name)
                                             .strong()
-                                            .size(13.0),
+                                            .size(FONT_EMPHASIS),
                                     );
                                 }
                             } else {
@@ -1354,7 +1382,7 @@ impl FlameApp {
                 .min_width(120.0)
                 .resizable(true)
                 .show(ctx, |ui| {
-                    ui.heading("Lanes");
+                    ui.label(egui::RichText::new("Lanes").size(FONT_BODY).strong());
                     ui.separator();
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         let mut changed = false;
@@ -1378,11 +1406,13 @@ impl FlameApp {
                                         full_name.to_string()
                                     };
                                 let resp = ui.label(
-                                    egui::RichText::new(&display_name).size(11.0).color(if vis {
-                                        ui.visuals().text_color()
-                                    } else {
-                                        ui.visuals().weak_text_color()
-                                    }),
+                                    egui::RichText::new(&display_name).size(FONT_CAPTION).color(
+                                        if vis {
+                                            ui.visuals().text_color()
+                                        } else {
+                                            ui.visuals().weak_text_color()
+                                        },
+                                    ),
                                 );
                                 if display_name.len() < full_name.len() {
                                     resp.on_hover_text(full_name);
@@ -1422,13 +1452,16 @@ impl FlameApp {
                 ui.centered_and_justified(|ui| {
                     ui.vertical_centered(|ui| {
                         ui.add_space(ui.available_height() / 4.0);
-                        ui.heading(egui::RichText::new("flame.cat").size(32.0).strong());
+                        ui.heading(egui::RichText::new("flame.cat").size(FONT_DISPLAY).strong());
                         ui.add_space(4.0);
-                        ui.label("High-performance flame graph visualization");
+                        ui.label(
+                            egui::RichText::new("High-performance flame graph visualization")
+                                .size(FONT_BODY),
+                        );
                         ui.add_space(16.0);
                         ui.label(
                             egui::RichText::new("Click Open above or drag & drop a profile")
-                                .size(14.0)
+                                .size(FONT_EMPHASIS)
                                 .strong(),
                         );
                         ui.add_space(8.0);
@@ -1436,18 +1469,18 @@ impl FlameApp {
                             egui::RichText::new(
                                 "Supports: Chrome DevTools · Firefox · Speedscope · pprof",
                             )
-                            .size(11.0)
+                            .size(FONT_CAPTION)
                             .weak(),
                         );
                         ui.label(
                             egui::RichText::new("          Tracy · React DevTools · eBPF · V8 CPU")
-                                .size(11.0)
+                                .size(FONT_CAPTION)
                                 .weak(),
                         );
                         ui.add_space(16.0);
                         ui.label(
                             egui::RichText::new("Press ? for keyboard shortcuts")
-                                .size(11.0)
+                                .size(FONT_CAPTION)
                                 .weak(),
                         );
                     });
@@ -1475,7 +1508,7 @@ impl FlameApp {
                     hint_rect.center(),
                     egui::Align2::CENTER_CENTER,
                     "Click a span to see its callers and callees in sandwich view",
-                    egui::FontId::proportional(11.0),
+                    egui::FontId::proportional(FONT_CAPTION),
                     crate::theme::resolve(
                         flame_cat_protocol::ThemeToken::TextPrimary,
                         self.theme_mode,
@@ -2141,7 +2174,7 @@ impl FlameApp {
 
             // Draw deferred lane labels on top of everything
             {
-                let label_font = egui::FontId::proportional(10.0);
+                let label_font = egui::FontId::proportional(FONT_CAPTION);
                 let label_text_color = crate::theme::resolve(
                     flame_cat_protocol::ThemeToken::InlineLabelText,
                     self.theme_mode,
@@ -2230,10 +2263,14 @@ impl FlameApp {
                 egui::Frame::popup(ui.style())
                     .inner_margin(16.0)
                     .show(ui, |ui| {
-                        ui.heading("⌨ Keyboard Shortcuts");
+                        ui.label(
+                            egui::RichText::new("⌨ Keyboard Shortcuts")
+                                .size(FONT_EMPHASIS)
+                                .strong(),
+                        );
                         ui.separator();
                         ui.spacing_mut().item_spacing.y = 4.0;
-                        ui.label(egui::RichText::new("Navigation").strong());
+                        ui.label(egui::RichText::new("Navigation").size(FONT_BODY).strong());
                         let navigation = [
                             ("A / ←", "Pan left"),
                             ("D / →", "Pan right"),
@@ -2244,13 +2281,18 @@ impl FlameApp {
                         ];
                         for (key, desc) in navigation {
                             ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new(key).strong().monospace());
-                                ui.label(desc);
+                                ui.label(
+                                    egui::RichText::new(key)
+                                        .strong()
+                                        .monospace()
+                                        .size(FONT_CAPTION),
+                                );
+                                ui.label(egui::RichText::new(desc).size(FONT_CAPTION));
                             });
                         }
 
                         ui.add_space(4.0);
-                        ui.label(egui::RichText::new("Zoom").strong());
+                        ui.label(egui::RichText::new("Zoom").size(FONT_BODY).strong());
                         let zoom = [
                             ("+", "Zoom in"),
                             ("-", "Zoom out"),
@@ -2262,13 +2304,22 @@ impl FlameApp {
                         ];
                         for (key, desc) in zoom {
                             ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new(key).strong().monospace());
-                                ui.label(desc);
+                                ui.label(
+                                    egui::RichText::new(key)
+                                        .strong()
+                                        .monospace()
+                                        .size(FONT_CAPTION),
+                                );
+                                ui.label(egui::RichText::new(desc).size(FONT_CAPTION));
                             });
                         }
 
                         ui.add_space(4.0);
-                        ui.label(egui::RichText::new("Selection & search").strong());
+                        ui.label(
+                            egui::RichText::new("Selection & search")
+                                .size(FONT_BODY)
+                                .strong(),
+                        );
                         let selection = [
                             ("Click", "Select span"),
                             ("Right-click", "Context menu"),
@@ -2283,8 +2334,13 @@ impl FlameApp {
                         ];
                         for (key, desc) in selection {
                             ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new(key).strong().monospace());
-                                ui.label(desc);
+                                ui.label(
+                                    egui::RichText::new(key)
+                                        .strong()
+                                        .monospace()
+                                        .size(FONT_CAPTION),
+                                );
+                                ui.label(egui::RichText::new(desc).size(FONT_CAPTION));
                             });
                         }
                         ui.separator();
@@ -2322,9 +2378,13 @@ impl FlameApp {
             .show(ctx, |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.set_min_width(180.0);
-                    ui.label(egui::RichText::new(&menu.span_name).strong().size(12.0));
+                    ui.label(
+                        egui::RichText::new(&menu.span_name)
+                            .strong()
+                            .size(FONT_BODY),
+                    );
                     if !timing_text.is_empty() {
-                        ui.label(egui::RichText::new(&timing_text).weak().size(11.0));
+                        ui.label(egui::RichText::new(&timing_text).weak().size(FONT_CAPTION));
                     }
                     ui.separator();
                     if ui.button("Copy Name").clicked() {
@@ -2918,6 +2978,16 @@ fn catapult_dark_visuals() -> egui::Visuals {
     v.widgets.active.fg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(0x1e, 0x1e, 0x2e)); // Base
     v.selection.bg_fill = egui::Color32::from_rgba_unmultiplied(0x89, 0xb4, 0xfa, 60);
     v.selection.stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(0x89, 0xb4, 0xfa)); // Blue
+    v.window_corner_radius = egui::CornerRadius::same(6);
+    v.menu_corner_radius = egui::CornerRadius::same(6);
+    v.widgets.noninteractive.corner_radius = egui::CornerRadius::same(5);
+    v.widgets.inactive.corner_radius = egui::CornerRadius::same(5);
+    v.widgets.hovered.corner_radius = egui::CornerRadius::same(5);
+    v.widgets.active.corner_radius = egui::CornerRadius::same(5);
+    v.widgets.open.corner_radius = egui::CornerRadius::same(5);
+    v.hyperlink_color = egui::Color32::from_rgb(0x89, 0xb4, 0xfa);
+    v.warn_fg_color = egui::Color32::from_rgb(0xf9, 0xe2, 0xaf);
+    v.error_fg_color = egui::Color32::from_rgb(0xf3, 0x8b, 0xa8);
     v
 }
 
@@ -2939,7 +3009,46 @@ fn catapult_light_visuals() -> egui::Visuals {
     v.widgets.active.fg_stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
     v.selection.bg_fill = egui::Color32::from_rgba_unmultiplied(50, 110, 220, 50);
     v.selection.stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(50, 110, 220));
+    v.window_corner_radius = egui::CornerRadius::same(6);
+    v.menu_corner_radius = egui::CornerRadius::same(6);
+    v.widgets.noninteractive.corner_radius = egui::CornerRadius::same(5);
+    v.widgets.inactive.corner_radius = egui::CornerRadius::same(5);
+    v.widgets.hovered.corner_radius = egui::CornerRadius::same(5);
+    v.widgets.active.corner_radius = egui::CornerRadius::same(5);
+    v.widgets.open.corner_radius = egui::CornerRadius::same(5);
+    v.hyperlink_color = egui::Color32::from_rgb(50, 110, 220);
+    v.warn_fg_color = egui::Color32::from_rgb(230, 170, 0);
+    v.error_fg_color = egui::Color32::from_rgb(211, 47, 47);
     v
+}
+
+fn apply_catapult_typography(ctx: &egui::Context) {
+    let mut style = (*ctx.style()).clone();
+    style.text_styles.insert(
+        egui::TextStyle::Heading,
+        egui::FontId::proportional(FONT_TITLE),
+    );
+    style
+        .text_styles
+        .insert(egui::TextStyle::Body, egui::FontId::proportional(FONT_BODY));
+    style.text_styles.insert(
+        egui::TextStyle::Button,
+        egui::FontId::proportional(FONT_BODY),
+    );
+    style.text_styles.insert(
+        egui::TextStyle::Small,
+        egui::FontId::proportional(FONT_CAPTION),
+    );
+    style.text_styles.insert(
+        egui::TextStyle::Monospace,
+        egui::FontId::monospace(FONT_CAPTION),
+    );
+
+    style.spacing.item_spacing = egui::vec2(8.0, 6.0);
+    style.spacing.button_padding = egui::vec2(8.0, 4.0);
+    style.spacing.interact_size.y = 24.0;
+    style.spacing.icon_spacing = 6.0;
+    ctx.set_style(style);
 }
 
 fn synthesize_frame_timings(
