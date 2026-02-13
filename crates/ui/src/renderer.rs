@@ -177,7 +177,7 @@ pub fn render_commands(
                         );
                         if galley.size().x <= text_rect.width() + 2.0 {
                             painter.galley(text_pos, galley, text_color);
-                        } else if text_rect.width() > 20.0 {
+                        } else if text_rect.width() > 20.0 && galley.size().x > 0.0 {
                             // Truncate with ellipsis for medium-width spans
                             let avail = text_rect.width() - 8.0;
                             let ratio = avail / galley.size().x;
@@ -239,10 +239,7 @@ pub fn render_commands(
                     text_pos - egui::vec2(3.0, 1.0),
                     galley.size() + egui::vec2(6.0, 2.0),
                 );
-                let bg_color = match mode {
-                    ThemeMode::Dark => egui::Color32::from_rgb(24, 24, 24),
-                    ThemeMode::Light => egui::Color32::from_rgb(250, 250, 252),
-                };
+                let bg_color = theme::resolve(ThemeToken::InlineLabelBackground, mode);
                 painter.rect_filled(bg_rect, CornerRadius::same(2), bg_color);
                 painter.galley(text_pos, galley, text_color);
             }

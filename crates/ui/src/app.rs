@@ -6,6 +6,19 @@ use flame_cat_protocol::{RenderCommand, Viewport, VisualProfile};
 use crate::renderer;
 use crate::theme::ThemeMode;
 
+// ── Layout & animation constants ───────────────────────────────────────
+
+/// Interpolation factor per frame for viewport animation (ease-out).
+const ANIM_EASE_FACTOR: f64 = 0.25;
+/// Boosted ease factor when the viewport is far from target.
+const ANIM_EASE_BOOST: f64 = 1.5;
+/// Animation snaps to target when within this fraction of the viewport span.
+const ANIM_SNAP_EPSILON: f64 = 1e-4;
+/// Maximum ancestor breadcrumbs shown in the detail panel.
+const MAX_BREADCRUMB_DEPTH: usize = 10;
+/// Lane names longer than this are truncated with ellipsis in the sidebar.
+const SIDEBAR_NAME_MAX_CHARS: usize = 24;
+
 /// Format a duration in µs to human-readable string.
 fn format_duration(us: f64) -> String {
     if us < 1000.0 {
@@ -801,7 +814,8 @@ impl FlameApp {
         );
 
         // Dim area outside viewport
-        let dim_color = egui::Color32::from_rgba_unmultiplied(0, 0, 0, 120);
+        let bg = crate::theme::resolve(flame_cat_protocol::ThemeToken::Background, self.theme_mode);
+        let dim_color = egui::Color32::from_rgba_unmultiplied(bg.r(), bg.g(), bg.b(), 120);
         if vp_left > rect.left() {
             let left_rect =
                 egui::Rect::from_min_max(rect.left_top(), egui::pos2(vp_left, rect.bottom()));
@@ -931,18 +945,22 @@ impl FlameApp {
             return false;
         };
         // Smooth ease-out: faster approach when far, graceful settle when close
-        let t = 0.25;
+        let t = ANIM_EASE_FACTOR;
         let progress_start =
             (target_start - self.view_start).abs() / (target_end - target_start).abs().max(1e-12);
         let progress_end =
             (target_end - self.view_end).abs() / (target_end - target_start).abs().max(1e-12);
         let max_progress = progress_start.max(progress_end);
         // Ease-out cubic: accelerate when far, decelerate near target
-        let ease = if max_progress > 0.5 { t * 1.5 } else { t };
+        let ease = if max_progress > 0.5 {
+            t * ANIM_EASE_BOOST
+        } else {
+            t
+        };
         let new_start = self.view_start + (target_start - self.view_start) * ease;
         let new_end = self.view_end + (target_end - self.view_end) * ease;
         // Snap when close enough (sub-pixel precision at any zoom)
-        let epsilon = (target_end - target_start) * 1e-4;
+        let epsilon = (target_end - target_start) * ANIM_SNAP_EPSILON;
         if (new_start - target_start).abs() < epsilon && (new_end - target_end).abs() < epsilon {
             self.view_start = target_start;
             self.view_end = target_end;
@@ -1115,7 +1133,10 @@ impl FlameApp {
                                 self.theme_mode,
                             )
                         } else {
-                            egui::Color32::from_rgb(200, 80, 80)
+                            crate::theme::resolve(
+                                flame_cat_protocol::ThemeToken::FrameDropped,
+                                self.theme_mode,
+                            )
                         }));
                     }
                 });
@@ -1238,7 +1259,7 @@ impl FlameApp {
                                                     } else {
                                                         break;
                                                     }
-                                                    if chain.len() > 10 {
+                                                    if chain.len() > MAX_BREADCRUMB_DEPTH {
                                                         break;
                                                     }
                                                 }
@@ -1308,15 +1329,16 @@ impl FlameApp {
                                 if ui.checkbox(&mut vis, "").changed() {
                                     changed = true;
                                 }
-                                let display_name = if full_name.chars().count() > 24 {
-                                    let end = full_name
-                                        .char_indices()
-                                        .nth(23)
-                                        .map_or(full_name.len(), |(i, _)| i);
-                                    format!("{}…", &full_name[..end])
-                                } else {
-                                    full_name.clone()
-                                };
+                                let display_name =
+                                    if full_name.chars().count() > SIDEBAR_NAME_MAX_CHARS {
+                                        let end = full_name
+                                            .char_indices()
+                                            .nth(23)
+                                            .map_or(full_name.len(), |(i, _)| i);
+                                        format!("{}…", &full_name[..end])
+                                    } else {
+                                        full_name.clone()
+                                    };
                                 let resp = ui.label(
                                     egui::RichText::new(&display_name).size(11.0).color(if vis {
                                         ui.visuals().text_color()
@@ -2262,10 +2284,6 @@ impl FlameApp {
                             self.navigate_to_parent(menu.frame_id, menu.lane_index);
                             self.context_menu = None;
                         }
-                    }
-                    if ui.button("Highlight All").clicked() {
-                        self.search_query = menu.span_name.clone();
-                        self.context_menu = None;
                     }
                 });
             });
