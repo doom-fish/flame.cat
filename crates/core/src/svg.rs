@@ -89,25 +89,26 @@ pub fn render_svg(commands: &[RenderCommand], width: f64, height: f64, dark: boo
 
 fn resolve_color(token: ThemeToken, dark: bool) -> &'static str {
     if dark {
+        // Catppuccin Mocha
         match token {
-            ThemeToken::FlameHot => "#f44336",
-            ThemeToken::FlameWarm => "#ffa726",
-            ThemeToken::FlameCold => "#42a5f5",
-            ThemeToken::FlameNeutral => "#9575cd",
-            ThemeToken::Border | ThemeToken::TableBorder | ThemeToken::AsyncSpanBorder => "#303030",
+            ThemeToken::FlameHot => "#f38ba8",
+            ThemeToken::FlameWarm => "#fab387",
+            ThemeToken::FlameCold => "#89b4fa",
+            ThemeToken::FlameNeutral => "#cba6f7",
+            ThemeToken::Border | ThemeToken::TableBorder | ThemeToken::AsyncSpanBorder => "#313244",
             ThemeToken::TextPrimary | ThemeToken::ToolbarText | ThemeToken::InlineLabelText => {
-                "#ececec"
+                "#cdd6f4"
             }
             ThemeToken::TextSecondary | ThemeToken::TextMuted | ThemeToken::CounterText => {
-                "#9e9e9e"
+                "#bac2de"
             }
-            ThemeToken::LaneBackground | ThemeToken::Background => "#181818",
-            ThemeToken::SelectionHighlight | ThemeToken::HoverHighlight => "#448aff",
-            ThemeToken::SearchHighlight => "#ffeb3b",
-            ThemeToken::BarFill | ThemeToken::CounterFill | ThemeToken::AsyncSpanFill => "#448aff",
-            ThemeToken::MarkerLine | ThemeToken::MarkerText => "#ffd600",
-            ThemeToken::FrameGood => "#4caf50",
-            _ => "#616161",
+            ThemeToken::LaneBackground | ThemeToken::Background => "#1e1e2e",
+            ThemeToken::SelectionHighlight | ThemeToken::HoverHighlight => "#89b4fa",
+            ThemeToken::SearchHighlight => "#f9e2af",
+            ThemeToken::BarFill | ThemeToken::CounterFill | ThemeToken::AsyncSpanFill => "#89b4fa",
+            ThemeToken::MarkerLine | ThemeToken::MarkerText => "#f9e2af",
+            ThemeToken::FrameGood => "#a6e3a1",
+            _ => "#6c7086",
         }
     } else {
         match token {
@@ -159,7 +160,7 @@ mod tests {
         assert!(svg.starts_with("<svg"));
         assert!(svg.ends_with("</svg>"));
         assert!(svg.contains("main"));
-        assert!(svg.contains("#f44336"));
+        assert!(svg.contains("#f38ba8"));
     }
 
     #[test]

@@ -2743,30 +2743,27 @@ fn format_tick_label(us: f64, interval: f64) -> String {
 /// Returns `Some((lo, hi))` in µs, or `None` if no spans.
 /// Synthesize frame timings from the densest thread's top-level spans.
 /// Used when the profile doesn't have explicit frame timing data.
-/// Catapult/Perfetto-inspired dark visuals for egui widgets.
+/// Catppuccin Mocha dark visuals for egui widgets.
 fn catapult_dark_visuals() -> egui::Visuals {
     let mut v = egui::Visuals::dark();
-    // Window/panel backgrounds — pure dark like Perfetto
-    v.panel_fill = egui::Color32::from_rgb(24, 24, 24);
-    v.window_fill = egui::Color32::from_rgb(30, 30, 30);
-    v.extreme_bg_color = egui::Color32::from_rgb(12, 12, 12);
-    v.faint_bg_color = egui::Color32::from_rgb(30, 30, 30);
-    // Widget colors
-    v.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(33, 33, 33);
+    v.panel_fill = egui::Color32::from_rgb(0x18, 0x18, 0x25); // Mantle
+    v.window_fill = egui::Color32::from_rgb(0x1e, 0x1e, 0x2e); // Base
+    v.extreme_bg_color = egui::Color32::from_rgb(0x11, 0x11, 0x1b); // Crust
+    v.faint_bg_color = egui::Color32::from_rgb(0x1e, 0x1e, 0x2e); // Base
+    v.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(0x31, 0x32, 0x44); // Surface0
     v.widgets.noninteractive.fg_stroke =
-        egui::Stroke::new(1.0, egui::Color32::from_rgb(200, 200, 200));
+        egui::Stroke::new(1.0, egui::Color32::from_rgb(0xba, 0xc2, 0xde)); // Subtext1
     v.widgets.noninteractive.bg_stroke =
-        egui::Stroke::new(1.0, egui::Color32::from_rgb(48, 48, 48));
-    v.widgets.inactive.bg_fill = egui::Color32::from_rgb(40, 40, 40);
-    v.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(180, 180, 180));
-    v.widgets.hovered.bg_fill = egui::Color32::from_rgb(50, 50, 50);
-    v.widgets.hovered.fg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(220, 220, 220));
-    v.widgets.active.bg_fill = egui::Color32::from_rgb(68, 138, 255); // Perfetto accent
-    v.widgets.active.fg_stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
-    // Selection
-    v.selection.bg_fill = egui::Color32::from_rgba_unmultiplied(68, 138, 255, 60);
-    v.selection.stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(68, 138, 255));
-    // Separator/border
+        egui::Stroke::new(1.0, egui::Color32::from_rgb(0x45, 0x47, 0x5a)); // Surface1
+    v.widgets.inactive.bg_fill = egui::Color32::from_rgb(0x45, 0x47, 0x5a); // Surface1
+    v.widgets.inactive.fg_stroke =
+        egui::Stroke::new(1.0, egui::Color32::from_rgb(0xba, 0xc2, 0xde)); // Subtext1
+    v.widgets.hovered.bg_fill = egui::Color32::from_rgb(0x58, 0x5b, 0x70); // Surface2
+    v.widgets.hovered.fg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(0xcd, 0xd6, 0xf4)); // Text
+    v.widgets.active.bg_fill = egui::Color32::from_rgb(0x89, 0xb4, 0xfa); // Blue
+    v.widgets.active.fg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(0x1e, 0x1e, 0x2e)); // Base
+    v.selection.bg_fill = egui::Color32::from_rgba_unmultiplied(0x89, 0xb4, 0xfa, 60);
+    v.selection.stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(0x89, 0xb4, 0xfa)); // Blue
     v
 }
 

@@ -38,71 +38,68 @@ pub fn resolve(token: ThemeToken, mode: ThemeMode) -> egui::Color32 {
 }
 
 fn resolve_dark(token: ThemeToken) -> ResolvedColor {
+    // Catppuccin Mocha palette
     use ThemeToken::*;
     match token {
-        // Perfetto-inspired flame palette
-        FlameHot => ResolvedColor::rgb(244, 67, 54), // Material Red
-        FlameWarm => ResolvedColor::rgb(255, 167, 38), // Material Orange
-        FlameCold => ResolvedColor::rgb(66, 165, 245), // Material Blue
-        FlameNeutral => ResolvedColor::rgb(149, 117, 205), // Material Purple
+        FlameHot => ResolvedColor::rgb(0xf3, 0x8b, 0xa8), // Red
+        FlameWarm => ResolvedColor::rgb(0xfa, 0xb3, 0x87), // Peach
+        FlameCold => ResolvedColor::rgb(0x89, 0xb4, 0xfa), // Blue
+        FlameNeutral => ResolvedColor::rgb(0xcb, 0xa6, 0xf7), // Mauve
 
-        LaneBackground => ResolvedColor::rgb(24, 24, 24), // Perfetto bg
-        LaneBorder => ResolvedColor::rgb(48, 48, 48),
-        LaneHeaderBackground => ResolvedColor::rgb(33, 33, 33),
-        LaneHeaderText => ResolvedColor::rgb(224, 224, 224),
+        LaneBackground => ResolvedColor::rgb(0x1e, 0x1e, 0x2e), // Base
+        LaneBorder => ResolvedColor::rgb(0x31, 0x32, 0x44),     // Surface0
+        LaneHeaderBackground => ResolvedColor::rgb(0x18, 0x18, 0x25), // Mantle
+        LaneHeaderText => ResolvedColor::rgb(0xcd, 0xd6, 0xf4), // Text
 
-        TextPrimary => ResolvedColor::rgb(236, 236, 236),
-        TextSecondary => ResolvedColor::rgb(158, 158, 158),
-        TextMuted => ResolvedColor::rgb(136, 136, 136),
+        TextPrimary => ResolvedColor::rgb(0xcd, 0xd6, 0xf4), // Text
+        TextSecondary => ResolvedColor::rgb(0xba, 0xc2, 0xde), // Subtext1
+        TextMuted => ResolvedColor::rgb(0xa6, 0xad, 0xc8),   // Subtext0
 
-        SelectionHighlight => ResolvedColor::rgba(68, 138, 255, 90), // Perfetto accent
-        HoverHighlight => ResolvedColor::rgba(255, 255, 255, 25),
+        SelectionHighlight => ResolvedColor::rgba(0x89, 0xb4, 0xfa, 80), // Blue
+        HoverHighlight => ResolvedColor::rgba(0xcd, 0xd6, 0xf4, 25),
 
-        Background => ResolvedColor::rgb(18, 18, 18), // Perfetto dark bg
-        Surface => ResolvedColor::rgb(33, 33, 33),
-        Border => ResolvedColor::rgb(48, 48, 48),
+        Background => ResolvedColor::rgb(0x11, 0x11, 0x1b), // Crust
+        Surface => ResolvedColor::rgb(0x18, 0x18, 0x25),    // Mantle
+        Border => ResolvedColor::rgb(0x31, 0x32, 0x44),     // Surface0
 
-        ToolbarBackground => ResolvedColor::rgb(24, 24, 24),
-        ToolbarText => ResolvedColor::rgb(224, 224, 224),
-        ToolbarTabActive => ResolvedColor::rgb(68, 138, 255),
-        ToolbarTabHover => ResolvedColor::rgba(255, 255, 255, 15),
+        ToolbarBackground => ResolvedColor::rgb(0x18, 0x18, 0x25),
+        ToolbarText => ResolvedColor::rgb(0xcd, 0xd6, 0xf4),
+        ToolbarTabActive => ResolvedColor::rgb(0x89, 0xb4, 0xfa), // Blue
+        ToolbarTabHover => ResolvedColor::rgba(0xcd, 0xd6, 0xf4, 15),
 
-        // Minimap background — distinct from lane bg
-        MinimapBackground => ResolvedColor::rgb(10, 10, 12),
-        MinimapViewport => ResolvedColor::rgba(68, 138, 255, 100),
-        MinimapDensity => ResolvedColor::rgb(80, 160, 255),
-        MinimapHandle => ResolvedColor::rgb(200, 220, 255),
-        MinimapHandle => ResolvedColor::rgb(144, 202, 249),
+        MinimapBackground => ResolvedColor::rgb(0x11, 0x11, 0x1b), // Crust
+        MinimapViewport => ResolvedColor::rgba(0x89, 0xb4, 0xfa, 60),
+        MinimapDensity => ResolvedColor::rgb(0xb4, 0xbe, 0xfe), // Lavender
+        MinimapHandle => ResolvedColor::rgb(0xb4, 0xbe, 0xfe),
 
-        InlineLabelText => ResolvedColor::rgb(224, 224, 224),
-        InlineLabelBackground => ResolvedColor::rgb(33, 33, 33),
+        InlineLabelText => ResolvedColor::rgb(0xcd, 0xd6, 0xf4),
+        InlineLabelBackground => ResolvedColor::rgb(0x1e, 0x1e, 0x2e), // Base
 
-        TableRowEven => ResolvedColor::rgb(24, 24, 24),
-        TableRowOdd => ResolvedColor::rgb(30, 30, 30),
-        TableHeaderBackground => ResolvedColor::rgb(38, 38, 41),
-        TableBorder => ResolvedColor::rgb(48, 48, 48),
-        BarFill => ResolvedColor::rgb(68, 138, 255),
-        SearchHighlight => ResolvedColor::rgba(255, 235, 59, 120), // Material Yellow
+        TableRowEven => ResolvedColor::rgb(0x1e, 0x1e, 0x2e), // Base
+        TableRowOdd => ResolvedColor::rgb(0x18, 0x18, 0x25),  // Mantle
+        TableHeaderBackground => ResolvedColor::rgb(0x31, 0x32, 0x44), // Surface0
+        TableBorder => ResolvedColor::rgb(0x45, 0x47, 0x5a),  // Surface1
+        BarFill => ResolvedColor::rgb(0x89, 0xb4, 0xfa),      // Blue
+        SearchHighlight => ResolvedColor::rgba(0xf9, 0xe2, 0xaf, 120), // Yellow
 
-        CounterFill => ResolvedColor::rgba(68, 138, 255, 50),
-        CounterLine => ResolvedColor::rgb(68, 138, 255),
-        CounterText => ResolvedColor::rgb(158, 158, 158),
+        CounterFill => ResolvedColor::rgba(0x74, 0xc7, 0xec, 50), // Sapphire
+        CounterLine => ResolvedColor::rgb(0x74, 0xc7, 0xec),
+        CounterText => ResolvedColor::rgb(0xba, 0xc2, 0xde), // Subtext1
 
-        MarkerLine => ResolvedColor::rgb(255, 214, 0),
-        MarkerText => ResolvedColor::rgb(255, 214, 0),
+        MarkerLine => ResolvedColor::rgb(0xf9, 0xe2, 0xaf), // Yellow
+        MarkerText => ResolvedColor::rgb(0xf9, 0xe2, 0xaf),
 
-        AsyncSpanFill => ResolvedColor::rgb(77, 182, 172), // Material Teal
-        AsyncSpanBorder => ResolvedColor::rgb(0, 150, 136),
+        AsyncSpanFill => ResolvedColor::rgb(0x94, 0xe2, 0xd5), // Teal
+        AsyncSpanBorder => ResolvedColor::rgb(0x74, 0xc7, 0xec), // Sapphire
 
-        FrameGood => ResolvedColor::rgb(76, 175, 80),
-        FrameWarning => ResolvedColor::rgb(255, 193, 7),
-        FrameDropped => ResolvedColor::rgb(244, 67, 54),
+        FrameGood => ResolvedColor::rgb(0xa6, 0xe3, 0xa1), // Green
+        FrameWarning => ResolvedColor::rgb(0xf9, 0xe2, 0xaf), // Yellow
+        FrameDropped => ResolvedColor::rgb(0xf3, 0x8b, 0xa8), // Red
 
-        FlowArrow => ResolvedColor::rgba(158, 158, 158, 80),
-        FlowArrowHead => ResolvedColor::rgba(158, 158, 158, 120),
+        FlowArrow => ResolvedColor::rgba(0x6c, 0x70, 0x86, 80), // Overlay0
+        FlowArrowHead => ResolvedColor::rgba(0x6c, 0x70, 0x86, 120),
     }
 }
-
 fn resolve_light(token: ThemeToken) -> ResolvedColor {
     use ThemeToken::*;
     match token {
