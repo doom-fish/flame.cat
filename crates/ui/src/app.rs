@@ -1101,6 +1101,27 @@ impl FlameApp {
                     if search_response.changed() {
                         self.invalidate_commands();
                     }
+                    // Show match count when search is active
+                    if !self.search_query.is_empty() {
+                        let count = self.count_search_matches();
+                        let label = if count == 1 {
+                            "1 match".to_string()
+                        } else {
+                            format!("{count} matches")
+                        };
+                        ui.label(
+                            egui::RichText::new(label)
+                                .small()
+                                .color(if count > 0 {
+                                    crate::theme::resolve(
+                                        flame_cat_protocol::ThemeToken::TextSecondary,
+                                        self.theme_mode,
+                                    )
+                                } else {
+                                    egui::Color32::from_rgb(200, 80, 80)
+                                }),
+                        );
+                    }
                 });
             });
         });
@@ -1476,15 +1497,32 @@ impl FlameApp {
                         ),
                     );
                     let painter = ui.painter();
+                    let sel_fill = crate::theme::resolve(
+                        flame_cat_protocol::ThemeToken::SelectionHighlight,
+                        self.theme_mode,
+                    );
                     painter.rect_filled(
                         sel_rect,
                         egui::CornerRadius::ZERO,
-                        egui::Color32::from_rgba_unmultiplied(100, 140, 255, 30),
+                        egui::Color32::from_rgba_unmultiplied(
+                            sel_fill.r(),
+                            sel_fill.g(),
+                            sel_fill.b(),
+                            30,
+                        ),
                     );
                     painter.rect_stroke(
                         sel_rect,
                         egui::CornerRadius::ZERO,
-                        egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(100, 140, 255, 120)),
+                        egui::Stroke::new(
+                            1.0,
+                            egui::Color32::from_rgba_unmultiplied(
+                                sel_fill.r(),
+                                sel_fill.g(),
+                                sel_fill.b(),
+                                120,
+                            ),
+                        ),
                         egui::StrokeKind::Outside,
                     );
                 }
@@ -1824,7 +1862,14 @@ impl FlameApp {
                                             .current_pos(hover_pos + egui::vec2(12.0, 12.0))
                                             .show(ui.ctx(), |ui| {
                                                 egui::Frame::popup(ui.style()).show(ui, |ui| {
-                                                    ui.label(&name);
+                                                    ui.label(
+                                                        egui::RichText::new(&name).strong(),
+                                                    );
+                                                    let dur = hit_end_us - hit_start_us;
+                                                    ui.label(
+                                                        egui::RichText::new(format_duration(dur))
+                                                            .weak(),
+                                                    );
                                                 });
                                             });
                                         if clicked {
@@ -2352,6 +2397,35 @@ impl FlameApp {
         }
         let shift = ui.input(|i| i.modifiers.shift);
         self.advance_search_result(!shift);
+    }
+
+    /// Count how many spans match the current search query.
+    fn count_search_matches(&self) -> usize {
+        let Some(session) = &self.session else {
+            return 0;
+        };
+        let Some(entry) = session.profiles().first() else {
+            return 0;
+        };
+        let query_lower = self.search_query.to_lowercase();
+        let mut count = 0;
+        for lane in &self.lanes {
+            if !lane.visible {
+                continue;
+            }
+            if let LaneKind::Thread(tid) = &lane.kind {
+                for thread in &entry.profile.threads {
+                    if thread.id == *tid {
+                        count += thread
+                            .spans
+                            .iter()
+                            .filter(|s| s.name.to_lowercase().contains(&query_lower))
+                            .count();
+                    }
+                }
+            }
+        }
+        count
     }
 
     /// Advance to the next (forward=true) or previous (forward=false) search result.
