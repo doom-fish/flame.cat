@@ -87,11 +87,11 @@ function mockWasm(): WasmExports {
       stateCallback?.();
     }),
     setViewType: vi.fn((vt: string) => {
-    setColorMode: vi.fn((mode: string) => {
-      state.color_mode = mode;
+      state.view_type = vt;
       stateCallback?.();
     }),
-      state.view_type = vt;
+    setColorMode: vi.fn((mode: string) => {
+      state.color_mode = mode;
       stateCallback?.();
     }),
     navigateBack: vi.fn(() => {
