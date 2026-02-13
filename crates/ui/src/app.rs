@@ -754,7 +754,8 @@ impl FlameApp {
                     }
                 }
                 self.minimap_density = Some(d);
-                self.minimap_density.as_ref().unwrap()
+                // SAFETY: we just set it to Some above
+                self.minimap_density.as_ref().expect("just assigned")
             }
         };
         let max_d = *density.iter().max().unwrap_or(&1).max(&1);
@@ -2856,11 +2857,14 @@ fn compute_auto_zoom(profile: &VisualProfile) -> Option<(f64, f64)> {
 
     // Sort start times, then sliding window for smallest range covering 80% of spans
     let mut starts: Vec<f64> = thread.spans.iter().map(|s| s.start).collect();
-    starts.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    starts.sort_by(|a, b| a.total_cmp(b));
     let window_size = (starts.len() * 4) / 5; // 80% of spans
     let mut best_range = f64::MAX;
     let mut best_lo = starts[0];
-    let mut best_hi = *starts.last().unwrap();
+    let Some(&last) = starts.last() else {
+        return None;
+    };
+    let mut best_hi = last;
     for i in 0..starts.len() - window_size {
         let range = starts[i + window_size] - starts[i];
         if range < best_range {
@@ -2901,7 +2905,10 @@ async fn pick_file_wasm() -> Result<Vec<u8>, String> {
         let files = input_clone.files();
         if let Some(files) = files {
             if let Some(file) = files.get(0) {
-                let reader = web_sys::FileReader::new().unwrap();
+                let Some(reader) = web_sys::FileReader::new().ok() else {
+                    web_sys::console::error_1(&"Failed to create FileReader".into());
+                    return;
+                };
                 let reader_clone = reader.clone();
                 let tx_inner = tx_clone.clone();
                 let onload = Closure::wrap(Box::new(move || {
