@@ -28,10 +28,10 @@ jobs:
         run: cargo fmt --check
 
       - name: Clippy
-        run: cargo clippy -p flame-cat-core -p flame-cat-protocol -- -D warnings
+        run: cargo clippy -p flame-cat-core -p flame-cat-protocol -p flame-cat-tui -- -D warnings
 
       - name: Test
-        run: cargo test -p flame-cat-core -p flame-cat-protocol
+        run: cargo test -p flame-cat-core -p flame-cat-protocol -p flame-cat-tui
 
       - name: WASM check
         run: cargo check -p flame-cat-ui --target wasm32-unknown-unknown
