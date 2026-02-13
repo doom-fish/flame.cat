@@ -1680,8 +1680,20 @@ impl FlameApp {
                     continue;
                 }
 
+                let self_labeled = matches!(
+                    lane.kind,
+                    LaneKind::Counter(_)
+                        | LaneKind::Markers
+                        | LaneKind::CpuSamples
+                        | LaneKind::FrameTrack
+                        | LaneKind::ObjectTrack
+                );
+                // Reserve header for inline label — applies to Thread and Async lanes
+                let label_reserve =
+                    if self_labeled || lane.height < 18.0 { 0.0 } else { 16.0 };
+
                 let lane_top = y_offset;
-                let total_height = lane.height;
+                let total_height = lane.height + label_reserve;
 
                 // Record lane y-center for flow arrows
                 if let LaneKind::Thread(tid) = &lane.kind {
@@ -1697,10 +1709,10 @@ impl FlameApp {
                     continue;
                 }
 
-                // Lane content (no header — sidebar identifies lanes)
+                // Lane content
                 let content_rect = egui::Rect::from_min_size(
                     egui::pos2(available.left(), lane_top),
-                    egui::vec2(available.width(), lane.height),
+                    egui::vec2(available.width(), total_height),
                 );
 
                 // Set clip for lane content
@@ -1713,12 +1725,12 @@ impl FlameApp {
                 );
                 painter.rect_filled(content_rect, egui::CornerRadius::ZERO, lane_bg);
 
-                // Render commands
+                // Render commands (offset down by label reserve)
                 if let Some(cmds) = self.lane_commands.get(i) {
                     let result = renderer::render_commands(
                         &mut painter,
                         cmds,
-                        egui::pos2(available.left(), lane_top),
+                        egui::pos2(available.left(), lane_top + label_reserve),
                         self.theme_mode,
                         &self.search_query,
                         self.color_mode,
