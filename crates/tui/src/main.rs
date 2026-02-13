@@ -15,21 +15,6 @@ fn main() -> Result<()> {
     let data = std::fs::read(&path)?;
     let profile = flame_cat_core::parsers::parse_auto_visual(&data)?;
 
-    let viewport = flame_cat_protocol::Viewport {
-        x: 0.0,
-        y: 0.0,
-        width: 120.0,
-        height: 40.0,
-        dpr: 1.0,
-    };
-    let commands = flame_cat_core::views::time_order::render_time_order(
-        &profile,
-        &viewport,
-        profile.meta.start_time,
-        profile.meta.end_time,
-        None,
-    );
-
-    renderer::render_tui(&profile, &commands)?;
+    renderer::render_tui(&profile)?;
     Ok(())
 }

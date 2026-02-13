@@ -57,10 +57,16 @@ fn theme_to_color(token: &ThemeToken) -> Color {
         ThemeToken::FrameGood => Color::Green,
         ThemeToken::FrameWarning => Color::Yellow,
         ThemeToken::FrameDropped => Color::Red,
+        ThemeToken::MinimapDensity => Color::Blue,
+        ThemeToken::MinimapHandle => Color::LightBlue,
+        ThemeToken::InlineLabelText => Color::White,
+        ThemeToken::InlineLabelBackground => Color::Black,
+        ThemeToken::FlowArrow => Color::DarkGray,
+        ThemeToken::FlowArrowHead => Color::Gray,
     }
 }
 
-pub fn render_tui(profile: &VisualProfile, _commands: &[RenderCommand]) -> Result<()> {
+pub fn render_tui(profile: &VisualProfile) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -118,10 +124,10 @@ pub fn render_tui(profile: &VisualProfile, _commands: &[RenderCommand]) -> Resul
                 {
                     // Map floating-point coords to terminal cells
                     let col_scale = f64::from(content_area.width) / viewport.width;
-                    let _row_scale = 1.0; // 1 depth level = 1 row
+                    let row_height = 20.0; // Each depth level maps to this many viewport units
 
                     let col = (rect.x * col_scale) as u16;
-                    let row = (rect.y / 20.0) as u16;
+                    let row = (rect.y / row_height) as u16;
                     let width = ((rect.w * col_scale) as u16).max(1);
 
                     if row >= content_area.height || col >= content_area.width {
