@@ -153,6 +153,7 @@ impl FlameApp {
 
         let pending_data: std::sync::Arc<std::sync::Mutex<Option<Vec<u8>>>> =
             std::sync::Arc::new(std::sync::Mutex::new(None));
+        let mut initial_view_type = crate::ViewType::TimeOrder;
 
         // On WASM, check URL hash for auto-load (e.g. #demo)
         #[cfg(target_arch = "wasm32")]
@@ -160,13 +161,28 @@ impl FlameApp {
             let window = web_sys::window();
             if let Some(w) = window {
                 let hash = w.location().hash().unwrap_or_default();
-                if hash == "#demo" || hash == "#react-demo" || hash == "#react-devtools" {
+                if hash.contains("left-heavy") || hash.contains("left_heavy") {
+                    initial_view_type = crate::ViewType::LeftHeavy;
+                } else if hash.contains("icicle") {
+                    initial_view_type = crate::ViewType::Icicle;
+                } else if hash.contains("sandwich") {
+                    initial_view_type = crate::ViewType::Sandwich;
+                } else if hash.contains("ranked") {
+                    initial_view_type = crate::ViewType::Ranked;
+                }
+
+                if hash.starts_with("#demo")
+                    || hash.starts_with("#react-demo")
+                    || hash.starts_with("#react-devtools")
+                {
                     let pd = pending_data.clone();
                     let ctx = cc.egui_ctx.clone();
-                    let asset = match hash.as_str() {
-                        "#react-demo" => "/assets/react-demo.json",
-                        "#react-devtools" => "/assets/react-devtools-demo.json",
-                        _ => "/assets/demo.json",
+                    let asset = if hash.starts_with("#react-demo") {
+                        "/assets/react-demo.json"
+                    } else if hash.starts_with("#react-devtools") {
+                        "/assets/react-devtools-demo.json"
+                    } else {
+                        "/assets/demo.json"
                     };
                     web_sys::console::log_1(&format!("flame.cat: loading {asset}...").into());
                     wasm_bindgen_futures::spawn_local(async move {
@@ -211,7 +227,7 @@ impl FlameApp {
             view_start: 0.0,
             view_end: 1.0,
             theme_mode: ThemeMode::Dark,
-            view_type: crate::ViewType::TimeOrder,
+            view_type: initial_view_type,
             color_mode: crate::renderer::ColorMode::ByName,
             lane_commands: Vec::new(),
             scroll_y: 0.0,

@@ -13,7 +13,7 @@
     <link data-trunk rel="copy-dir" href="assets" />
     <script>
         // Preload demo profile in parallel with WASM download
-        if (location.hash === '#demo') {
+        if (location.hash.startsWith('#demo')) {
             window.__demoData = fetch('/assets/demo.json')
                 .then(r => r.arrayBuffer())
                 .catch(() => null);
