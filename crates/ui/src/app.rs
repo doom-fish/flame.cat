@@ -1109,18 +1109,14 @@ impl FlameApp {
                         } else {
                             format!("{count} matches")
                         };
-                        ui.label(
-                            egui::RichText::new(label)
-                                .small()
-                                .color(if count > 0 {
-                                    crate::theme::resolve(
-                                        flame_cat_protocol::ThemeToken::TextSecondary,
-                                        self.theme_mode,
-                                    )
-                                } else {
-                                    egui::Color32::from_rgb(200, 80, 80)
-                                }),
-                        );
+                        ui.label(egui::RichText::new(label).small().color(if count > 0 {
+                            crate::theme::resolve(
+                                flame_cat_protocol::ThemeToken::TextSecondary,
+                                self.theme_mode,
+                            )
+                        } else {
+                            egui::Color32::from_rgb(200, 80, 80)
+                        }));
                     }
                 });
             });

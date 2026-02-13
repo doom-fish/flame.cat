@@ -37,6 +37,10 @@ export function FlameCatProvider({
   }
   const store = storeRef.current;
 
+  // Stable ref for onError to avoid re-triggering the init effect
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
+
   useEffect(() => {
     let cancelled = false;
 
@@ -83,7 +87,7 @@ export function FlameCatProvider({
         if (cancelled) return;
         const err = e instanceof Error ? e : new Error(String(e));
         store.fail(err.message);
-        onError?.(err);
+        onErrorRef.current?.(err);
       }
     }
 
@@ -91,7 +95,7 @@ export function FlameCatProvider({
     return () => {
       cancelled = true;
     };
-  }, [wasmUrl, store, onError]);
+  }, [wasmUrl, store]);
 
   return (
     <FlameCatContext.Provider value={store}>

@@ -115,8 +115,11 @@ export class FlameCatStore {
     try {
       const json = this.wasm.getState();
       this.snapshot = JSON.parse(json) as StateSnapshot;
-    } catch {
-      // keep last snapshot on parse error
+    } catch (e) {
+      // Keep last snapshot on parse error, but log for debugging
+      if (typeof console !== "undefined") {
+        console.warn("flame-cat: failed to parse WASM state", e);
+      }
     }
     this.notify();
   }
