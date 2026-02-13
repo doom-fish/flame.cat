@@ -456,7 +456,8 @@ impl FlameApp {
         let abs_end = session_start + self.view_end * duration;
 
         self.lane_commands.clear();
-        for lane in &self.lanes {
+        let first_visible = self.lanes.iter().position(|l| l.visible);
+        for (lane_idx, lane) in self.lanes.iter().enumerate() {
             if !lane.visible {
                 self.lane_commands.push(Vec::new());
                 continue;
@@ -465,7 +466,12 @@ impl FlameApp {
                 x: 0.0,
                 y: 0.0,
                 width: canvas_width as f64,
-                height: lane.height as f64,
+                // Ranked view uses a large viewport for the single global table
+                height: if self.view_type == crate::ViewType::Ranked {
+                    2000.0
+                } else {
+                    lane.height as f64
+                },
                 dpr: 1.0,
             };
             let cmds = match &lane.kind {
@@ -504,12 +510,19 @@ impl FlameApp {
                             )
                         }
                     }
-                    crate::ViewType::Ranked => flame_cat_core::views::ranked::render_ranked(
-                        &entry.profile,
-                        &viewport,
-                        flame_cat_core::views::ranked::RankedSort::SelfTime,
-                        false,
-                    ),
+                    crate::ViewType::Ranked => {
+                        // Ranked table is global — only render for the first visible lane
+                        if Some(lane_idx) == first_visible {
+                            flame_cat_core::views::ranked::render_ranked(
+                                &entry.profile,
+                                &viewport,
+                                flame_cat_core::views::ranked::RankedSort::SelfTime,
+                                false,
+                            )
+                        } else {
+                            Vec::new()
+                        }
+                    }
                     crate::ViewType::Icicle => flame_cat_core::views::left_heavy::render_icicle(
                         &entry.profile,
                         &viewport,
@@ -1680,6 +1693,14 @@ impl FlameApp {
                     continue;
                 }
 
+                // Ranked view: single global table in the first visible lane only
+                if self.view_type == crate::ViewType::Ranked {
+                    let first_visible = self.lanes.iter().position(|l| l.visible).unwrap_or(0);
+                    if i != first_visible {
+                        continue;
+                    }
+                }
+
                 let self_labeled = matches!(
                     lane.kind,
                     LaneKind::Counter(_)
@@ -1688,12 +1709,23 @@ impl FlameApp {
                         | LaneKind::FrameTrack
                         | LaneKind::ObjectTrack
                 );
-                // Reserve header for inline label — applies to Thread and Async lanes
-                let label_reserve =
-                    if self_labeled || lane.height < 18.0 { 0.0 } else { 16.0 };
+                // Reserve header for inline label — skip for Ranked view
+                let label_reserve = if self_labeled
+                    || lane.height < 18.0
+                    || self.view_type == crate::ViewType::Ranked
+                {
+                    0.0
+                } else {
+                    16.0
+                };
 
                 let lane_top = y_offset;
-                let total_height = lane.height + label_reserve;
+                // Ranked: use full remaining height
+                let total_height = if self.view_type == crate::ViewType::Ranked {
+                    (available.bottom() - lane_top).max(200.0)
+                } else {
+                    lane.height + label_reserve
+                };
 
                 // Record lane y-center for flow arrows
                 if let LaneKind::Thread(tid) = &lane.kind {
@@ -1882,22 +1914,28 @@ impl FlameApp {
                         | LaneKind::FrameTrack
                         | LaneKind::ObjectTrack
                 );
-                if !self_labeled && total_height >= 18.0 && lane_top + 2.0 >= available.top() {
+                if !self_labeled
+                    && total_height >= 18.0
+                    && lane_top + 2.0 >= available.top()
+                    && self.view_type != crate::ViewType::Ranked
+                {
                     deferred_labels.push((lane.name.clone(), lane_top, total_height));
                 }
 
-                // Lane border
-                let border_color = crate::theme::resolve(
-                    flame_cat_protocol::ThemeToken::LaneBorder,
-                    self.theme_mode,
-                );
-                painter.line_segment(
-                    [
-                        egui::pos2(available.left(), lane_top + total_height),
-                        egui::pos2(available.right(), lane_top + total_height),
-                    ],
-                    egui::Stroke::new(1.0, border_color),
-                );
+                // Lane border (skip in Ranked view)
+                if self.view_type != crate::ViewType::Ranked {
+                    let border_color = crate::theme::resolve(
+                        flame_cat_protocol::ThemeToken::LaneBorder,
+                        self.theme_mode,
+                    );
+                    painter.line_segment(
+                        [
+                            egui::pos2(available.left(), lane_top + total_height),
+                            egui::pos2(available.right(), lane_top + total_height),
+                        ],
+                        egui::Stroke::new(1.0, border_color),
+                    );
+                }
 
                 y_offset += total_height + 1.0;
             }
