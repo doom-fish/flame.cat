@@ -195,7 +195,8 @@ describe("hooks integration", () => {
     const { result } = renderHook(() => useViewType(), {
       wrapper: createWrapper(store),
     });
-    act(() => result.current.setViewType("invalid" as any));
+    // @ts-expect-error testing invalid input
+    act(() => result.current.setViewType("invalid"));
     expect(wasm.setViewType).not.toHaveBeenCalled();
   });
 
