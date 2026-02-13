@@ -404,6 +404,26 @@ describe("hooks integration", () => {
     expect(wasm.resetZoom).toHaveBeenCalled();
   });
 
+  it("useHotkeys handles span/search navigation keys", () => {
+    renderHook(() => useHotkeys(), {
+      wrapper: createWrapper(store),
+    });
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "[" }));
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "]" }));
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "[", shiftKey: true }));
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "]", shiftKey: true }));
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", shiftKey: true }));
+    });
+    expect(wasm.navigateToParent).toHaveBeenCalled();
+    expect(wasm.navigateToChild).toHaveBeenCalled();
+    expect(wasm.navigateToPrevSibling).toHaveBeenCalled();
+    expect(wasm.navigateToNextSibling).toHaveBeenCalled();
+    expect(wasm.nextSearchResult).toHaveBeenCalled();
+    expect(wasm.prevSearchResult).toHaveBeenCalled();
+  });
+
   // ── Error: hook without provider ───────────────────────────────────
 
   it("hooks throw without provider", () => {

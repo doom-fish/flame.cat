@@ -548,6 +548,24 @@ export function useHotkeys(
       } else if (map.clearSelection.includes(e.key)) {
         e.preventDefault();
         store.exec((w) => w.selectSpan(undefined));
+      } else if (e.key === "[" && e.shiftKey) {
+        e.preventDefault();
+        store.exec((w) => w.navigateToPrevSibling());
+      } else if (e.key === "]" && e.shiftKey) {
+        e.preventDefault();
+        store.exec((w) => w.navigateToNextSibling());
+      } else if (e.key === "[") {
+        e.preventDefault();
+        store.exec((w) => w.navigateToParent());
+      } else if (e.key === "]") {
+        e.preventDefault();
+        store.exec((w) => w.navigateToChild());
+      } else if (e.key === "Enter" && e.shiftKey) {
+        e.preventDefault();
+        store.exec((w) => w.prevSearchResult());
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        store.exec((w) => w.nextSearchResult());
       }
     }
 

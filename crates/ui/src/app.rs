@@ -14,6 +14,8 @@ const ANIM_EASE_FACTOR: f64 = 0.25;
 const ANIM_EASE_BOOST: f64 = 1.5;
 /// Animation snaps to target when within this fraction of the viewport span.
 const ANIM_SNAP_EPSILON: f64 = 1e-4;
+/// Minimum allowed viewport span, used to avoid divide-by-zero and jitter.
+const MIN_VIEW_SPAN: f64 = 1e-12;
 /// Maximum ancestor breadcrumbs shown in the detail panel.
 const MAX_BREADCRUMB_DEPTH: usize = 10;
 /// Lane names longer than this are truncated with ellipsis in the sidebar.
@@ -936,7 +938,19 @@ impl FlameApp {
 
     /// Start an animated transition to the given viewport.
     fn animate_to(&mut self, start: f64, end: f64) {
-        self.anim_target = Some((start.max(0.0), end.min(1.0)));
+        let mut lo = start.clamp(0.0, 1.0);
+        let mut hi = end.clamp(0.0, 1.0);
+        if hi < lo {
+            std::mem::swap(&mut lo, &mut hi);
+        }
+        if (hi - lo).abs() < MIN_VIEW_SPAN {
+            self.anim_target = None;
+            self.view_start = lo.min(1.0 - MIN_VIEW_SPAN);
+            self.view_end = (self.view_start + MIN_VIEW_SPAN).min(1.0);
+            self.invalidate_commands();
+            return;
+        }
+        self.anim_target = Some((lo, hi));
     }
 
     /// Advance viewport animation by one frame. Returns true if still animating.
@@ -946,10 +960,10 @@ impl FlameApp {
         };
         // Smooth ease-out: faster approach when far, graceful settle when close
         let t = ANIM_EASE_FACTOR;
-        let progress_start =
-            (target_start - self.view_start).abs() / (target_end - target_start).abs().max(1e-12);
-        let progress_end =
-            (target_end - self.view_end).abs() / (target_end - target_start).abs().max(1e-12);
+        let progress_start = (target_start - self.view_start).abs()
+            / (target_end - target_start).abs().max(MIN_VIEW_SPAN);
+        let progress_end = (target_end - self.view_end).abs()
+            / (target_end - target_start).abs().max(MIN_VIEW_SPAN);
         let max_progress = progress_start.max(progress_end);
         // Ease-out cubic: accelerate when far, decelerate near target
         let ease = if max_progress > 0.5 {
@@ -1148,10 +1162,20 @@ impl FlameApp {
         // Status bar
         egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                if let Some(err) = self.error.clone() {
+                if let Some(err) = self.error.as_deref() {
+                    let err_text = err.to_string();
+                    let err_color = crate::theme::resolve(
+                        flame_cat_protocol::ThemeToken::FrameDropped,
+                        self.theme_mode,
+                    );
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("!").strong().size(12.0).color(egui::Color32::RED));
-                        ui.colored_label(egui::Color32::RED, &err);
+                        ui.label(
+                            egui::RichText::new("!")
+                                .strong()
+                                .size(12.0)
+                                .color(err_color),
+                        );
+                        ui.colored_label(err_color, err_text);
                         if ui.small_button("x").on_hover_text("Dismiss").clicked() {
                             self.error = None;
                         }
@@ -1172,7 +1196,7 @@ impl FlameApp {
                         "Duration: {} | Viewing: {} | Zoom: {:.0}% | {} spans · {} threads · {} lanes",
                         format_duration(duration_us),
                         format_duration(vis_duration_us),
-                        100.0 / view_span,
+                        100.0 / view_span.max(f64::MIN_POSITIVE),
                         span_count,
                         thread_count,
                         self.lanes.iter().filter(|l| l.visible).count(),
@@ -1206,66 +1230,87 @@ impl FlameApp {
                     // Find the span in the session to show timing info
                     if let Some(session) = &self.session {
                         if let Some(entry) = session.profiles().first() {
-                            let lane = &self.lanes[selected_clone.lane_index];
-                            if let LaneKind::Thread(tid) = &lane.kind {
-                                if let Some(thread) =
-                                    entry.profile.threads.iter().find(|t| t.id == *tid)
-                                {
-                                    if let Some(span) = thread
-                                        .spans
-                                        .iter()
-                                        .find(|s| s.id == selected_clone.frame_id)
+                            if let Some(lane) = self.lanes.get(selected_clone.lane_index) {
+                                if let LaneKind::Thread(tid) = &lane.kind {
+                                    if let Some(thread) =
+                                        entry.profile.threads.iter().find(|t| t.id == *tid)
                                     {
-                                        ui.horizontal(|ui| {
-                                            ui.label(
-                                                egui::RichText::new(&selected_clone.name)
-                                                    .strong()
-                                                    .size(13.0),
-                                            );
-                                        });
-                                        ui.horizontal(|ui| {
-                                            let total_dur = entry.profile.duration();
-                                            let pct =
-                                                if total_dur > 0.0 { span.duration() / total_dur * 100.0 } else { 0.0 };
-                                            let self_pct =
-                                                if total_dur > 0.0 { span.self_value / total_dur * 100.0 } else { 0.0 };
-                                            ui.label(format!(
-                                                "Duration: {} ({:.1}%) | Self: {} ({:.1}%) | Depth: {} | Thread: {}",
-                                                format_duration(span.duration()),
-                                                pct,
-                                                format_duration(span.self_value),
-                                                self_pct,
-                                                span.depth,
-                                                lane.name,
-                                            ));
-                                        });
-                                        if let Some(cat) = &span.category {
-                                            ui.label(format!("Category: {}", cat.name));
-                                        }
-                                        // Ancestor breadcrumbs
-                                        if span.parent.is_some() {
+                                        if let Some(span) = thread
+                                            .spans
+                                            .iter()
+                                            .find(|s| s.id == selected_clone.frame_id)
+                                        {
                                             ui.horizontal(|ui| {
                                                 ui.label(
-                                                    egui::RichText::new("> ")
-                                                        .size(11.0)
-                                                        .weak(),
+                                                    egui::RichText::new(&selected_clone.name)
+                                                        .strong()
+                                                        .size(13.0),
                                                 );
-                                                let mut chain: Vec<(u64, String)> = Vec::new();
-                                                let mut cur = span.parent;
-                                                while let Some(pid) = cur {
-                                                    if let Some(p) = thread.spans.iter().find(|s| s.id == pid) {
-                                                        chain.push((p.id, p.name.to_string()));
-                                                        cur = p.parent;
-                                                    } else {
-                                                        break;
+                                            });
+                                            ui.horizontal(|ui| {
+                                                let total_dur = entry.profile.duration();
+                                                let pct = if total_dur > 0.0 {
+                                                    span.duration() / total_dur * 100.0
+                                                } else {
+                                                    0.0
+                                                };
+                                                let self_pct = if total_dur > 0.0 {
+                                                    span.self_value / total_dur * 100.0
+                                                } else {
+                                                    0.0
+                                                };
+                                                ui.label(format!(
+                                                    "Duration: {} ({:.1}%) | Self: {} ({:.1}%) | Depth: {} | Thread: {}",
+                                                    format_duration(span.duration()),
+                                                    pct,
+                                                    format_duration(span.self_value),
+                                                    self_pct,
+                                                    span.depth,
+                                                    lane.name,
+                                                ));
+                                            });
+                                            if let Some(cat) = &span.category {
+                                                ui.label(format!("Category: {}", cat.name));
+                                            }
+                                            // Ancestor breadcrumbs
+                                            if span.parent.is_some() {
+                                                ui.horizontal(|ui| {
+                                                    ui.label(
+                                                        egui::RichText::new("> ")
+                                                            .size(11.0)
+                                                            .weak(),
+                                                    );
+                                                    let mut chain: Vec<(u64, String)> = Vec::new();
+                                                    let mut cur = span.parent;
+                                                    while let Some(pid) = cur {
+                                                        if let Some(p) =
+                                                            thread.spans.iter().find(|s| s.id == pid)
+                                                        {
+                                                            chain.push((p.id, p.name.to_string()));
+                                                            cur = p.parent;
+                                                        } else {
+                                                            break;
+                                                        }
+                                                        if chain.len() > MAX_BREADCRUMB_DEPTH {
+                                                            break;
+                                                        }
                                                     }
-                                                    if chain.len() > MAX_BREADCRUMB_DEPTH {
-                                                        break;
+                                                    chain.reverse();
+                                                    for (idx, (_fid, name)) in chain.iter().enumerate() {
+                                                        if idx > 0 {
+                                                            ui.label(
+                                                                egui::RichText::new(" › ")
+                                                                    .size(10.0)
+                                                                    .weak(),
+                                                            );
+                                                        }
+                                                        ui.label(
+                                                            egui::RichText::new(name)
+                                                                .size(10.0)
+                                                                .weak(),
+                                                        );
                                                     }
-                                                }
-                                                chain.reverse();
-                                                for (idx, (_fid, name)) in chain.iter().enumerate() {
-                                                    if idx > 0 {
+                                                    if !chain.is_empty() {
                                                         ui.label(
                                                             egui::RichText::new(" › ")
                                                                 .size(10.0)
@@ -1273,33 +1318,26 @@ impl FlameApp {
                                                         );
                                                     }
                                                     ui.label(
-                                                        egui::RichText::new(name)
+                                                        egui::RichText::new(&selected_clone.name)
                                                             .size(10.0)
-                                                            .weak(),
+                                                            .strong(),
                                                     );
-                                                }
-                                                if !chain.is_empty() {
-                                                    ui.label(
-                                                        egui::RichText::new(" › ")
-                                                            .size(10.0)
-                                                            .weak(),
-                                                    );
-                                                }
-                                                ui.label(
-                                                    egui::RichText::new(&selected_clone.name)
-                                                        .size(10.0)
-                                                        .strong(),
-                                                );
-                                            });
+                                                });
+                                            }
                                         }
                                     }
+                                } else {
+                                    // Non-thread lanes: just show the name
+                                    ui.label(
+                                        egui::RichText::new(&selected_clone.name)
+                                            .strong()
+                                            .size(13.0),
+                                    );
                                 }
                             } else {
-                                // Non-thread lanes: just show the name
                                 ui.label(
-                                    egui::RichText::new(&selected_clone.name)
-                                        .strong()
-                                        .size(13.0),
+                                    egui::RichText::new("Selected span lane no longer exists")
+                                        .weak(),
                                 );
                             }
                         }
@@ -1324,7 +1362,7 @@ impl FlameApp {
                         for idx in 0..lane_count {
                             let lane = &self.lanes[idx];
                             let mut vis = lane.visible;
-                            let full_name = lane.name.clone();
+                            let full_name = lane.name.as_str();
                             ui.horizontal(|ui| {
                                 if ui.checkbox(&mut vis, "").changed() {
                                     changed = true;
@@ -1333,11 +1371,11 @@ impl FlameApp {
                                     if full_name.chars().count() > SIDEBAR_NAME_MAX_CHARS {
                                         let end = full_name
                                             .char_indices()
-                                            .nth(23)
+                                            .nth(SIDEBAR_NAME_MAX_CHARS - 1)
                                             .map_or(full_name.len(), |(i, _)| i);
                                         format!("{}…", &full_name[..end])
                                     } else {
-                                        full_name.clone()
+                                        full_name.to_string()
                                     };
                                 let resp = ui.label(
                                     egui::RichText::new(&display_name).size(11.0).color(if vis {
@@ -1347,7 +1385,7 @@ impl FlameApp {
                                     }),
                                 );
                                 if display_name.len() < full_name.len() {
-                                    resp.on_hover_text(&full_name);
+                                    resp.on_hover_text(full_name);
                                 }
                             });
                             if vis != lane.visible {
@@ -1385,23 +1423,26 @@ impl FlameApp {
                     ui.vertical_centered(|ui| {
                         ui.add_space(ui.available_height() / 4.0);
                         ui.heading(egui::RichText::new("flame.cat").size(32.0).strong());
-                        ui.add_space(8.0);
-                        ui.heading("flame.cat");
                         ui.add_space(4.0);
                         ui.label("High-performance flame graph visualization");
                         ui.add_space(16.0);
                         ui.label(
-                            egui::RichText::new("Drop a profile here or click Open")
+                            egui::RichText::new("Click Open above or drag & drop a profile")
                                 .size(14.0)
                                 .strong(),
                         );
                         ui.add_space(8.0);
                         ui.label(
                             egui::RichText::new(
-                                "Supports: Chrome DevTools · Firefox · Speedscope · pprof · Tracy · React DevTools · eBPF · V8 CPU",
+                                "Supports: Chrome DevTools · Firefox · Speedscope · pprof",
                             )
                             .size(11.0)
                             .weak(),
+                        );
+                        ui.label(
+                            egui::RichText::new("          Tracy · React DevTools · eBPF · V8 CPU")
+                                .size(11.0)
+                                .weak(),
                         );
                         ui.add_space(16.0);
                         ui.label(
@@ -1429,11 +1470,7 @@ impl FlameApp {
                     flame_cat_protocol::ThemeToken::SearchHighlight,
                     self.theme_mode,
                 );
-                painter.rect_filled(
-                    hint_rect,
-                    egui::CornerRadius::ZERO,
-                    bg.gamma_multiply(0.2),
-                );
+                painter.rect_filled(hint_rect, egui::CornerRadius::ZERO, bg.gamma_multiply(0.2));
                 painter.text(
                     hint_rect.center(),
                     egui::Align2::CENTER_CENTER,
@@ -1459,7 +1496,9 @@ impl FlameApp {
                 egui::Sense::click_and_drag(),
             );
             self.draw_minimap(ui, minimap_rect, &minimap_resp);
-            minimap_resp.on_hover_text("Span density overview — drag to navigate, handles to resize viewport");
+            minimap_resp.on_hover_text(
+                "Span density overview — drag to navigate, handles to resize viewport",
+            );
 
             let available = ui.available_rect_before_wrap();
 
@@ -1484,10 +1523,8 @@ impl FlameApp {
                     self.drag_select_start = None;
                     let delta = response.drag_delta();
                     let view_span = self.view_end - self.view_start;
-                    let dx_frac =
-                        -(delta.x as f64) / (available.width() as f64) * view_span;
-                    let new_start =
-                        (self.view_start + dx_frac).clamp(0.0, 1.0 - view_span);
+                    let dx_frac = -(delta.x as f64) / (available.width() as f64) * view_span;
+                    let new_start = (self.view_start + dx_frac).clamp(0.0, 1.0 - view_span);
                     self.view_start = new_start;
                     self.view_end = new_start + view_span;
                     self.scroll_y -= delta.y;
@@ -1499,8 +1536,7 @@ impl FlameApp {
             // Draw drag-to-zoom selection overlay
             if let Some(start_frac) = self.drag_select_start {
                 if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
-                    let end_frac = ((pos.x - available.left()) as f64
-                        / available.width() as f64)
+                    let end_frac = ((pos.x - available.left()) as f64 / available.width() as f64)
                         .clamp(0.0, 1.0);
                     let left = start_frac.min(end_frac);
                     let right = start_frac.max(end_frac);
@@ -1578,8 +1614,7 @@ impl FlameApp {
                 self.anim_target = None;
                 let zoom_factor = 2.0_f64.powf(-(scroll.y as f64) * 0.01);
                 let mouse_frac = if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
-                    ((pos.x - available.left()) as f64 / available.width() as f64)
-                        .clamp(0.0, 1.0)
+                    ((pos.x - available.left()) as f64 / available.width() as f64).clamp(0.0, 1.0)
                 } else {
                     0.5
                 };
@@ -1596,8 +1631,7 @@ impl FlameApp {
                     // Shift+scroll = horizontal pan (for mouse wheel users)
                     self.anim_target = None;
                     let view_span = self.view_end - self.view_start;
-                    let dx_frac =
-                        -(scroll.y as f64) / (available.width() as f64) * view_span;
+                    let dx_frac = -(scroll.y as f64) / (available.width() as f64) * view_span;
                     let new_start = (self.view_start + dx_frac).clamp(0.0, 1.0 - view_span);
                     self.view_start = new_start;
                     self.view_end = new_start + view_span;
@@ -1612,8 +1646,7 @@ impl FlameApp {
             if !ctrl_held && scroll.x.abs() > 0.1 {
                 self.anim_target = None;
                 let view_span = self.view_end - self.view_start;
-                let dx_frac =
-                    -(scroll.x as f64) / (available.width() as f64) * view_span;
+                let dx_frac = -(scroll.x as f64) / (available.width() as f64) * view_span;
                 let new_start = (self.view_start + dx_frac).clamp(0.0, 1.0 - view_span);
                 self.view_start = new_start;
                 self.view_end = new_start + view_span;
@@ -1622,19 +1655,17 @@ impl FlameApp {
 
             // Also handle pinch zoom gesture
             let zoom_delta = ui.input(|i| i.zoom_delta());
-            if (zoom_delta - 1.0).abs() > 0.001 {
+            if zoom_delta.abs() > 0.001 && (zoom_delta - 1.0).abs() > 0.001 {
                 self.push_zoom(); // Save position before pinch zoom
                 self.anim_target = None;
                 let mouse_frac = if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
-                    ((pos.x - available.left()) as f64 / available.width() as f64)
-                        .clamp(0.0, 1.0)
+                    ((pos.x - available.left()) as f64 / available.width() as f64).clamp(0.0, 1.0)
                 } else {
                     0.5
                 };
                 let view_span = self.view_end - self.view_start;
                 let cursor_time = self.view_start + mouse_frac * view_span;
-                let new_span =
-                    (view_span / zoom_delta as f64).clamp(1e-12, 1.0);
+                let new_span = (view_span / zoom_delta as f64).clamp(MIN_VIEW_SPAN, 1.0);
                 self.view_start = (cursor_time - mouse_frac * new_span).max(0.0);
                 self.view_end = (self.view_start + new_span).min(1.0);
                 self.invalidate_commands();
@@ -1696,7 +1727,9 @@ impl FlameApp {
             self.ensure_commands(available.width());
 
             // Clamp scroll_y to valid range
-            let total_lane_height: f32 = self.lanes.iter()
+            let total_lane_height: f32 = self
+                .lanes
+                .iter()
                 .filter(|l| l.visible)
                 .map(|l| l.height + 1.0) // +1 for lane separator
                 .sum();
@@ -1705,10 +1738,8 @@ impl FlameApp {
 
             // Render lanes
             let mut painter = ui.painter_at(available);
-            let bg = crate::theme::resolve(
-                flame_cat_protocol::ThemeToken::Background,
-                self.theme_mode,
-            );
+            let bg =
+                crate::theme::resolve(flame_cat_protocol::ThemeToken::Background, self.theme_mode);
             painter.rect_filled(available, egui::CornerRadius::ZERO, bg);
 
             // Vertical gridlines at time axis tick positions
@@ -1724,13 +1755,17 @@ impl FlameApp {
                     let grid_color = crate::theme::resolve(
                         flame_cat_protocol::ThemeToken::Border,
                         self.theme_mode,
-                    ).gamma_multiply(0.3);
+                    )
+                    .gamma_multiply(0.3);
                     let mut t = first_tick;
                     while t <= vis_end {
                         let frac = (t - vis_start) / vis_dur;
                         let x = available.left() + frac as f32 * available.width();
                         painter.line_segment(
-                            [egui::pos2(x, available.top()), egui::pos2(x, available.bottom())],
+                            [
+                                egui::pos2(x, available.top()),
+                                egui::pos2(x, available.bottom()),
+                            ],
                             egui::Stroke::new(1.0, grid_color),
                         );
                         t += interval;
@@ -1741,7 +1776,8 @@ impl FlameApp {
             let mut y_offset = available.top() - self.scroll_y;
             let mut deferred_zoom: Option<(f64, f64)> = None;
             // Collect tid → y_center for flow arrow rendering
-            let mut tid_to_y: std::collections::HashMap<u64, f32> = std::collections::HashMap::new();
+            let mut tid_to_y: std::collections::HashMap<u64, f32> =
+                std::collections::HashMap::new();
             // Deferred lane labels — drawn last, on top of everything
             let mut deferred_labels: Vec<(String, f32, f32)> = Vec::new(); // (name, x, y)
 
@@ -1834,13 +1870,17 @@ impl FlameApp {
                                 if hit.rect.contains(hover_pos) {
                                     if let Some(name) = find_span_label(cmds, hit.frame_id) {
                                         // Convert pixel positions to time (µs)
-                                        let span_left_frac = (hit.rect.left() - available.left()) as f64
+                                        let span_left_frac = (hit.rect.left() - available.left())
+                                            as f64
                                             / available.width() as f64;
-                                        let span_right_frac = (hit.rect.right() - available.left()) as f64
+                                        let span_right_frac = (hit.rect.right() - available.left())
+                                            as f64
                                             / available.width() as f64;
                                         let view_span = self.view_end - self.view_start;
-                                        let frac_left = self.view_start + span_left_frac * view_span;
-                                        let frac_right = self.view_start + span_right_frac * view_span;
+                                        let frac_left =
+                                            self.view_start + span_left_frac * view_span;
+                                        let frac_right =
+                                            self.view_start + span_right_frac * view_span;
                                         let (hit_start_us, hit_end_us) =
                                             if let Some(ref s) = self.session {
                                                 let ss = s.start_time();
@@ -1880,9 +1920,7 @@ impl FlameApp {
                                             .current_pos(hover_pos + egui::vec2(12.0, 12.0))
                                             .show(ui.ctx(), |ui| {
                                                 egui::Frame::popup(ui.style()).show(ui, |ui| {
-                                                    ui.label(
-                                                        egui::RichText::new(&name).strong(),
-                                                    );
+                                                    ui.label(egui::RichText::new(&name).strong());
                                                     let dur = hit_end_us - hit_start_us;
                                                     ui.label(
                                                         egui::RichText::new(format_duration(dur))
@@ -1900,11 +1938,16 @@ impl FlameApp {
                                                 end_us: hit_end_us,
                                             });
                                         } else if right_clicked {
-                                            let span_left = (hit.rect.left() - available.left()) as f64 / available.width() as f64;
-                                            let span_right = (hit.rect.right() - available.left()) as f64 / available.width() as f64;
+                                            let span_left = (hit.rect.left() - available.left())
+                                                as f64
+                                                / available.width() as f64;
+                                            let span_right = (hit.rect.right() - available.left())
+                                                as f64
+                                                / available.width() as f64;
                                             let view_span = self.view_end - self.view_start;
                                             let abs_left = self.view_start + span_left * view_span;
-                                            let abs_right = self.view_start + span_right * view_span;
+                                            let abs_right =
+                                                self.view_start + span_right * view_span;
                                             let pad = (abs_right - abs_left) * 0.15;
                                             self.context_menu = Some(ContextMenu {
                                                 span_name: name,
@@ -1949,8 +1992,11 @@ impl FlameApp {
                             if content_rect.contains(hover_pos) {
                                 for hit in &result.hit_regions {
                                     if hit.rect.contains(hover_pos) {
-                                        let span_left = (hit.rect.left() - available.left()) as f64 / available.width() as f64;
-                                        let span_right = (hit.rect.right() - available.left()) as f64 / available.width() as f64;
+                                        let span_left = (hit.rect.left() - available.left()) as f64
+                                            / available.width() as f64;
+                                        let span_right = (hit.rect.right() - available.left())
+                                            as f64
+                                            / available.width() as f64;
                                         let view_span = self.view_end - self.view_start;
                                         let abs_left = self.view_start + span_left * view_span;
                                         let abs_right = self.view_start + span_right * view_span;
@@ -2042,10 +2088,12 @@ impl FlameApp {
                             };
 
                             // Convert timestamps to fractional viewport position
-                            let from_frac =
-                                ((arrow.from_ts - session_start) / session_duration - self.view_start) / view_span;
-                            let to_frac =
-                                ((arrow.to_ts - session_start) / session_duration - self.view_start) / view_span;
+                            let from_frac = ((arrow.from_ts - session_start) / session_duration
+                                - self.view_start)
+                                / view_span;
+                            let to_frac = ((arrow.to_ts - session_start) / session_duration
+                                - self.view_start)
+                                / view_span;
 
                             // Skip if both endpoints are off-screen
                             if (from_frac < -0.1 && to_frac < -0.1)
@@ -2107,11 +2155,8 @@ impl FlameApp {
                     self.theme_mode,
                 );
                 for (name, lane_top, total_height) in &deferred_labels {
-                    let galley = painter.layout_no_wrap(
-                        name.clone(),
-                        label_font.clone(),
-                        label_text_color,
-                    );
+                    let galley =
+                        painter.layout_no_wrap(name.clone(), label_font.clone(), label_text_color);
                     let lw = galley.size().x + 8.0;
                     let lh = galley.size().y + 4.0;
                     let lrect = egui::Rect::from_min_size(
@@ -2124,11 +2169,7 @@ impl FlameApp {
                             egui::CornerRadius::same(3),
                             lane_bg_color,
                         );
-                        painter.rect_filled(
-                            lrect,
-                            egui::CornerRadius::same(3),
-                            label_bg,
-                        );
+                        painter.rect_filled(lrect, egui::CornerRadius::same(3), label_bg);
                         painter.galley(
                             egui::pos2(available.left() + 6.0, lane_top + 4.0),
                             galley,
@@ -2192,19 +2233,43 @@ impl FlameApp {
                         ui.heading("⌨ Keyboard Shortcuts");
                         ui.separator();
                         ui.spacing_mut().item_spacing.y = 4.0;
-                        let shortcuts = [
+                        ui.label(egui::RichText::new("Navigation").strong());
+                        let navigation = [
                             ("A / ←", "Pan left"),
                             ("D / →", "Pan right"),
                             ("W / ↑", "Scroll up"),
                             ("S / ↓", "Scroll down"),
+                            ("Shift+Scroll", "Pan horizontally"),
+                            ("Drag", "Pan + vertical scroll"),
+                        ];
+                        for (key, desc) in navigation {
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new(key).strong().monospace());
+                                ui.label(desc);
+                            });
+                        }
+
+                        ui.add_space(4.0);
+                        ui.label(egui::RichText::new("Zoom").strong());
+                        let zoom = [
                             ("+", "Zoom in"),
                             ("-", "Zoom out"),
                             ("0", "Reset zoom"),
                             ("Ctrl+Scroll", "Zoom at cursor"),
-                            ("Shift+Scroll", "Pan horizontally"),
-                            ("Drag", "Pan + vertical scroll"),
+                            ("Pinch", "Pinch zoom"),
                             ("Alt+Drag", "Drag to zoom selection"),
                             ("Double-click", "Zoom to span"),
+                        ];
+                        for (key, desc) in zoom {
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new(key).strong().monospace());
+                                ui.label(desc);
+                            });
+                        }
+
+                        ui.add_space(4.0);
+                        ui.label(egui::RichText::new("Selection & search").strong());
+                        let selection = [
                             ("Click", "Select span"),
                             ("Right-click", "Context menu"),
                             ("[", "Select parent span"),
@@ -2216,7 +2281,7 @@ impl FlameApp {
                             ("Esc", "Deselect / close help"),
                             ("?", "Toggle this help"),
                         ];
-                        for (key, desc) in shortcuts {
+                        for (key, desc) in selection {
                             ui.horizontal(|ui| {
                                 ui.label(egui::RichText::new(key).strong().monospace());
                                 ui.label(desc);
