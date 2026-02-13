@@ -53,7 +53,7 @@ fn resolve_dark(token: ThemeToken) -> ResolvedColor {
 
         TextPrimary => ResolvedColor::rgb(236, 236, 236),
         TextSecondary => ResolvedColor::rgb(158, 158, 158),
-        TextMuted => ResolvedColor::rgb(130, 130, 130),
+        TextMuted => ResolvedColor::rgb(136, 136, 136),
 
         SelectionHighlight => ResolvedColor::rgba(68, 138, 255, 90), // Perfetto accent
         HoverHighlight => ResolvedColor::rgba(255, 255, 255, 25),

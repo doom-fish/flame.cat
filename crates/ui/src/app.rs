@@ -123,8 +123,8 @@ struct LaneState {
 
 impl FlameApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        // Use dark theme by default
-        cc.egui_ctx.set_visuals(egui::Visuals::dark());
+        // Catapult/Perfetto-inspired dark theme for egui widgets
+        cc.egui_ctx.set_visuals(catapult_dark_visuals());
 
         let pending_data: std::sync::Arc<std::sync::Mutex<Option<Vec<u8>>>> =
             std::sync::Arc::new(std::sync::Mutex::new(None));
@@ -1003,11 +1003,11 @@ impl FlameApp {
                 if ui.button(theme_label).clicked() {
                     self.theme_mode = match self.theme_mode {
                         ThemeMode::Dark => {
-                            ctx.set_visuals(egui::Visuals::light());
+                            ctx.set_visuals(catapult_light_visuals());
                             ThemeMode::Light
                         }
                         ThemeMode::Light => {
-                            ctx.set_visuals(egui::Visuals::dark());
+                            ctx.set_visuals(catapult_dark_visuals());
                             ThemeMode::Dark
                         }
                     };
@@ -2427,10 +2427,10 @@ impl eframe::App for FlameApp {
                     self.theme_mode = mode;
                     match mode {
                         crate::theme::ThemeMode::Dark => {
-                            ctx.set_visuals(egui::Visuals::dark());
+                            ctx.set_visuals(catapult_dark_visuals());
                         }
                         crate::theme::ThemeMode::Light => {
-                            ctx.set_visuals(egui::Visuals::light());
+                            ctx.set_visuals(catapult_light_visuals());
                         }
                     }
                     self.invalidate_commands();
@@ -2743,6 +2743,54 @@ fn format_tick_label(us: f64, interval: f64) -> String {
 /// Returns `Some((lo, hi))` in µs, or `None` if no spans.
 /// Synthesize frame timings from the densest thread's top-level spans.
 /// Used when the profile doesn't have explicit frame timing data.
+/// Catapult/Perfetto-inspired dark visuals for egui widgets.
+fn catapult_dark_visuals() -> egui::Visuals {
+    let mut v = egui::Visuals::dark();
+    // Window/panel backgrounds — pure dark like Perfetto
+    v.panel_fill = egui::Color32::from_rgb(24, 24, 24);
+    v.window_fill = egui::Color32::from_rgb(30, 30, 30);
+    v.extreme_bg_color = egui::Color32::from_rgb(12, 12, 12);
+    v.faint_bg_color = egui::Color32::from_rgb(30, 30, 30);
+    // Widget colors
+    v.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(33, 33, 33);
+    v.widgets.noninteractive.fg_stroke =
+        egui::Stroke::new(1.0, egui::Color32::from_rgb(200, 200, 200));
+    v.widgets.noninteractive.bg_stroke =
+        egui::Stroke::new(1.0, egui::Color32::from_rgb(48, 48, 48));
+    v.widgets.inactive.bg_fill = egui::Color32::from_rgb(40, 40, 40);
+    v.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(180, 180, 180));
+    v.widgets.hovered.bg_fill = egui::Color32::from_rgb(50, 50, 50);
+    v.widgets.hovered.fg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(220, 220, 220));
+    v.widgets.active.bg_fill = egui::Color32::from_rgb(68, 138, 255); // Perfetto accent
+    v.widgets.active.fg_stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
+    // Selection
+    v.selection.bg_fill = egui::Color32::from_rgba_unmultiplied(68, 138, 255, 60);
+    v.selection.stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(68, 138, 255));
+    // Separator/border
+    v
+}
+
+/// Catapult-inspired light visuals for egui widgets.
+fn catapult_light_visuals() -> egui::Visuals {
+    let mut v = egui::Visuals::light();
+    v.panel_fill = egui::Color32::from_rgb(250, 250, 252);
+    v.window_fill = egui::Color32::from_rgb(255, 255, 255);
+    v.extreme_bg_color = egui::Color32::from_rgb(255, 255, 255);
+    v.faint_bg_color = egui::Color32::from_rgb(245, 245, 248);
+    v.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(240, 240, 243);
+    v.widgets.noninteractive.fg_stroke =
+        egui::Stroke::new(1.0, egui::Color32::from_rgb(60, 60, 70));
+    v.widgets.noninteractive.bg_stroke =
+        egui::Stroke::new(1.0, egui::Color32::from_rgb(210, 210, 215));
+    v.widgets.inactive.bg_fill = egui::Color32::from_rgb(230, 230, 235);
+    v.widgets.hovered.bg_fill = egui::Color32::from_rgb(220, 220, 228);
+    v.widgets.active.bg_fill = egui::Color32::from_rgb(50, 110, 220);
+    v.widgets.active.fg_stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
+    v.selection.bg_fill = egui::Color32::from_rgba_unmultiplied(50, 110, 220, 50);
+    v.selection.stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(50, 110, 220));
+    v
+}
+
 fn synthesize_frame_timings(
     profile: &flame_cat_protocol::VisualProfile,
 ) -> Vec<flame_cat_protocol::FrameTiming> {
