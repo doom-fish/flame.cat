@@ -62,6 +62,7 @@ function Toolbar() {
   const { canGoBack, canGoForward, back, forward } = useNavigation();
   const { resetZoom } = useViewport();
   const { exportJSON, exportSVG } = useExport();
+  const profile = useProfile();
   const searchRef = useRef<HTMLInputElement>(null);
 
   useHotkeys({}, searchRef);
@@ -132,7 +133,7 @@ function Toolbar() {
       {/* Navigation */}
       <button onClick={back} disabled={!canGoBack} title="Back" style={navBtn(mode)}>←</button>
       <button onClick={forward} disabled={!canGoForward} title="Forward" style={navBtn(mode)}>→</button>
-      <button onClick={resetZoom} title="Reset zoom (0/Home)" style={navBtn(mode)}>⊞</button>
+      <button onClick={resetZoom} disabled={!profile} title="Reset zoom (0/Home)" style={navBtn(mode)}>⊞</button>
 
       <div style={{ flex: 1 }} />
 
@@ -142,6 +143,7 @@ function Toolbar() {
         placeholder="🔍 Search… (/, Enter/Shift+Enter)"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
+        disabled={!profile}
         style={{
           padding: "3px 8px", borderRadius: 4, border: "1px solid",
           borderColor: mode === "dark" ? "#444" : "#ccc",
@@ -150,9 +152,9 @@ function Toolbar() {
         }}
       />
 
-      <button onClick={handleExportJSON} title="Export JSON" style={navBtn(mode)}>💾 JSON</button>
-      <button onClick={handleExportSVG} title="Export SVG" style={navBtn(mode)}>🖼 SVG</button>
-      <button onClick={toggleColor} title="Toggle color mode" style={navBtn(mode)}>
+      <button onClick={handleExportJSON} disabled={!profile} title="Export JSON" style={navBtn(mode)}>💾 JSON</button>
+      <button onClick={handleExportSVG} disabled={!profile} title="Export SVG" style={navBtn(mode)}>🖼 SVG</button>
+      <button onClick={toggleColor} disabled={!profile} title="Toggle color mode" style={navBtn(mode)}>
         {colorMode === "by_name" ? "🎨 Color" : "🔢 Value"}
       </button>
       <button onClick={toggle} title="Toggle theme (t)" style={navBtn(mode)}>
@@ -261,9 +263,15 @@ function HoverTooltip() {
 
 function DetailPanel() {
   const { selected, clear } = useSelectedSpan();
+  const profile = useProfile();
   const { mode } = useTheme();
 
   if (!selected) return null;
+
+  const dur = selected.end_us - selected.start_us;
+  const pct = profile && profile.duration_us > 0
+    ? ((dur / profile.duration_us) * 100).toFixed(2)
+    : null;
 
   return (
     <div style={{
@@ -276,10 +284,15 @@ function DetailPanel() {
       fontSize: 13,
     }}>
       <strong>{selected.name}</strong>
-      <span style={{ opacity: 0.6 }}>Lane {selected.lane_index}</span>
+      <span style={{ opacity: 0.7 }}>
+        {formatDuration(dur)}
+        {pct != null && <span> · {pct}%</span>}
+      </span>
+      <span style={{ opacity: 0.5 }}>Lane {selected.lane_index}</span>
       <div style={{ flex: 1 }} />
       <button
         onClick={clear}
+        title="Close (Esc)"
         style={{
           border: "none", background: "none", cursor: "pointer",
           color: "inherit", fontSize: 16, opacity: 0.6,

@@ -97,6 +97,8 @@ pub struct FlameApp {
     state_gen: u64,
     /// Last generation that was emitted as a snapshot.
     last_emitted_gen: u64,
+    /// Pending initial view type from URL hash (applied once after first profile load).
+    pending_initial_view_type: Option<crate::ViewType>,
 }
 
 #[derive(Clone)]
@@ -247,6 +249,11 @@ impl FlameApp {
             zoom_history_pos: 0,
             state_gen: 0,
             last_emitted_gen: u64::MAX, // Force first emit
+            pending_initial_view_type: if initial_view_type != crate::ViewType::TimeOrder {
+                Some(initial_view_type)
+            } else {
+                None
+            },
         }
     }
 
@@ -1408,7 +1415,6 @@ impl FlameApp {
                         for idx in 0..lane_count {
                             let lane_visible = self.lanes[idx].visible;
                             let mut vis = lane_visible;
-                            let mut height = self.lanes[idx].height;
                             let full_name = self.lanes[idx].name.clone();
                             ui.horizontal(|ui| {
                                 if ui.checkbox(&mut vis, "").changed() {
@@ -1436,49 +1442,9 @@ impl FlameApp {
                                 if display_name.len() < full_name.len() {
                                     resp.on_hover_text(&full_name);
                                 }
-                                ui.add_space(4.0);
-                                if ui
-                                    .add_enabled(idx > 0, egui::Button::new("↑").small())
-                                    .on_hover_text("Move lane up")
-                                    .clicked()
-                                {
-                                    self.lanes.swap(idx - 1, idx);
-                                    self.lane_commands.swap(idx - 1, idx);
-                                    changed = true;
-                                }
-                                if ui
-                                    .add_enabled(
-                                        idx + 1 < lane_count,
-                                        egui::Button::new("↓").small(),
-                                    )
-                                    .on_hover_text("Move lane down")
-                                    .clicked()
-                                {
-                                    self.lanes.swap(idx, idx + 1);
-                                    self.lane_commands.swap(idx, idx + 1);
-                                    changed = true;
-                                }
-                            });
-                            ui.horizontal(|ui| {
-                                ui.add_space(22.0);
-                                ui.label(egui::RichText::new("Height").size(FONT_TINY).weak());
-                                if ui
-                                    .add(
-                                        egui::Slider::new(&mut height, 16.0..=600.0)
-                                            .clamping(egui::SliderClamping::Always)
-                                            .show_value(true),
-                                    )
-                                    .changed()
-                                {
-                                    self.lanes[idx].height = height;
-                                    changed = true;
-                                }
                             });
                             if vis != lane_visible {
                                 self.lanes[idx].visible = vis;
-                            }
-                            if idx + 1 < lane_count {
-                                ui.add_space(4.0);
                             }
                         }
                         if changed {
@@ -2734,6 +2700,11 @@ impl eframe::App for FlameApp {
         if let Some(data) = pending {
             self.load_profile(&data);
             self.loading = false;
+            // Apply hash-based view type preset after first profile load
+            if let Some(vt) = self.pending_initial_view_type.take() {
+                self.view_type = vt;
+                self.invalidate_commands();
+            }
         }
 
         // Process commands from JS API
