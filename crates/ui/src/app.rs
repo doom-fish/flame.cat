@@ -790,12 +790,13 @@ impl FlameApp {
                     }
                     let c0 = (rel_start.max(0.0) as usize).min(cols);
                     let c1 = (rel_end.ceil() as usize).min(cols);
-                    for c in c0..c1 {
-                        d[c] += 1;
+                    for item in d.iter_mut().take(c1).skip(c0) {
+                        *item += 1;
                     }
                 }
                 self.minimap_density = Some(d);
-                // SAFETY: we just set it to Some above
+                // We just assigned Some above, so unwrap is safe
+                #[allow(clippy::expect_used)]
                 self.minimap_density.as_ref().expect("just assigned")
             }
         };
@@ -1246,7 +1247,7 @@ impl FlameApp {
                         self.lanes.iter().filter(|l| l.visible).count(),
                     ));
                 } else {
-                    ui.label("[Open] No profile loaded - click Open or drag & drop a file");
+                    ui.label("No profile loaded — click Open or drag & drop a file");
                 }
             });
         });
@@ -1744,7 +1745,7 @@ impl FlameApp {
             }
 
             // Also handle pinch zoom gesture
-            let zoom_delta = ui.input(|i| i.zoom_delta());
+            let zoom_delta = ui.input(egui::InputState::zoom_delta);
             if zoom_delta.abs() > 0.001 && (zoom_delta - 1.0).abs() > 0.001 {
                 self.push_zoom(); // Save position before pinch zoom
                 self.anim_target = None;
@@ -1958,6 +1959,7 @@ impl FlameApp {
                             let right_clicked = response.secondary_clicked();
                             for hit in &result.hit_regions {
                                 if hit.rect.contains(hover_pos) {
+                                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                     if let Some(name) = find_span_label(cmds, hit.frame_id) {
                                         // Convert pixel positions to time (µs)
                                         let span_left_frac = (hit.rect.left() - available.left())
@@ -2503,11 +2505,9 @@ impl FlameApp {
                         self.search_query = menu.span_name.clone();
                         self.context_menu = None;
                     }
-                    if has_parent {
-                        if ui.button("⬆ Go to Parent").clicked() {
-                            self.navigate_to_parent(menu.frame_id, menu.lane_index);
-                            self.context_menu = None;
-                        }
+                    if has_parent && ui.button("⬆ Go to Parent").clicked() {
+                        self.navigate_to_parent(menu.frame_id, menu.lane_index);
+                        self.context_menu = None;
                     }
                 });
             });
@@ -2725,7 +2725,10 @@ impl eframe::App for FlameApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Check for async-loaded profile data
         let pending = {
-            let mut lock = self.pending_data.lock().unwrap_or_else(|e| e.into_inner());
+            let mut lock = self
+                .pending_data
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             lock.take()
         };
         if let Some(data) = pending {
@@ -2773,7 +2776,7 @@ impl eframe::App for FlameApp {
                 }
                 crate::AppCommand::SetLaneHeight(index, height) => {
                     if let Some(lane) = self.lanes.get_mut(index) {
-                        lane.height = height.max(16.0).min(600.0);
+                        lane.height = height.clamp(16.0, 600.0);
                         self.invalidate_commands();
                     }
                 }
@@ -3173,9 +3176,7 @@ fn synthesize_frame_timings(
 
     // Each gap between consecutive top-level spans is a "frame"
     let mut timings = Vec::with_capacity(tops.len());
-    for i in 0..tops.len() {
-        let start = tops[i].0;
-        let end = tops[i].1;
+    for &(start, end) in &tops {
         let duration = end - start;
         if duration <= 0.0 {
             continue;
@@ -3218,13 +3219,11 @@ fn compute_auto_zoom(profile: &VisualProfile) -> Option<(f64, f64)> {
 
     // Sort start times, then sliding window for smallest range covering 80% of spans
     let mut starts: Vec<f64> = thread.spans.iter().map(|s| s.start).collect();
-    starts.sort_by(|a, b| a.total_cmp(b));
+    starts.sort_by(f64::total_cmp);
     let window_size = (starts.len() * 4) / 5; // 80% of spans
     let mut best_range = f64::MAX;
     let mut best_lo = starts[0];
-    let Some(&last) = starts.last() else {
-        return None;
-    };
+    let &last = starts.last()?;
     let mut best_hi = last;
     for i in 0..starts.len() - window_size {
         let range = starts[i + window_size] - starts[i];

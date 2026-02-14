@@ -5,20 +5,15 @@ mod theme;
 pub use app::FlameApp;
 
 /// Active visualization mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ViewType {
+    #[default]
     TimeOrder,
     LeftHeavy,
     Sandwich,
     Ranked,
     Icicle,
-}
-
-impl Default for ViewType {
-    fn default() -> Self {
-        Self::TimeOrder
-    }
 }
 
 /// Commands that can be sent from JS to the egui app.
@@ -223,10 +218,13 @@ pub fn start_on_canvas(canvas_id: &str) -> Result<(), JsValue> {
     let web_options = eframe::WebOptions::default();
     let id = canvas_id.to_string();
     wasm_bindgen_futures::spawn_local(async move {
+        // These expects are safe: WASM always runs in a browser with a document and window.
+        #[allow(clippy::expect_used)]
         let document = web_sys::window()
             .expect("no window")
             .document()
             .expect("no document");
+        #[allow(clippy::panic, clippy::expect_used)]
         let canvas = document
             .get_element_by_id(&id)
             .unwrap_or_else(|| panic!("no canvas element with id '{id}'"))
