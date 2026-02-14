@@ -1246,7 +1246,7 @@ impl FlameApp {
                         self.lanes.iter().filter(|l| l.visible).count(),
                     ));
                 } else {
-                    ui.label("No profile loaded — click Open or drag & drop a file");
+                    ui.label("[Open] No profile loaded - click Open or drag & drop a file");
                 }
             });
         });
@@ -1270,6 +1270,7 @@ impl FlameApp {
                         });
                     });
                     ui.separator();
+                    ui.add_space(2.0);
 
                     // Find the span in the session to show timing info
                     if let Some(session) = &self.session {
@@ -1545,9 +1546,8 @@ impl FlameApp {
                 egui::Sense::click_and_drag(),
             );
             self.draw_minimap(ui, minimap_rect, &minimap_resp);
-            minimap_resp.on_hover_text(
-                "Span density overview — drag to navigate, handles to resize viewport",
-            );
+            minimap_resp
+                .on_hover_text("Drag viewport edges to zoom, or drag the middle to pan the view");
 
             let available = ui.available_rect_before_wrap();
 
@@ -2307,7 +2307,7 @@ impl FlameApp {
                             });
                         }
 
-                        ui.add_space(4.0);
+                        ui.add_space(8.0);
                         ui.label(egui::RichText::new("Zoom").size(FONT_BODY).strong());
                         let zoom = [
                             ("+", "Zoom in"),
@@ -2330,7 +2330,7 @@ impl FlameApp {
                             });
                         }
 
-                        ui.add_space(4.0);
+                        ui.add_space(8.0);
                         ui.label(
                             egui::RichText::new("Selection & search")
                                 .size(FONT_BODY)
