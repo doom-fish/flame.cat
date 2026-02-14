@@ -33,7 +33,10 @@ pub fn render_ranked(
     ascending: bool,
 ) -> Vec<RenderCommand> {
     let entries = aggregate_spans(profile, sort, ascending);
-    let total_duration = profile.duration().max(1.0);
+    let total_duration = profile.duration();
+    if total_duration <= 0.0 {
+        return Vec::new();
+    }
 
     let mut commands = Vec::with_capacity(entries.len() * 6 + 4);
     commands.push(RenderCommand::BeginGroup {

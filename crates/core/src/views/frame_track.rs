@@ -36,7 +36,8 @@ pub fn render_frame_track(
         .fold(0.0_f64, f64::max)
         .max(FRAME_BUDGET_60FPS); // ensure budget line is always visible
 
-    let y_scale = (height - FONT_SIZE - 2.0) / max_dur;
+    let chart_height = (height - FONT_SIZE - 2.0).max(1.0);
+    let y_scale = chart_height / max_dur;
 
     let mut commands = Vec::with_capacity(frames.len() + 6);
 

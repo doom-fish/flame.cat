@@ -22,6 +22,9 @@ pub fn render_minimap(
 
     let start = profile.meta.start_time;
     let cols = (viewport.width / CELL_WIDTH).ceil() as usize;
+    if cols == 0 {
+        return Vec::new();
+    }
     let max_rows = (viewport.height / ROW_HEIGHT).floor() as usize;
 
     let mut commands = Vec::with_capacity(cols * max_rows / 2 + 10);

@@ -51,6 +51,9 @@ pub fn render_counter_track(
     };
 
     let y_range = max_val - min_val;
+    if !y_range.is_finite() || y_range <= 0.0 {
+        return Vec::new();
+    }
     let y_scale = (height - FONT_SIZE - LABEL_PADDING) / y_range;
 
     let mut commands = Vec::with_capacity(counter.samples.len() + 6);
