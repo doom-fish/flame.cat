@@ -68,7 +68,12 @@ function Toolbar() {
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) loadProfile(await file.arrayBuffer());
+    if (!file) return;
+    try {
+      loadProfile(await file.arrayBuffer());
+    } catch (err) {
+      console.error("Failed to load file:", err);
+    }
   };
 
   const handleExportJSON = () => {
@@ -220,21 +225,34 @@ function Sidebar() {
 
 function HoverTooltip() {
   const hovered = useHoveredSpan();
+  const profile = useProfile();
   const { mode } = useTheme();
 
   if (!hovered) return null;
 
+  const dur = hovered.end_us - hovered.start_us;
+  const pct = profile && profile.duration_us > 0
+    ? ((dur / profile.duration_us) * 100).toFixed(2)
+    : null;
+
   return (
     <div style={{
-      position: "absolute", top: 8, right: 8,
-      padding: "6px 10px", borderRadius: 6, fontSize: 12,
-      background: mode === "dark" ? "rgba(30,30,60,0.9)" : "rgba(255,255,255,0.95)",
+      position: "absolute", top: 44, right: 8,
+      padding: "8px 12px", borderRadius: 6, fontSize: 12,
+      background: mode === "dark" ? "rgba(30,30,60,0.95)" : "rgba(255,255,255,0.98)",
       color: mode === "dark" ? "#e0e0e0" : "#333",
-      boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+      boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
       pointerEvents: "none",
-      maxWidth: 300,
+      maxWidth: 320, zIndex: 10,
     }}>
-      <div style={{ fontWeight: 600 }}>{hovered.name}</div>
+      <div style={{ fontWeight: 700 }}>{hovered.name}</div>
+      <div style={{ opacity: 0.7, fontSize: 11, marginTop: 2 }}>
+        {formatDuration(dur)}
+        {pct != null && <span> · {pct}% of trace</span>}
+      </div>
+      <div style={{ opacity: 0.5, fontSize: 10, marginTop: 2 }}>
+        Lane {hovered.lane_index} · Click to select
+      </div>
     </div>
   );
 }
