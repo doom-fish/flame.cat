@@ -424,6 +424,24 @@ describe("hooks integration", () => {
     expect(wasm.prevSearchResult).toHaveBeenCalled();
   });
 
+  it("useHotkeys allows Enter search navigation from focused input", () => {
+    renderHook(() => useHotkeys(), {
+      wrapper: createWrapper(store),
+    });
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    input.focus();
+    act(() => {
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      input.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", shiftKey: true, bubbles: true }),
+      );
+    });
+    expect(wasm.nextSearchResult).toHaveBeenCalled();
+    expect(wasm.prevSearchResult).toHaveBeenCalled();
+    input.remove();
+  });
+
   // ── Error: hook without provider ───────────────────────────────────
 
   it("hooks throw without provider", () => {

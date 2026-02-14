@@ -1670,7 +1670,7 @@ impl FlameApp {
 
                 let view_span = self.view_end - self.view_start;
                 let cursor_time = self.view_start + mouse_frac * view_span;
-                let new_span = (view_span * zoom_factor).clamp(1e-12, 1.0);
+                let new_span = (view_span * zoom_factor).clamp(MIN_VIEW_SPAN, 1.0);
 
                 self.view_start = (cursor_time - mouse_frac * new_span).max(0.0);
                 self.view_end = (self.view_start + new_span).min(1.0);
@@ -1743,7 +1743,7 @@ impl FlameApp {
                 // +/= key = zoom in, - key = zoom out, 0 = reset
                 if i.key_pressed(egui::Key::Plus) || i.key_pressed(egui::Key::Equals) {
                     let center = (self.view_start + self.view_end) / 2.0;
-                    let new_span = (view_span * 0.5).clamp(1e-12, 1.0);
+                    let new_span = (view_span * 0.5).clamp(MIN_VIEW_SPAN, 1.0);
                     self.animate_to(
                         (center - new_span / 2.0).max(0.0),
                         (center + new_span / 2.0).min(1.0),
@@ -1751,7 +1751,7 @@ impl FlameApp {
                 }
                 if i.key_pressed(egui::Key::Minus) {
                     let center = (self.view_start + self.view_end) / 2.0;
-                    let new_span = (view_span * 2.0).clamp(1e-12, 1.0);
+                    let new_span = (view_span * 2.0).clamp(MIN_VIEW_SPAN, 1.0);
                     self.animate_to(
                         (center - new_span / 2.0).max(0.0),
                         (center + new_span / 2.0).min(1.0),

@@ -531,8 +531,8 @@ export function useHotkeys(
       // Don't intercept when typing in an input/textarea
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
-        // Only handle Escape inside inputs
-        if (e.key !== "Escape") return;
+        // Keep text entry natural, but allow Escape and Enter-based search navigation.
+        if (e.key !== "Escape" && e.key !== "Enter") return;
       }
 
       if (map.resetZoom.includes(e.key)) {

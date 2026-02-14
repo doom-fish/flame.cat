@@ -127,14 +127,14 @@ function Toolbar() {
       {/* Navigation */}
       <button onClick={back} disabled={!canGoBack} title="Back" style={navBtn(mode)}>←</button>
       <button onClick={forward} disabled={!canGoForward} title="Forward" style={navBtn(mode)}>→</button>
-      <button onClick={resetZoom} title="Reset zoom (0)" style={navBtn(mode)}>⊞</button>
+      <button onClick={resetZoom} title="Reset zoom (0/Home)" style={navBtn(mode)}>⊞</button>
 
       <div style={{ flex: 1 }} />
 
       {/* Search */}
       <input
         ref={searchRef}
-        placeholder="🔍 Search… (press /)"
+        placeholder="🔍 Search… (/, Enter/Shift+Enter)"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         style={{
@@ -145,13 +145,13 @@ function Toolbar() {
         }}
       />
 
-      <button onClick={handleExportJSON} title="Export JSON" style={navBtn(mode)}>💾</button>
-      <button onClick={handleExportSVG} title="Export SVG" style={navBtn(mode)}>🖼</button>
+      <button onClick={handleExportJSON} title="Export JSON" style={navBtn(mode)}>💾 JSON</button>
+      <button onClick={handleExportSVG} title="Export SVG" style={navBtn(mode)}>🖼 SVG</button>
       <button onClick={toggleColor} title="Toggle color mode" style={navBtn(mode)}>
-        {colorMode === "by_name" ? "🎨" : "🔢"}
+        {colorMode === "by_name" ? "🎨 Color" : "🔢 Value"}
       </button>
       <button onClick={toggle} title="Toggle theme (t)" style={navBtn(mode)}>
-        {mode === "dark" ? "☀️" : "🌙"}
+        {mode === "dark" ? "☀️ Light" : "🌙 Dark"}
       </button>
     </div>
   );
