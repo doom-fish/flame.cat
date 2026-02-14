@@ -15,7 +15,7 @@ pub fn render_svg(commands: &[RenderCommand], width: f64, height: f64, dark: boo
         r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="{width}" height="{height}" style="font-family:system-ui,-apple-system,sans-serif;font-size:11px">"#,
     ));
 
-    let bg = if dark { "#1a1a2e" } else { "#ffffff" };
+    let bg = resolve_color(ThemeToken::Background, dark);
     svg.push_str(&format!(
         r#"<rect width="{width}" height="{height}" fill="{bg}"/>"#,
     ));
@@ -39,7 +39,7 @@ pub fn render_svg(commands: &[RenderCommand], width: f64, height: f64, dark: boo
                 if let Some(label) = label
                     && rect.w > 30.0
                 {
-                    let text_color = if dark { "#e0e0e0" } else { "#1a1a2e" };
+                    let text_color = resolve_color(ThemeToken::TextPrimary, dark);
                     let tx = rect.x + 3.0;
                     let ty = rect.y + rect.h * 0.75;
                     let max_chars = (rect.w / 7.0) as usize;
@@ -122,81 +122,101 @@ pub fn render_svg(commands: &[RenderCommand], width: f64, height: f64, dark: boo
     svg
 }
 
+/// Map ThemeToken to hex color string, matching crates/ui/src/theme.rs exactly.
 fn resolve_color(token: ThemeToken, dark: bool) -> &'static str {
     if dark {
-        // Catppuccin Mocha palette
+        // Catppuccin Mocha palette — must match theme.rs resolve_dark()
         match token {
             ThemeToken::FlameHot => "#f38ba8",
             ThemeToken::FlameWarm => "#fab387",
             ThemeToken::FlameCold => "#89b4fa",
             ThemeToken::FlameNeutral => "#cba6f7",
-            ThemeToken::Border | ThemeToken::TableBorder | ThemeToken::AsyncSpanBorder => "#313244",
-            ThemeToken::LaneBorder => "#45475a",
-            ThemeToken::TextPrimary | ThemeToken::ToolbarText | ThemeToken::InlineLabelText => {
-                "#cdd6f4"
-            }
-            ThemeToken::TextSecondary | ThemeToken::TextMuted | ThemeToken::CounterText => {
-                "#bac2de"
-            }
-            ThemeToken::LaneBackground | ThemeToken::Background => "#1e1e2e",
-            ThemeToken::Surface | ThemeToken::ToolbarBackground => "#181825",
-            ThemeToken::LaneHeaderBackground | ThemeToken::TableHeaderBackground => "#313244",
-            ThemeToken::LaneHeaderText => "#a6adc8",
-            ThemeToken::SelectionHighlight | ThemeToken::HoverHighlight => "#89b4fa",
+            ThemeToken::LaneBackground => "#1e1e2e",
+            ThemeToken::LaneBorder => "#313244",
+            ThemeToken::LaneHeaderBackground => "#181825",
+            ThemeToken::LaneHeaderText => "#cdd6f4",
+            ThemeToken::TextPrimary => "#cdd6f4",
+            ThemeToken::TextSecondary => "#bac2de",
+            ThemeToken::TextMuted => "#a6adc8",
+            ThemeToken::SelectionHighlight => "#89b4fa",
+            ThemeToken::HoverHighlight => "#cdd6f4",
+            ThemeToken::Background => "#11111b",
+            ThemeToken::Surface => "#181825",
+            ThemeToken::Border => "#313244",
+            ThemeToken::ToolbarBackground => "#181825",
+            ThemeToken::ToolbarText => "#cdd6f4",
+            ThemeToken::ToolbarTabActive => "#89b4fa",
+            ThemeToken::ToolbarTabHover => "#cdd6f4",
+            ThemeToken::MinimapBackground => "#11111b",
+            ThemeToken::MinimapViewport => "#89b4fa",
+            ThemeToken::MinimapDensity => "#b4befe",
+            ThemeToken::MinimapHandle => "#b4befe",
+            ThemeToken::InlineLabelText => "#cdd6f4",
+            ThemeToken::InlineLabelBackground => "#1e1e2e",
+            ThemeToken::TableRowEven => "#1e1e2e",
+            ThemeToken::TableRowOdd => "#181825",
+            ThemeToken::TableHeaderBackground => "#313244",
+            ThemeToken::TableBorder => "#45475a",
+            ThemeToken::BarFill => "#89b4fa",
             ThemeToken::SearchHighlight => "#f9e2af",
-            ThemeToken::BarFill | ThemeToken::CounterFill | ThemeToken::AsyncSpanFill => "#89b4fa",
+            ThemeToken::CounterFill => "#74c7ec",
             ThemeToken::CounterLine => "#74c7ec",
-            ThemeToken::MarkerLine | ThemeToken::MarkerText => "#f9e2af",
+            ThemeToken::CounterText => "#bac2de",
+            ThemeToken::MarkerLine => "#f9e2af",
+            ThemeToken::MarkerText => "#f9e2af",
+            ThemeToken::AsyncSpanFill => "#94e2d5",
+            ThemeToken::AsyncSpanBorder => "#74c7ec",
             ThemeToken::FrameGood => "#a6e3a1",
             ThemeToken::FrameWarning => "#f9e2af",
             ThemeToken::FrameDropped => "#f38ba8",
-            ThemeToken::TableRowEven => "#1e1e2e",
-            ThemeToken::TableRowOdd => "#181825",
-            ThemeToken::ToolbarTabActive => "#45475a",
-            ThemeToken::ToolbarTabHover => "#313244",
-            ThemeToken::MinimapBackground => "#11111b",
-            ThemeToken::MinimapViewport => "#585b70",
-            ThemeToken::MinimapDensity => "#89b4fa",
-            ThemeToken::MinimapHandle => "#a6adc8",
-            ThemeToken::InlineLabelBackground => "#313244",
-            ThemeToken::FlowArrow | ThemeToken::FlowArrowHead => "#585b70",
+            ThemeToken::FlowArrow | ThemeToken::FlowArrowHead => "#6c7086",
         }
     } else {
+        // Light palette — must match theme.rs resolve_light()
         match token {
-            ThemeToken::FlameHot => "#e63946",
-            ThemeToken::FlameWarm => "#f4845f",
-            ThemeToken::FlameCold => "#457b9d",
-            ThemeToken::FlameNeutral => "#adb5bd",
-            ThemeToken::Border | ThemeToken::TableBorder | ThemeToken::AsyncSpanBorder => "#dee2e6",
-            ThemeToken::LaneBorder => "#ced4da",
-            ThemeToken::TextPrimary | ThemeToken::ToolbarText | ThemeToken::InlineLabelText => {
-                "#1a1a2e"
-            }
-            ThemeToken::TextSecondary | ThemeToken::TextMuted | ThemeToken::CounterText => {
-                "#666677"
-            }
-            ThemeToken::LaneBackground | ThemeToken::Background => "#f8f9fa",
-            ThemeToken::Surface | ThemeToken::ToolbarBackground => "#e9ecef",
-            ThemeToken::LaneHeaderBackground | ThemeToken::TableHeaderBackground => "#dee2e6",
-            ThemeToken::LaneHeaderText => "#495057",
-            ThemeToken::SelectionHighlight | ThemeToken::HoverHighlight => "#ffd60a",
-            ThemeToken::SearchHighlight => "#00b87a",
-            ThemeToken::BarFill | ThemeToken::CounterFill | ThemeToken::AsyncSpanFill => "#457b9d",
-            ThemeToken::CounterLine => "#1d3557",
-            ThemeToken::MarkerLine | ThemeToken::MarkerText => "#e67e22",
-            ThemeToken::FrameGood => "#27ae60",
-            ThemeToken::FrameWarning => "#f39c12",
-            ThemeToken::FrameDropped => "#e63946",
-            ThemeToken::TableRowEven => "#f8f9fa",
-            ThemeToken::TableRowOdd => "#e9ecef",
-            ThemeToken::ToolbarTabActive => "#dee2e6",
-            ThemeToken::ToolbarTabHover => "#e9ecef",
-            ThemeToken::MinimapBackground => "#e9ecef",
-            ThemeToken::MinimapViewport => "#adb5bd",
-            ThemeToken::MinimapDensity => "#457b9d",
-            ThemeToken::MinimapHandle => "#495057",
-            ThemeToken::InlineLabelBackground => "#dee2e6",
-            ThemeToken::FlowArrow | ThemeToken::FlowArrowHead => "#adb5bd",
+            ThemeToken::FlameHot => "#dc3c14",
+            ThemeToken::FlameWarm => "#e69614",
+            ThemeToken::FlameCold => "#2878c8",
+            ThemeToken::FlameNeutral => "#788caa",
+            ThemeToken::LaneBackground => "#fafafc",
+            ThemeToken::LaneBorder => "#d2d2dc",
+            ThemeToken::LaneHeaderBackground => "#f0f0f5",
+            ThemeToken::LaneHeaderText => "#282832",
+            ThemeToken::TextPrimary => "#14141e",
+            ThemeToken::TextSecondary => "#505064",
+            ThemeToken::TextMuted => "#64646e",
+            ThemeToken::SelectionHighlight => "#4287f5",
+            ThemeToken::HoverHighlight => "#000000",
+            ThemeToken::Background => "#ffffff",
+            ThemeToken::Surface => "#f5f5f8",
+            ThemeToken::Border => "#d2d2dc",
+            ThemeToken::ToolbarBackground => "#f8f8fa",
+            ThemeToken::ToolbarText => "#282832",
+            ThemeToken::ToolbarTabActive => "#326edc",
+            ThemeToken::ToolbarTabHover => "#000000",
+            ThemeToken::MinimapBackground => "#f0f0f5",
+            ThemeToken::MinimapViewport => "#326edc",
+            ThemeToken::MinimapDensity => "#326edc",
+            ThemeToken::MinimapHandle => "#2850b4",
+            ThemeToken::InlineLabelText => "#282832",
+            ThemeToken::InlineLabelBackground => "#f0f0f5",
+            ThemeToken::TableRowEven => "#ffffff",
+            ThemeToken::TableRowOdd => "#f5f5f8",
+            ThemeToken::TableHeaderBackground => "#ebebf0",
+            ThemeToken::TableBorder => "#d2d2dc",
+            ThemeToken::BarFill => "#326edc",
+            ThemeToken::SearchHighlight => "#ffc832",
+            ThemeToken::CounterFill => "#326edc",
+            ThemeToken::CounterLine => "#326edc",
+            ThemeToken::CounterText => "#505064",
+            ThemeToken::MarkerLine => "#c89614",
+            ThemeToken::MarkerText => "#96640a",
+            ThemeToken::AsyncSpanFill => "#508cc8",
+            ThemeToken::AsyncSpanBorder => "#326eb4",
+            ThemeToken::FrameGood => "#388e3c",
+            ThemeToken::FrameWarning => "#e6aa00",
+            ThemeToken::FrameDropped => "#d32f2f",
+            ThemeToken::FlowArrow | ThemeToken::FlowArrowHead => "#3278dc",
         }
     }
 }
