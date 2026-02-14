@@ -528,11 +528,18 @@ export function useHotkeys(
     const map = { ...DEFAULT_HOTKEYS, ...hotkeys };
 
     function handler(e: KeyboardEvent) {
-      // Don't intercept when typing in an input/textarea
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
-        // Keep text entry natural, but allow Escape and Enter-based search navigation.
-        if (e.key !== "Escape" && e.key !== "Enter") return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      const inEditable =
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        Boolean(target?.isContentEditable);
+      if (inEditable) {
+        const inSearchInput = searchInputRef?.current === target;
+        // Keep text entry natural outside the search box.
+        if (!inSearchInput && e.key !== "Escape") return;
+        if (inSearchInput && e.key !== "Escape" && e.key !== "Enter") return;
       }
 
       if (map.resetZoom.includes(e.key)) {

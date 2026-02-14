@@ -425,6 +425,26 @@ describe("hooks integration", () => {
   });
 
   it("useHotkeys allows Enter search navigation from focused input", () => {
+    const searchRef = { current: null as HTMLInputElement | null };
+    renderHook(() => useHotkeys({}, searchRef), {
+      wrapper: createWrapper(store),
+    });
+    const input = document.createElement("input");
+    searchRef.current = input;
+    document.body.appendChild(input);
+    input.focus();
+    act(() => {
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      input.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", shiftKey: true, bubbles: true }),
+      );
+    });
+    expect(wasm.nextSearchResult).toHaveBeenCalled();
+    expect(wasm.prevSearchResult).toHaveBeenCalled();
+    input.remove();
+  });
+
+  it("useHotkeys does not hijack Enter in non-search inputs", () => {
     renderHook(() => useHotkeys(), {
       wrapper: createWrapper(store),
     });
@@ -437,8 +457,8 @@ describe("hooks integration", () => {
         new KeyboardEvent("keydown", { key: "Enter", shiftKey: true, bubbles: true }),
       );
     });
-    expect(wasm.nextSearchResult).toHaveBeenCalled();
-    expect(wasm.prevSearchResult).toHaveBeenCalled();
+    expect(wasm.nextSearchResult).not.toHaveBeenCalled();
+    expect(wasm.prevSearchResult).not.toHaveBeenCalled();
     input.remove();
   });
 

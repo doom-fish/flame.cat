@@ -1405,9 +1405,10 @@ impl FlameApp {
                         let mut changed = false;
                         let lane_count = self.lanes.len();
                         for idx in 0..lane_count {
-                            let lane = &self.lanes[idx];
-                            let mut vis = lane.visible;
-                            let full_name = lane.name.as_str();
+                            let lane_visible = self.lanes[idx].visible;
+                            let mut vis = lane_visible;
+                            let mut height = self.lanes[idx].height;
+                            let full_name = self.lanes[idx].name.clone();
                             ui.horizontal(|ui| {
                                 if ui.checkbox(&mut vis, "").changed() {
                                     changed = true;
@@ -1420,7 +1421,7 @@ impl FlameApp {
                                             .map_or(full_name.len(), |(i, _)| i);
                                         format!("{}…", &full_name[..end])
                                     } else {
-                                        full_name.to_string()
+                                        full_name.clone()
                                     };
                                 let resp = ui.label(
                                     egui::RichText::new(&display_name).size(FONT_CAPTION).color(
@@ -1432,11 +1433,51 @@ impl FlameApp {
                                     ),
                                 );
                                 if display_name.len() < full_name.len() {
-                                    resp.on_hover_text(full_name);
+                                    resp.on_hover_text(&full_name);
+                                }
+                                ui.add_space(4.0);
+                                if ui
+                                    .add_enabled(idx > 0, egui::Button::new("↑").small())
+                                    .on_hover_text("Move lane up")
+                                    .clicked()
+                                {
+                                    self.lanes.swap(idx - 1, idx);
+                                    self.lane_commands.swap(idx - 1, idx);
+                                    changed = true;
+                                }
+                                if ui
+                                    .add_enabled(
+                                        idx + 1 < lane_count,
+                                        egui::Button::new("↓").small(),
+                                    )
+                                    .on_hover_text("Move lane down")
+                                    .clicked()
+                                {
+                                    self.lanes.swap(idx, idx + 1);
+                                    self.lane_commands.swap(idx, idx + 1);
+                                    changed = true;
                                 }
                             });
-                            if vis != lane.visible {
+                            ui.horizontal(|ui| {
+                                ui.add_space(22.0);
+                                ui.label(egui::RichText::new("Height").size(FONT_TINY).weak());
+                                if ui
+                                    .add(
+                                        egui::Slider::new(&mut height, 16.0..=600.0)
+                                            .clamping(egui::SliderClamping::Always)
+                                            .show_value(true),
+                                    )
+                                    .changed()
+                                {
+                                    self.lanes[idx].height = height;
+                                    changed = true;
+                                }
+                            });
+                            if vis != lane_visible {
                                 self.lanes[idx].visible = vis;
+                            }
+                            if idx + 1 < lane_count {
+                                ui.add_space(4.0);
                             }
                         }
                         if changed {
@@ -1971,9 +2012,51 @@ impl FlameApp {
                                                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                                                     ui.label(egui::RichText::new(&name).strong());
                                                     let dur = hit_end_us - hit_start_us;
+                                                    let total = self
+                                                        .session
+                                                        .as_ref()
+                                                        .map(|s| s.end_time() - s.start_time())
+                                                        .unwrap_or(0.0);
+                                                    let pct = if total > 0.0 {
+                                                        (dur / total) * 100.0
+                                                    } else {
+                                                        0.0
+                                                    };
+                                                    let lane_hint = match &self.lanes[i].kind {
+                                                        LaneKind::Thread(tid) => {
+                                                            format!("Thread #{tid}")
+                                                        }
+                                                        LaneKind::Counter(_) => "Counter".to_string(),
+                                                        LaneKind::AsyncSpans => "Async spans".to_string(),
+                                                        LaneKind::Markers => "Markers".to_string(),
+                                                        LaneKind::CpuSamples => {
+                                                            "CPU samples".to_string()
+                                                        }
+                                                        LaneKind::FrameTrack => {
+                                                            "Frame track".to_string()
+                                                        }
+                                                        LaneKind::ObjectTrack => {
+                                                            "Object track".to_string()
+                                                        }
+                                                    };
                                                     ui.label(
                                                         egui::RichText::new(format_duration(dur))
                                                             .weak(),
+                                                    );
+                                                    ui.label(
+                                                        egui::RichText::new(format!(
+                                                            "{} • {:.2}% of trace",
+                                                            lane_hint, pct
+                                                        ))
+                                                        .size(FONT_TINY)
+                                                        .weak(),
+                                                    );
+                                                    ui.label(
+                                                        egui::RichText::new(
+                                                            "Click to select • Right-click for actions",
+                                                        )
+                                                        .size(FONT_TINY)
+                                                        .weak(),
                                                     );
                                                 });
                                             });
