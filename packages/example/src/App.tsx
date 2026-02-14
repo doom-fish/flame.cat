@@ -208,6 +208,7 @@ function Sidebar() {
               type="checkbox"
               checked={lane.visible}
               onChange={() => toggleVisibility(i)}
+              aria-label={`Toggle lane: ${lane.name}`}
               style={{ accentColor: "#6c5ce7" }}
             />
             <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -293,6 +294,7 @@ function DetailPanel() {
       <button
         onClick={clear}
         title="Close (Esc)"
+        aria-label="Close span details"
         style={{
           border: "none", background: "none", cursor: "pointer",
           color: "inherit", fontSize: 16, opacity: 0.6,

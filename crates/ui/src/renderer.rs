@@ -3,6 +3,16 @@ use flame_cat_protocol::{RenderCommand, TextAlign, ThemeToken};
 
 use crate::theme::{self, ThemeMode};
 
+/// Minimum span width (px) to attempt rendering a text label.
+const MIN_LABEL_WIDTH: f32 = 6.0;
+/// Minimum span height (px) to attempt rendering a text label.
+const MIN_LABEL_HEIGHT: f32 = 8.0;
+/// Font size bounds for span labels (px).
+const LABEL_FONT_MIN: f32 = 6.0;
+const LABEL_FONT_MAX: f32 = 11.0;
+/// Vertical padding subtracted from span height to compute font size.
+const LABEL_FONT_PADDING: f32 = 4.0;
+
 /// Transform state for PushTransform/PopTransform.
 #[derive(Debug, Clone, Copy)]
 struct Transform {
@@ -161,8 +171,9 @@ pub fn render_commands(
                 // Draw label text inside the rect
                 if let Some(label_text) = label {
                     let label_str: &str = label_text;
-                    if !label_str.is_empty() && w > 6.0 && h > 8.0 {
-                        let font_size = (h - 4.0).clamp(6.0, 11.0);
+                    if !label_str.is_empty() && w > MIN_LABEL_WIDTH && h > MIN_LABEL_HEIGHT {
+                        let font_size =
+                            (h - LABEL_FONT_PADDING).clamp(LABEL_FONT_MIN, LABEL_FONT_MAX);
                         // WCAG: choose text color based on fill luminance
                         let text_color = contrast_text_color(fill);
                         let text_rect = egui_rect.shrink2(egui::vec2(2.0, 0.0));
