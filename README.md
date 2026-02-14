@@ -1,6 +1,6 @@
 # 🔥 flame.cat
 
-High-performance flame graph visualization tool. Renders with egui (WebGL2/native) and uses Rust for all data processing.
+High-performance flame graph visualization tool. Renders with egui (WebGL2 via eframe) and uses Rust for all data processing.
 
 [![CI](https://github.com/doom-fish/flame.cat/actions/workflows/ci.yml/badge.svg)](https://github.com/doom-fish/flame.cat/actions/workflows/ci.yml)
 
@@ -20,7 +20,7 @@ High-performance flame graph visualization tool. Renders with egui (WebGL2/nativ
 - **Span navigation**: Parent/child/sibling traversal with keyboard
 - **Export**: Save profiles as JSON or render as SVG
 - **Keyboard-driven**: WASD pan, +/- zoom, Ctrl+scroll, double-click zoom, context menus
-- **Cross-platform**: Runs in any browser (WASM + WebGL2) — native desktop coming soon
+- **Cross-platform**: Runs in any browser via WASM + WebGL2
 
 ## Screenshots
 
@@ -72,14 +72,18 @@ cd crates/ui && trunk serve --open
 ```sh
 # Development
 cargo build
-cargo test -p flame-cat-core -p flame-cat-protocol
+cargo test -p flame-cat-core -p flame-cat-protocol -p flame-cat-tui
 
 # WASM release
 cd crates/ui && trunk build --release
 
 # Lint
 cargo fmt --check
-cargo clippy -p flame-cat-core -p flame-cat-protocol -- -D warnings
+cargo clippy -p flame-cat-core -p flame-cat-protocol -p flame-cat-tui -- -D warnings
+cargo clippy -p flame-cat-ui --target wasm32-unknown-unknown -- -D warnings
+
+# React
+cd packages/react && npm ci && npx tsc --noEmit && npm test
 ```
 
 ## Architecture
