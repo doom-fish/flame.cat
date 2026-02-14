@@ -91,7 +91,7 @@ function Toolbar() {
 
   return (
     <div style={{
-      display: "flex", alignItems: "center", gap: 8,
+      display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
       padding: "6px 12px",
       borderBottom: "1px solid var(--border)",
       background: mode === "dark" ? "#1a1a2e" : "#f8f9fa",
@@ -118,7 +118,8 @@ function Toolbar() {
             onClick={() => setViewType(value)}
             disabled={!ready}
             style={{
-              padding: "3px 8px", border: "none", borderRadius: 3, cursor: "pointer", fontSize: 12,
+              padding: "3px 8px", border: "none", borderRadius: 3, fontSize: 12,
+              cursor: ready ? "pointer" : "not-allowed",
               background: viewType === value ? (mode === "dark" ? "#4a4a7a" : "#dee2e6") : "transparent",
               color: "inherit", opacity: ready ? 1 : 0.4,
             }}
@@ -285,11 +286,13 @@ function DetailPanel() {
       fontSize: 13,
     }}>
       <strong>{selected.name}</strong>
-      <span style={{ opacity: 0.7 }}>
+      <span style={{ opacity: 0.8, fontWeight: 600 }}>
         {formatDuration(dur)}
-        {pct != null && <span> · {pct}%</span>}
+        {pct != null && <span style={{ opacity: 0.6, fontWeight: 400 }}> · {pct}%</span>}
       </span>
-      <span style={{ opacity: 0.5 }}>Lane {selected.lane_index}</span>
+      <span style={{ opacity: 0.4, fontSize: 11 }}>
+        {formatDuration(selected.start_us)}–{formatDuration(selected.end_us)} · Lane {selected.lane_index}
+      </span>
       <div style={{ flex: 1 }} />
       <button
         onClick={clear}

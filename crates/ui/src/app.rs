@@ -1225,13 +1225,17 @@ impl FlameApp {
                     );
                     ui.horizontal(|ui| {
                         ui.label(
-                            egui::RichText::new("!")
+                            egui::RichText::new("⚠")
                                 .strong()
-                                .size(FONT_BODY)
+                                .size(FONT_EMPHASIS)
                                 .color(err_color),
                         );
                         ui.colored_label(err_color, err);
-                        if ui.small_button("x").on_hover_text("Dismiss").clicked() {
+                        if ui
+                            .button(egui::RichText::new("✕").size(FONT_CAPTION))
+                            .on_hover_text("Dismiss")
+                            .clicked()
+                        {
                             self.error = None;
                         }
                     });
@@ -1247,15 +1251,24 @@ impl FlameApp {
                         .sum();
                     let thread_count: usize =
                         profiles.iter().map(|p| p.profile.threads.len()).sum();
+                    ui.label(format!("Duration: {}", format_duration(duration_us)));
+                    ui.separator();
+                    ui.label(format!("Viewing: {}", format_duration(vis_duration_us)));
+                    ui.separator();
                     ui.label(format!(
-                        "Duration: {} | Viewing: {} | Zoom: {:.0}% | {} spans · {} threads · {} lanes",
-                        format_duration(duration_us),
-                        format_duration(vis_duration_us),
-                        100.0 / view_span.max(f64::MIN_POSITIVE),
-                        span_count,
-                        thread_count,
-                        self.lanes.iter().filter(|l| l.visible).count(),
+                        "Zoom: {:.0}%",
+                        100.0 / view_span.max(f64::MIN_POSITIVE)
                     ));
+                    ui.separator();
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "{} spans · {} threads · {} lanes",
+                            span_count,
+                            thread_count,
+                            self.lanes.iter().filter(|l| l.visible).count(),
+                        ))
+                        .weak(),
+                    );
                 } else {
                     ui.label("No profile loaded — click Open or drag & drop a file");
                 }
@@ -1275,13 +1288,17 @@ impl FlameApp {
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new("Detail").size(FONT_BODY).strong());
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("x").clicked() {
+                            if ui
+                                .button(egui::RichText::new("✕").size(FONT_CAPTION))
+                                .on_hover_text("Close (Esc)")
+                                .clicked()
+                            {
                                 self.selected_span = None;
                             }
                         });
                     });
                     ui.separator();
-                    ui.add_space(2.0);
+                    ui.add_space(4.0);
 
                     // Find the span in the session to show timing info
                     if let Some(session) = &self.session {
@@ -1315,15 +1332,32 @@ impl FlameApp {
                                                 } else {
                                                     0.0
                                                 };
-                                                ui.label(format!(
-                                                    "Duration: {} ({:.1}%) | Self: {} ({:.1}%) | Depth: {} | Thread: {}",
-                                                    format_duration(span.duration()),
-                                                    pct,
-                                                    format_duration(span.self_value),
-                                                    self_pct,
-                                                    span.depth,
-                                                    lane.name,
-                                                ));
+                                                ui.label(
+                                                    egui::RichText::new(format!(
+                                                        "{} ({:.1}%)",
+                                                        format_duration(span.duration()),
+                                                        pct,
+                                                    ))
+                                                    .size(FONT_BODY)
+                                                    .strong(),
+                                                );
+                                                ui.label(
+                                                    egui::RichText::new(format!(
+                                                        "Self: {} ({:.1}%)",
+                                                        format_duration(span.self_value),
+                                                        self_pct,
+                                                    ))
+                                                    .size(FONT_CAPTION)
+                                                    .weak(),
+                                                );
+                                                ui.label(
+                                                    egui::RichText::new(format!(
+                                                        "Depth {} · {}",
+                                                        span.depth, lane.name,
+                                                    ))
+                                                    .size(FONT_CAPTION)
+                                                    .weak(),
+                                                );
                                             });
                                             if let Some(cat) = &span.category {
                                                 ui.label(format!("Category: {}", cat.name));
@@ -1339,8 +1373,10 @@ impl FlameApp {
                                                     let mut chain: Vec<(u64, String)> = Vec::new();
                                                     let mut cur = span.parent;
                                                     while let Some(pid) = cur {
-                                                        if let Some(p) =
-                                                            thread.spans.iter().find(|s| s.id == pid)
+                                                        if let Some(p) = thread
+                                                            .spans
+                                                            .iter()
+                                                            .find(|s| s.id == pid)
                                                         {
                                                             chain.push((p.id, p.name.to_string()));
                                                             cur = p.parent;
@@ -1352,7 +1388,9 @@ impl FlameApp {
                                                         }
                                                     }
                                                     chain.reverse();
-                                                    for (idx, (_fid, name)) in chain.iter().enumerate() {
+                                                    for (idx, (_fid, name)) in
+                                                        chain.iter().enumerate()
+                                                    {
                                                         if idx > 0 {
                                                             ui.label(
                                                                 egui::RichText::new(" › ")
