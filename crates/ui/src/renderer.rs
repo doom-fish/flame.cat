@@ -111,10 +111,10 @@ pub fn render_commands(
                 label,
                 frame_id,
             } => {
-                let x = tf.apply_x(rect.x) + offset.x;
-                let y = tf.apply_y(rect.y) + offset.y;
-                let w = tf.scale_w(rect.w);
-                let h = tf.scale_h(rect.h);
+                let x = (tf.apply_x(rect.x) + offset.x).round();
+                let y = (tf.apply_y(rect.y) + offset.y).round();
+                let w = tf.scale_w(rect.w).round().max(1.0);
+                let h = tf.scale_h(rect.h).round().max(1.0);
 
                 if w < 0.5 || h < 0.5 {
                     continue;
@@ -162,7 +162,7 @@ pub fn render_commands(
                 if let Some(label_text) = label {
                     let label_str: &str = label_text;
                     if !label_str.is_empty() && w > 6.0 && h > 8.0 {
-                        let font_size = (h - 4.0).min(11.0).max(6.0);
+                        let font_size = (h - 4.0).clamp(6.0, 11.0);
                         // WCAG: choose text color based on fill luminance
                         let text_color = contrast_text_color(fill);
                         let text_rect = egui_rect.shrink2(egui::vec2(2.0, 0.0));
@@ -178,17 +178,33 @@ pub fn render_commands(
                         if galley.size().x <= text_rect.width() + 2.0 {
                             painter.galley(text_pos, galley, text_color);
                         } else if text_rect.width() > 20.0 && galley.size().x > 0.0 {
-                            // Truncate with ellipsis for medium-width spans
-                            let avail = text_rect.width() - 8.0;
-                            let ratio = avail / galley.size().x;
-                            let take = ((label_str.chars().count() as f32 * ratio) as usize).max(1);
-                            let truncated: String = label_str.chars().take(take).collect();
+                            // Binary search for longest prefix that fits with ellipsis
+                            let avail = text_rect.width() - 2.0;
+                            let char_count = label_str.chars().count();
+                            let (mut lo, mut hi) = (1_usize, char_count);
+                            while lo < hi {
+                                let mid = (lo + hi).div_ceil(2);
+                                let candidate: String = label_str.chars().take(mid).collect();
+                                let g = painter.layout_no_wrap(
+                                    format!("{candidate}…"),
+                                    FontId::proportional(font_size),
+                                    text_color,
+                                );
+                                if g.size().x <= avail {
+                                    lo = mid;
+                                } else {
+                                    hi = mid - 1;
+                                }
+                            }
+                            let truncated: String = label_str.chars().take(lo).collect();
                             let ellipsis_galley = painter.layout_no_wrap(
                                 format!("{truncated}…"),
                                 FontId::proportional(font_size),
                                 text_color,
                             );
-                            painter.galley(text_pos, ellipsis_galley, text_color);
+                            if ellipsis_galley.size().x <= avail {
+                                painter.galley(text_pos, ellipsis_galley, text_color);
+                            }
                         }
                     }
                 }
@@ -257,10 +273,10 @@ pub fn render_commands(
             }
 
             RenderCommand::SetClip { rect } => {
-                let x = tf.apply_x(rect.x) + offset.x;
-                let y = tf.apply_y(rect.y) + offset.y;
-                let w = tf.scale_w(rect.w);
-                let h = tf.scale_h(rect.h);
+                let x = (tf.apply_x(rect.x) + offset.x).round();
+                let y = (tf.apply_y(rect.y) + offset.y).round();
+                let w = tf.scale_w(rect.w).round().max(1.0);
+                let h = tf.scale_h(rect.h).round().max(1.0);
                 let clip_rect = Rect::from_min_size(Pos2::new(x, y), egui::vec2(w, h));
                 clip_stack.push(painter.clip_rect());
                 let intersected = painter.clip_rect().intersect(clip_rect);
@@ -304,7 +320,7 @@ pub fn render_commands(
 fn name_to_color(name: &str, mode: ThemeMode) -> egui::Color32 {
     // Extract package/module prefix
     let prefix = name
-        .split(|c: char| c == ':' || c == '.' || c == '/' || c == '@' || c == '\\')
+        .split([':', '.', '/', '@', '\\'])
         .next()
         .unwrap_or(name);
 

@@ -19,7 +19,7 @@ impl ResolvedColor {
     }
 
     pub fn to_color32(self) -> egui::Color32 {
-        egui::Color32::from_rgba_premultiplied(self.r, self.g, self.b, self.a)
+        egui::Color32::from_rgba_unmultiplied(self.r, self.g, self.b, self.a)
     }
 }
 
