@@ -84,30 +84,28 @@ pub fn render_commands(
 ) -> RenderResult {
     let mut transform_stack: Vec<Transform> = vec![Transform::identity()];
     let mut clip_stack: Vec<Rect> = Vec::new();
-    let mut hit_regions: Vec<HitRegion> = Vec::new();
+    let mut hit_regions: Vec<HitRegion> = Vec::with_capacity(commands.len());
 
     let search_lower = search.to_lowercase();
 
-    // Pre-compute which labels match the search to avoid per-rect to_lowercase()
+    // Pre-compute matching unique label strings to avoid per-command to_lowercase().
+    // Most profiles have <500 unique names but >5000 commands.
     let search_active = !search_lower.is_empty();
-    let matching_labels: std::collections::HashSet<usize> = if search_active {
-        commands
-            .iter()
-            .enumerate()
-            .filter_map(|(i, cmd)| {
-                if let RenderCommand::DrawRect { label: Some(l), .. } = cmd {
-                    if l.as_ref().to_lowercase().contains(&search_lower) {
-                        return Some(i);
-                    }
-                }
-                None
-            })
+    let matching_names: std::collections::HashSet<&str> = if search_active {
+        let mut unique: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        for cmd in commands {
+            if let RenderCommand::DrawRect { label: Some(l), .. } = cmd {
+                unique.insert(l.as_ref());
+            }
+        }
+        unique
+            .into_iter()
+            .filter(|name| name.to_lowercase().contains(&search_lower))
             .collect()
     } else {
         std::collections::HashSet::new()
     };
 
-    let mut cmd_index: usize = 0;
     for cmd in commands {
         let tf = transform_stack
             .last()
@@ -149,7 +147,10 @@ pub fn render_commands(
                 };
 
                 // Dim non-matching spans when search is active
-                let search_match = !search_active || matching_labels.contains(&cmd_index);
+                let search_match = !search_active
+                    || label
+                        .as_ref()
+                        .is_some_and(|l| matching_names.contains(l.as_ref()));
                 let fill = if search_match {
                     fill
                 } else {
@@ -171,7 +172,12 @@ pub fn render_commands(
                 // Draw label text inside the rect
                 if let Some(label_text) = label {
                     let label_str: &str = label_text;
-                    if !label_str.is_empty() && w > MIN_LABEL_WIDTH && h > MIN_LABEL_HEIGHT {
+                    // Skip text layout entirely for rects too narrow to show even 1 char
+                    if !label_str.is_empty()
+                        && w > MIN_LABEL_WIDTH
+                        && h > MIN_LABEL_HEIGHT
+                        && w > 14.0
+                    {
                         let font_size =
                             (h - LABEL_FONT_PADDING).clamp(LABEL_FONT_MIN, LABEL_FONT_MAX);
                         // WCAG: choose text color based on fill luminance
@@ -321,7 +327,6 @@ pub fn render_commands(
                 // Groups are semantic — no visual effect in egui
             }
         }
-        cmd_index += 1;
     }
 
     RenderResult { hit_regions }
