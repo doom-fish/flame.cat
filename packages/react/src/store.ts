@@ -114,7 +114,23 @@ export class FlameCatStore {
     if (!this.wasm) return;
     try {
       const json = this.wasm.getState();
-      this.snapshot = JSON.parse(json) as StateSnapshot;
+      const next = JSON.parse(json) as StateSnapshot;
+      // Structural sharing: reuse old references for unchanged subtrees
+      // to preserve React referential equality and avoid unnecessary re-renders
+      const prev = this.snapshot;
+      if (prev.profile && next.profile
+        && prev.profile.duration_us === next.profile.duration_us
+        && prev.profile.span_count === next.profile.span_count) {
+        next.profile = prev.profile;
+      }
+      if (prev.lanes.length === next.lanes.length
+        && prev.lanes.every((l, i) =>
+          l.name === next.lanes[i].name
+          && l.visible === next.lanes[i].visible
+          && l.height === next.lanes[i].height)) {
+        next.lanes = prev.lanes;
+      }
+      this.snapshot = next;
     } catch (e) {
       // Keep last snapshot on parse error, but log for debugging
       if (typeof console !== "undefined") {

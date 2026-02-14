@@ -189,32 +189,33 @@ pub fn render_commands(
                         if galley.size().x <= text_rect.width() + 2.0 {
                             painter.galley(text_pos, galley, text_color);
                         } else if text_rect.width() > 20.0 && galley.size().x > 0.0 {
-                            // Binary search for longest prefix that fits with ellipsis
+                            // Estimate how many characters fit using measured average width
                             let avail = text_rect.width() - 2.0;
                             let char_count = label_str.chars().count();
-                            let (mut lo, mut hi) = (1_usize, char_count);
-                            while lo < hi {
-                                let mid = (lo + hi).div_ceil(2);
-                                let candidate: String = label_str.chars().take(mid).collect();
-                                let g = painter.layout_no_wrap(
-                                    format!("{candidate}…"),
-                                    FontId::proportional(font_size),
-                                    text_color,
-                                );
-                                if g.size().x <= avail {
-                                    lo = mid;
-                                } else {
-                                    hi = mid - 1;
-                                }
-                            }
-                            let truncated: String = label_str.chars().take(lo).collect();
+                            let avg_char_w = galley.size().x / char_count as f32;
+                            let ellipsis_w = avg_char_w * 1.5; // rough ellipsis width
+                            let take =
+                                ((avail - ellipsis_w) / avg_char_w).floor().max(1.0) as usize;
+                            let take = take.min(char_count);
+                            let truncated: String = label_str.chars().take(take).collect();
                             let ellipsis_galley = painter.layout_no_wrap(
                                 format!("{truncated}…"),
                                 FontId::proportional(font_size),
                                 text_color,
                             );
-                            if ellipsis_galley.size().x <= avail {
+                            if ellipsis_galley.size().x <= avail + 2.0 {
                                 painter.galley(text_pos, ellipsis_galley, text_color);
+                            } else if take > 1 {
+                                // Fallback: try one fewer char
+                                let shorter: String = label_str.chars().take(take - 1).collect();
+                                let g = painter.layout_no_wrap(
+                                    format!("{shorter}…"),
+                                    FontId::proportional(font_size),
+                                    text_color,
+                                );
+                                if g.size().x <= avail + 2.0 {
+                                    painter.galley(text_pos, g, text_color);
+                                }
                             }
                         }
                     }

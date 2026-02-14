@@ -97,6 +97,8 @@ pub struct FlameApp {
     state_gen: u64,
     /// Last generation that was emitted as a snapshot.
     last_emitted_gen: u64,
+    /// Last hovered frame_id emitted (to avoid re-emitting on same hover).
+    last_hovered_fid: Option<u64>,
     /// Pending initial view type from URL hash (applied once after first profile load).
     pending_initial_view_type: Option<crate::ViewType>,
 }
@@ -249,6 +251,7 @@ impl FlameApp {
             zoom_history_pos: 0,
             state_gen: 0,
             last_emitted_gen: u64::MAX, // Force first emit
+            last_hovered_fid: None,
             pending_initial_view_type: if initial_view_type != crate::ViewType::TimeOrder {
                 Some(initial_view_type)
             } else {
@@ -2876,13 +2879,15 @@ impl eframe::App for FlameApp {
         }
 
         // Emit state snapshot for JS hooks (skip if nothing changed)
-        // Note: hovered_span changes are tracked separately
+        let hover_fid = self.hovered_span.as_ref().map(|s| s.frame_id);
+        let hover_changed = hover_fid != self.last_hovered_fid;
         if self.state_gen != self.last_emitted_gen
-            || self.hovered_span.is_some()
+            || hover_changed
             || self.last_emitted_gen == u64::MAX
         {
             self.emit_snapshot();
             self.last_emitted_gen = self.state_gen;
+            self.last_hovered_fid = hover_fid;
         }
     }
 }
@@ -2916,14 +2921,15 @@ impl FlameApp {
             .map(|l| crate::LaneSnapshot {
                 name: l.name.clone(),
                 kind: match &l.kind {
-                    LaneKind::Thread(_) => "thread".to_string(),
-                    LaneKind::Counter(_) => "counter".to_string(),
-                    LaneKind::AsyncSpans => "async".to_string(),
-                    LaneKind::Markers => "markers".to_string(),
-                    LaneKind::CpuSamples => "cpu_samples".to_string(),
-                    LaneKind::FrameTrack => "frame_track".to_string(),
-                    LaneKind::ObjectTrack => "object_track".to_string(),
-                },
+                    LaneKind::Thread(_) => "thread",
+                    LaneKind::Counter(_) => "counter",
+                    LaneKind::AsyncSpans => "async",
+                    LaneKind::Markers => "markers",
+                    LaneKind::CpuSamples => "cpu_samples",
+                    LaneKind::FrameTrack => "frame_track",
+                    LaneKind::ObjectTrack => "object_track",
+                }
+                .to_string(),
                 height: l.height,
                 visible: l.visible,
                 span_count: l.span_count,
