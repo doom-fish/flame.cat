@@ -8,6 +8,9 @@ use flame_cat_protocol::{RenderCommand, ThemeToken};
 /// `dark` selects the color palette.
 pub fn render_svg(commands: &[RenderCommand], width: f64, height: f64, dark: bool) -> String {
     let mut svg = String::with_capacity(commands.len() * 200);
+    let mut clip_counter = 0_u32;
+    let mut clip_depth = 0_u32;
+    let mut group_depth = 0_u32;
     svg.push_str(&format!(
         r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="{width}" height="{height}" style="font-family:system-ui,-apple-system,sans-serif;font-size:11px">"#,
     ));
@@ -78,9 +81,41 @@ pub fn render_svg(commands: &[RenderCommand], width: f64, height: f64, dark: boo
                     escape_xml(text),
                 ));
             }
-            // Skip transform/clip/group commands — they don't affect static SVG output
+            RenderCommand::SetClip { rect } => {
+                clip_counter += 1;
+                let clip_id = format!("clip{clip_counter}");
+                svg.push_str(&format!(
+                    r#"<clipPath id="{clip_id}"><rect x="{}" y="{}" width="{}" height="{}"/></clipPath><g clip-path="url(#{clip_id})">"#,
+                    rect.x, rect.y, rect.w, rect.h,
+                ));
+                clip_depth += 1;
+            }
+            RenderCommand::ClearClip => {
+                if clip_depth > 0 {
+                    svg.push_str("</g>");
+                    clip_depth -= 1;
+                }
+            }
+            RenderCommand::BeginGroup { .. } => {
+                svg.push_str("<g>");
+                group_depth += 1;
+            }
+            RenderCommand::EndGroup => {
+                if group_depth > 0 {
+                    svg.push_str("</g>");
+                    group_depth -= 1;
+                }
+            }
             _ => {}
         }
+    }
+
+    // Close any unclosed clips and groups
+    for _ in 0..clip_depth {
+        svg.push_str("</g>");
+    }
+    for _ in 0..group_depth {
+        svg.push_str("</g>");
     }
 
     svg.push_str("</svg>");
@@ -89,13 +124,14 @@ pub fn render_svg(commands: &[RenderCommand], width: f64, height: f64, dark: boo
 
 fn resolve_color(token: ThemeToken, dark: bool) -> &'static str {
     if dark {
-        // Catppuccin Mocha
+        // Catppuccin Mocha palette
         match token {
             ThemeToken::FlameHot => "#f38ba8",
             ThemeToken::FlameWarm => "#fab387",
             ThemeToken::FlameCold => "#89b4fa",
             ThemeToken::FlameNeutral => "#cba6f7",
             ThemeToken::Border | ThemeToken::TableBorder | ThemeToken::AsyncSpanBorder => "#313244",
+            ThemeToken::LaneBorder => "#45475a",
             ThemeToken::TextPrimary | ThemeToken::ToolbarText | ThemeToken::InlineLabelText => {
                 "#cdd6f4"
             }
@@ -103,12 +139,27 @@ fn resolve_color(token: ThemeToken, dark: bool) -> &'static str {
                 "#bac2de"
             }
             ThemeToken::LaneBackground | ThemeToken::Background => "#1e1e2e",
+            ThemeToken::Surface | ThemeToken::ToolbarBackground => "#181825",
+            ThemeToken::LaneHeaderBackground | ThemeToken::TableHeaderBackground => "#313244",
+            ThemeToken::LaneHeaderText => "#a6adc8",
             ThemeToken::SelectionHighlight | ThemeToken::HoverHighlight => "#89b4fa",
             ThemeToken::SearchHighlight => "#f9e2af",
             ThemeToken::BarFill | ThemeToken::CounterFill | ThemeToken::AsyncSpanFill => "#89b4fa",
+            ThemeToken::CounterLine => "#74c7ec",
             ThemeToken::MarkerLine | ThemeToken::MarkerText => "#f9e2af",
             ThemeToken::FrameGood => "#a6e3a1",
-            _ => "#6c7086",
+            ThemeToken::FrameWarning => "#f9e2af",
+            ThemeToken::FrameDropped => "#f38ba8",
+            ThemeToken::TableRowEven => "#1e1e2e",
+            ThemeToken::TableRowOdd => "#181825",
+            ThemeToken::ToolbarTabActive => "#45475a",
+            ThemeToken::ToolbarTabHover => "#313244",
+            ThemeToken::MinimapBackground => "#11111b",
+            ThemeToken::MinimapViewport => "#585b70",
+            ThemeToken::MinimapDensity => "#89b4fa",
+            ThemeToken::MinimapHandle => "#a6adc8",
+            ThemeToken::InlineLabelBackground => "#313244",
+            ThemeToken::FlowArrow | ThemeToken::FlowArrowHead => "#585b70",
         }
     } else {
         match token {
@@ -117,6 +168,7 @@ fn resolve_color(token: ThemeToken, dark: bool) -> &'static str {
             ThemeToken::FlameCold => "#457b9d",
             ThemeToken::FlameNeutral => "#adb5bd",
             ThemeToken::Border | ThemeToken::TableBorder | ThemeToken::AsyncSpanBorder => "#dee2e6",
+            ThemeToken::LaneBorder => "#ced4da",
             ThemeToken::TextPrimary | ThemeToken::ToolbarText | ThemeToken::InlineLabelText => {
                 "#1a1a2e"
             }
@@ -124,12 +176,27 @@ fn resolve_color(token: ThemeToken, dark: bool) -> &'static str {
                 "#666677"
             }
             ThemeToken::LaneBackground | ThemeToken::Background => "#f8f9fa",
+            ThemeToken::Surface | ThemeToken::ToolbarBackground => "#e9ecef",
+            ThemeToken::LaneHeaderBackground | ThemeToken::TableHeaderBackground => "#dee2e6",
+            ThemeToken::LaneHeaderText => "#495057",
             ThemeToken::SelectionHighlight | ThemeToken::HoverHighlight => "#ffd60a",
             ThemeToken::SearchHighlight => "#00b87a",
-            ThemeToken::BarFill | ThemeToken::CounterFill | ThemeToken::AsyncSpanFill => "#adb5bd",
+            ThemeToken::BarFill | ThemeToken::CounterFill | ThemeToken::AsyncSpanFill => "#457b9d",
+            ThemeToken::CounterLine => "#1d3557",
             ThemeToken::MarkerLine | ThemeToken::MarkerText => "#e67e22",
             ThemeToken::FrameGood => "#27ae60",
-            _ => "#999999",
+            ThemeToken::FrameWarning => "#f39c12",
+            ThemeToken::FrameDropped => "#e63946",
+            ThemeToken::TableRowEven => "#f8f9fa",
+            ThemeToken::TableRowOdd => "#e9ecef",
+            ThemeToken::ToolbarTabActive => "#dee2e6",
+            ThemeToken::ToolbarTabHover => "#e9ecef",
+            ThemeToken::MinimapBackground => "#e9ecef",
+            ThemeToken::MinimapViewport => "#adb5bd",
+            ThemeToken::MinimapDensity => "#457b9d",
+            ThemeToken::MinimapHandle => "#495057",
+            ThemeToken::InlineLabelBackground => "#dee2e6",
+            ThemeToken::FlowArrow | ThemeToken::FlowArrowHead => "#adb5bd",
         }
     }
 }

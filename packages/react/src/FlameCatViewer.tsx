@@ -19,7 +19,7 @@ let viewerCounter = 0;
 export function FlameCatViewer({
   className,
   style,
-  ariaLabel = "Flame graph viewer",
+  ariaLabel = "Flame graph viewer — use keyboard shortcuts or mouse to navigate",
 }: FlameCatViewerProps) {
   const store = useFlameCatStore();
   const canvasIdRef = useRef(`flame_cat_viewer_${++viewerCounter}`);
