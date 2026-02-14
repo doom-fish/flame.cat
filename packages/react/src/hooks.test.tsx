@@ -408,6 +408,10 @@ describe("hooks integration", () => {
     renderHook(() => useHotkeys(), {
       wrapper: createWrapper(store),
     });
+    // Set a search query so Enter-based navigation fires
+    act(() => {
+      store.exec((w) => w.setSearch("render"));
+    });
     act(() => {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "[" }));
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "]" }));
@@ -428,6 +432,10 @@ describe("hooks integration", () => {
     const searchRef = { current: null as HTMLInputElement | null };
     renderHook(() => useHotkeys({}, searchRef), {
       wrapper: createWrapper(store),
+    });
+    // Set a search query so Enter-based navigation fires
+    act(() => {
+      store.exec((w) => w.setSearch("render"));
     });
     const input = document.createElement("input");
     searchRef.current = input;
@@ -460,6 +468,19 @@ describe("hooks integration", () => {
     expect(wasm.nextSearchResult).not.toHaveBeenCalled();
     expect(wasm.prevSearchResult).not.toHaveBeenCalled();
     input.remove();
+  });
+
+  it("useHotkeys ignores Enter when search is empty", () => {
+    renderHook(() => useHotkeys(), {
+      wrapper: createWrapper(store),
+    });
+    // search is empty by default in mock
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", shiftKey: true }));
+    });
+    expect(wasm.nextSearchResult).not.toHaveBeenCalled();
+    expect(wasm.prevSearchResult).not.toHaveBeenCalled();
   });
 
   // ── Error: hook without provider ───────────────────────────────────

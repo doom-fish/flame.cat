@@ -171,7 +171,8 @@ export function useLanes(): LanesState {
 
   const showAll = useCallback(() => {
     store.exec((w) => {
-      for (let i = 0; i < store.laneCount; i++) {
+      const count = store.getSnapshot().lanes.length;
+      for (let i = 0; i < count; i++) {
         w.setLaneVisibility(i, true);
       }
     });
@@ -179,7 +180,8 @@ export function useLanes(): LanesState {
 
   const hideAll = useCallback(() => {
     store.exec((w) => {
-      for (let i = 0; i < store.laneCount; i++) {
+      const count = store.getSnapshot().lanes.length;
+      for (let i = 0; i < count; i++) {
         w.setLaneVisibility(i, false);
       }
     });
@@ -568,11 +570,15 @@ export function useHotkeys(
         e.preventDefault();
         store.exec((w) => w.navigateToChild());
       } else if (e.key === "Enter" && e.shiftKey) {
-        e.preventDefault();
-        store.exec((w) => w.prevSearchResult());
+        if (store.getSnapshot().search) {
+          e.preventDefault();
+          store.exec((w) => w.prevSearchResult());
+        }
       } else if (e.key === "Enter") {
-        e.preventDefault();
-        store.exec((w) => w.nextSearchResult());
+        if (store.getSnapshot().search) {
+          e.preventDefault();
+          store.exec((w) => w.nextSearchResult());
+        }
       }
     }
 
