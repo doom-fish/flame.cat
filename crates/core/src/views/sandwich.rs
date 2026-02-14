@@ -162,6 +162,7 @@ mod tests {
                 id: 0,
                 name: "Main".into(),
                 sort_key: 0,
+                max_depth: 0,
                 spans: vec![
                     Span {
                         id: 0,
@@ -260,6 +261,7 @@ mod tests {
                 id: 0,
                 name: "Main".into(),
                 sort_key: 0,
+                max_depth: 0,
                 spans: vec![Span {
                     id: 0,
                     name: "only".into(),

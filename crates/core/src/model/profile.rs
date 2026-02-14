@@ -203,9 +203,13 @@ impl Profile {
                 name: name.clone(),
                 sort_key: thread_sort_key(&name),
                 spans,
+                max_depth: 0,
             })
             .collect();
         threads.sort_by_key(|t| t.sort_key);
+        for t in &mut threads {
+            t.compute_max_depth();
+        }
 
         VisualProfile {
             meta: ProfileMeta {

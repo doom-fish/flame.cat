@@ -71,8 +71,8 @@ pub fn render_time_order(
             y_offset += THREAD_HEADER_HEIGHT;
         }
 
-        // Find the max depth in this thread for vertical sizing
-        let max_depth = thread.spans.iter().map(|s| s.depth).max().unwrap_or(0);
+        // Use cached max_depth (computed at parse time)
+        let max_depth = thread.max_depth;
 
         for span in &thread.spans {
             let x = (span.start - view_start) * x_scale;
@@ -139,6 +139,7 @@ mod tests {
                 id: 0,
                 name: "Main".into(),
                 sort_key: 0,
+                max_depth: 0,
                 spans: vec![
                     Span {
                         id: 0,

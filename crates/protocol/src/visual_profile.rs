@@ -201,6 +201,16 @@ pub struct ThreadGroup {
     pub sort_key: i64,
     /// All spans in this thread, ordered by start time.
     pub spans: Vec<Span>,
+    /// Cached maximum span depth (0 if empty). Set by `compute_max_depth()`.
+    #[serde(default)]
+    pub max_depth: u32,
+}
+
+impl ThreadGroup {
+    /// Compute and cache `max_depth` from spans. Call after populating spans.
+    pub fn compute_max_depth(&mut self) {
+        self.max_depth = self.spans.iter().map(|s| s.depth).max().unwrap_or(0);
+    }
 }
 
 /// A single visual span — the atomic unit of the visual profile.
@@ -544,6 +554,7 @@ mod tests {
                     id: 0,
                     name: "Main".into(),
                     sort_key: 0,
+                    max_depth: 0,
                     spans: vec![
                         Span {
                             id: 0,
@@ -576,6 +587,7 @@ mod tests {
                     id: 1,
                     name: "Worker".into(),
                     sort_key: 1,
+                    max_depth: 0,
                     spans: vec![Span {
                         id: 2,
                         name: "task".into(),

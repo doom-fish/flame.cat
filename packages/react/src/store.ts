@@ -126,8 +126,10 @@ export class FlameCatStore {
       if (prev.lanes.length === next.lanes.length
         && prev.lanes.every((l, i) =>
           l.name === next.lanes[i].name
+          && l.kind === next.lanes[i].kind
           && l.visible === next.lanes[i].visible
-          && l.height === next.lanes[i].height)) {
+          && l.height === next.lanes[i].height
+          && l.span_count === next.lanes[i].span_count)) {
         next.lanes = prev.lanes;
       }
       this.snapshot = next;
