@@ -8,6 +8,8 @@ import {
   useStatus,
   useProfile,
   useViewType,
+  useColorMode,
+  useSpanNavigation,
   useLanes,
   useViewport,
   useSearch,
@@ -350,6 +352,40 @@ describe("hooks integration", () => {
     const svg = result.current.exportSVG(800, 400);
     expect(svg).toBe("<svg></svg>");
     expect(wasm.exportSVG).toHaveBeenCalledWith(800, 400);
+  });
+
+  // ── useColorMode ────────────────────────────────────────────────────
+
+  it("useColorMode reads and toggles color mode", () => {
+    const { result } = renderHook(() => useColorMode(), {
+      wrapper: createWrapper(store),
+    });
+    expect(result.current.colorMode).toBe("by_name");
+    act(() => result.current.setColorMode("by_depth"));
+    expect(wasm.setColorMode).toHaveBeenCalledWith("by_depth");
+    act(() => result.current.toggle());
+    // After toggling from by_name → should flip
+    expect(wasm.setColorMode).toHaveBeenCalled();
+  });
+
+  // ── useSpanNavigation ─────────────────────────────────────────────
+
+  it("useSpanNavigation dispatches all navigation actions", () => {
+    const { result } = renderHook(() => useSpanNavigation(), {
+      wrapper: createWrapper(store),
+    });
+    act(() => result.current.goToParent());
+    expect(wasm.navigateToParent).toHaveBeenCalled();
+    act(() => result.current.goToChild());
+    expect(wasm.navigateToChild).toHaveBeenCalled();
+    act(() => result.current.goToNextSibling());
+    expect(wasm.navigateToNextSibling).toHaveBeenCalled();
+    act(() => result.current.goToPrevSibling());
+    expect(wasm.navigateToPrevSibling).toHaveBeenCalled();
+    act(() => result.current.nextSearchResult());
+    expect(wasm.nextSearchResult).toHaveBeenCalled();
+    act(() => result.current.prevSearchResult());
+    expect(wasm.prevSearchResult).toHaveBeenCalled();
   });
 
   // ── useHotkeys ─────────────────────────────────────────────────────

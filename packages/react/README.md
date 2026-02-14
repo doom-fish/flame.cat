@@ -142,7 +142,7 @@ The egui rendering surface. Size it with CSS — eframe handles the rest.
 | `useTheme()` | `{ mode, setMode, toggle }` | Dark/light theme |
 | `useSelectedSpan()` | `{ selected, select, clear }` | Click selection |
 | `useHoveredSpan()` | `SelectedSpanInfo \| null` | Real-time hover info |
-| `useSpanNavigation()` | `{ goToParent, goToChild, nextSibling, prevSibling, nextMatch, prevMatch }` | Keyboard-style span navigation |
+| `useSpanNavigation()` | `{ goToParent, goToChild, goToNextSibling, goToPrevSibling, nextSearchResult, prevSearchResult }` | Keyboard-style span navigation |
 | `useNavigation()` | `{ canGoBack, canGoForward, back, forward }` | Zoom history breadcrumbs |
 | `useExport()` | `{ exportJSON, exportSVG }` | Export profile as JSON or SVG |
 | `useHotkeys(map?, searchRef?)` | `void` | Keyboard shortcuts |
