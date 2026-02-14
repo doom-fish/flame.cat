@@ -479,8 +479,8 @@ export function useExport(): ExportState {
 
   const exportSVG = useCallback(
     (width = 1200, height = 600): string | null => {
-      const w = Math.max(1, Math.min(width, 8000));
-      const h = Math.max(1, Math.min(height, 8000));
+      const w = Number.isFinite(width) && width > 0 ? Math.min(width, 8000) : 1200;
+      const h = Number.isFinite(height) && height > 0 ? Math.min(height, 8000) : 600;
       let result: string | null = null;
       store.exec((wasm) => {
         result = wasm.exportSVG(w, h) ?? null;
