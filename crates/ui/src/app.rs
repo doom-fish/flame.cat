@@ -4,31 +4,18 @@ use flame_cat_core::parsers;
 use flame_cat_protocol::{RenderCommand, Viewport, VisualProfile};
 
 use crate::renderer;
-use crate::theme::ThemeMode;
+use crate::theme::{
+    ThemeMode, FONT_BODY, FONT_CAPTION, FONT_DISPLAY, FONT_EMPHASIS, FONT_TINY, FONT_TITLE,
+};
 
 // ── Layout & animation constants ───────────────────────────────────────
 
-/// Interpolation factor per frame for viewport animation (ease-out).
 const ANIM_EASE_FACTOR: f64 = 0.25;
-/// Boosted ease factor when the viewport is far from target.
 const ANIM_EASE_BOOST: f64 = 1.5;
-/// Animation snaps to target when within this fraction of the viewport span.
 const ANIM_SNAP_EPSILON: f64 = 1e-4;
-/// Minimum allowed viewport span, used to avoid divide-by-zero and jitter.
 const MIN_VIEW_SPAN: f64 = 1e-12;
-/// Maximum ancestor breadcrumbs shown in the detail panel.
 const MAX_BREADCRUMB_DEPTH: usize = 10;
-/// Lane names longer than this are truncated with ellipsis in the sidebar.
 const SIDEBAR_NAME_MAX_CHARS: usize = 24;
-
-// ── Typography scale ───────────────────────────────────────────────────────
-
-const FONT_DISPLAY: f32 = 32.0;
-const FONT_TITLE: f32 = 18.0;
-const FONT_EMPHASIS: f32 = 14.0;
-const FONT_BODY: f32 = 12.0;
-const FONT_CAPTION: f32 = 11.0;
-const FONT_TINY: f32 = 10.0;
 
 /// Format a duration in µs to human-readable string.
 fn format_duration(us: f64) -> String {
@@ -152,8 +139,9 @@ struct LaneState {
 impl FlameApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // Catapult/Perfetto-inspired dark theme for egui widgets
-        cc.egui_ctx.set_visuals(catapult_dark_visuals());
-        apply_catapult_typography(&cc.egui_ctx);
+        cc.egui_ctx
+            .set_visuals(crate::theme::catapult_dark_visuals());
+        crate::theme::apply_catapult_typography(&cc.egui_ctx);
 
         let pending_data: std::sync::Arc<std::sync::Mutex<Option<Vec<u8>>>> =
             std::sync::Arc::new(std::sync::Mutex::new(None));
@@ -1081,15 +1069,15 @@ impl FlameApp {
                 if ui.button(theme_label).clicked() {
                     self.theme_mode = match self.theme_mode {
                         ThemeMode::Dark => {
-                            ctx.set_visuals(catapult_light_visuals());
+                            ctx.set_visuals(crate::theme::catapult_light_visuals());
                             ThemeMode::Light
                         }
                         ThemeMode::Light => {
-                            ctx.set_visuals(catapult_dark_visuals());
+                            ctx.set_visuals(crate::theme::catapult_dark_visuals());
                             ThemeMode::Dark
                         }
                     };
-                    apply_catapult_typography(ctx);
+                    crate::theme::apply_catapult_typography(ctx);
                     self.invalidate_commands();
                 }
 
@@ -2755,10 +2743,10 @@ impl eframe::App for FlameApp {
                     self.theme_mode = mode;
                     match mode {
                         crate::theme::ThemeMode::Dark => {
-                            ctx.set_visuals(catapult_dark_visuals());
+                            ctx.set_visuals(crate::theme::catapult_dark_visuals());
                         }
                         crate::theme::ThemeMode::Light => {
-                            ctx.set_visuals(catapult_light_visuals());
+                            ctx.set_visuals(crate::theme::catapult_light_visuals());
                         }
                     }
                     self.invalidate_commands();
@@ -3068,104 +3056,6 @@ fn format_tick_label(us: f64, interval: f64) -> String {
     } else {
         format!("{:.0}µs", us)
     }
-}
-
-/// Find the densest time window in the busiest thread.
-/// Returns `Some((lo, hi))` in µs, or `None` if no spans.
-/// Synthesize frame timings from the densest thread's top-level spans.
-/// Used when the profile doesn't have explicit frame timing data.
-/// Catppuccin Mocha dark visuals for egui widgets.
-fn catapult_dark_visuals() -> egui::Visuals {
-    let mut v = egui::Visuals::dark();
-    v.panel_fill = egui::Color32::from_rgb(0x18, 0x18, 0x25); // Mantle
-    v.window_fill = egui::Color32::from_rgb(0x1e, 0x1e, 0x2e); // Base
-    v.extreme_bg_color = egui::Color32::from_rgb(0x11, 0x11, 0x1b); // Crust
-    v.faint_bg_color = egui::Color32::from_rgb(0x1e, 0x1e, 0x2e); // Base
-    v.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(0x31, 0x32, 0x44); // Surface0
-    v.widgets.noninteractive.fg_stroke =
-        egui::Stroke::new(1.0, egui::Color32::from_rgb(0xba, 0xc2, 0xde)); // Subtext1
-    v.widgets.noninteractive.bg_stroke =
-        egui::Stroke::new(1.0, egui::Color32::from_rgb(0x45, 0x47, 0x5a)); // Surface1
-    v.widgets.inactive.bg_fill = egui::Color32::from_rgb(0x45, 0x47, 0x5a); // Surface1
-    v.widgets.inactive.fg_stroke =
-        egui::Stroke::new(1.0, egui::Color32::from_rgb(0xba, 0xc2, 0xde)); // Subtext1
-    v.widgets.hovered.bg_fill = egui::Color32::from_rgb(0x58, 0x5b, 0x70); // Surface2
-    v.widgets.hovered.fg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(0xcd, 0xd6, 0xf4)); // Text
-    v.widgets.active.bg_fill = egui::Color32::from_rgb(0x89, 0xb4, 0xfa); // Blue
-    v.widgets.active.fg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(0x1e, 0x1e, 0x2e)); // Base
-    v.selection.bg_fill = egui::Color32::from_rgba_unmultiplied(0x89, 0xb4, 0xfa, 60);
-    v.selection.stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(0x89, 0xb4, 0xfa)); // Blue
-    v.window_corner_radius = egui::CornerRadius::same(6);
-    v.menu_corner_radius = egui::CornerRadius::same(6);
-    v.widgets.noninteractive.corner_radius = egui::CornerRadius::same(5);
-    v.widgets.inactive.corner_radius = egui::CornerRadius::same(5);
-    v.widgets.hovered.corner_radius = egui::CornerRadius::same(5);
-    v.widgets.active.corner_radius = egui::CornerRadius::same(5);
-    v.widgets.open.corner_radius = egui::CornerRadius::same(5);
-    v.hyperlink_color = egui::Color32::from_rgb(0x89, 0xb4, 0xfa);
-    v.warn_fg_color = egui::Color32::from_rgb(0xf9, 0xe2, 0xaf);
-    v.error_fg_color = egui::Color32::from_rgb(0xf3, 0x8b, 0xa8);
-    v
-}
-
-/// Catapult-inspired light visuals for egui widgets.
-fn catapult_light_visuals() -> egui::Visuals {
-    let mut v = egui::Visuals::light();
-    v.panel_fill = egui::Color32::from_rgb(250, 250, 252);
-    v.window_fill = egui::Color32::from_rgb(255, 255, 255);
-    v.extreme_bg_color = egui::Color32::from_rgb(255, 255, 255);
-    v.faint_bg_color = egui::Color32::from_rgb(245, 245, 248);
-    v.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(240, 240, 243);
-    v.widgets.noninteractive.fg_stroke =
-        egui::Stroke::new(1.0, egui::Color32::from_rgb(60, 60, 70));
-    v.widgets.noninteractive.bg_stroke =
-        egui::Stroke::new(1.0, egui::Color32::from_rgb(210, 210, 215));
-    v.widgets.inactive.bg_fill = egui::Color32::from_rgb(230, 230, 235);
-    v.widgets.hovered.bg_fill = egui::Color32::from_rgb(220, 220, 228);
-    v.widgets.active.bg_fill = egui::Color32::from_rgb(50, 110, 220);
-    v.widgets.active.fg_stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
-    v.selection.bg_fill = egui::Color32::from_rgba_unmultiplied(50, 110, 220, 50);
-    v.selection.stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(50, 110, 220));
-    v.window_corner_radius = egui::CornerRadius::same(6);
-    v.menu_corner_radius = egui::CornerRadius::same(6);
-    v.widgets.noninteractive.corner_radius = egui::CornerRadius::same(5);
-    v.widgets.inactive.corner_radius = egui::CornerRadius::same(5);
-    v.widgets.hovered.corner_radius = egui::CornerRadius::same(5);
-    v.widgets.active.corner_radius = egui::CornerRadius::same(5);
-    v.widgets.open.corner_radius = egui::CornerRadius::same(5);
-    v.hyperlink_color = egui::Color32::from_rgb(50, 110, 220);
-    v.warn_fg_color = egui::Color32::from_rgb(230, 170, 0);
-    v.error_fg_color = egui::Color32::from_rgb(211, 47, 47);
-    v
-}
-
-fn apply_catapult_typography(ctx: &egui::Context) {
-    let mut style = (*ctx.style()).clone();
-    style.text_styles.insert(
-        egui::TextStyle::Heading,
-        egui::FontId::proportional(FONT_TITLE),
-    );
-    style
-        .text_styles
-        .insert(egui::TextStyle::Body, egui::FontId::proportional(FONT_BODY));
-    style.text_styles.insert(
-        egui::TextStyle::Button,
-        egui::FontId::proportional(FONT_BODY),
-    );
-    style.text_styles.insert(
-        egui::TextStyle::Small,
-        egui::FontId::proportional(FONT_CAPTION),
-    );
-    style.text_styles.insert(
-        egui::TextStyle::Monospace,
-        egui::FontId::monospace(FONT_CAPTION),
-    );
-
-    style.spacing.item_spacing = egui::vec2(8.0, 6.0);
-    style.spacing.button_padding = egui::vec2(8.0, 4.0);
-    style.spacing.interact_size.y = 24.0;
-    style.spacing.icon_spacing = 6.0;
-    ctx.set_style(style);
 }
 
 fn synthesize_frame_timings(

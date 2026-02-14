@@ -162,3 +162,108 @@ fn resolve_light(token: ThemeToken) -> ResolvedColor {
         FlowArrowHead => ResolvedColor::rgba(50, 120, 220, 180),
     }
 }
+
+// ── Typography scale ───────────────────────────────────────────────────────
+
+pub const FONT_DISPLAY: f32 = 32.0;
+pub const FONT_TITLE: f32 = 18.0;
+pub const FONT_EMPHASIS: f32 = 14.0;
+pub const FONT_BODY: f32 = 12.0;
+pub const FONT_CAPTION: f32 = 11.0;
+pub const FONT_TINY: f32 = 10.0;
+
+// ── egui visual presets ────────────────────────────────────────────────────
+
+/// Catppuccin Mocha dark visuals for egui widgets.
+pub fn catapult_dark_visuals() -> egui::Visuals {
+    let mut v = egui::Visuals::dark();
+    v.panel_fill = egui::Color32::from_rgb(0x18, 0x18, 0x25);
+    v.window_fill = egui::Color32::from_rgb(0x1e, 0x1e, 0x2e);
+    v.extreme_bg_color = egui::Color32::from_rgb(0x11, 0x11, 0x1b);
+    v.faint_bg_color = egui::Color32::from_rgb(0x1e, 0x1e, 0x2e);
+    v.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(0x31, 0x32, 0x44);
+    v.widgets.noninteractive.fg_stroke =
+        egui::Stroke::new(1.0, egui::Color32::from_rgb(0xba, 0xc2, 0xde));
+    v.widgets.noninteractive.bg_stroke =
+        egui::Stroke::new(1.0, egui::Color32::from_rgb(0x45, 0x47, 0x5a));
+    v.widgets.inactive.bg_fill = egui::Color32::from_rgb(0x45, 0x47, 0x5a);
+    v.widgets.inactive.fg_stroke =
+        egui::Stroke::new(1.0, egui::Color32::from_rgb(0xba, 0xc2, 0xde));
+    v.widgets.hovered.bg_fill = egui::Color32::from_rgb(0x58, 0x5b, 0x70);
+    v.widgets.hovered.fg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(0xcd, 0xd6, 0xf4));
+    v.widgets.active.bg_fill = egui::Color32::from_rgb(0x89, 0xb4, 0xfa);
+    v.widgets.active.fg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(0x1e, 0x1e, 0x2e));
+    v.selection.bg_fill = egui::Color32::from_rgba_unmultiplied(0x89, 0xb4, 0xfa, 60);
+    v.selection.stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(0x89, 0xb4, 0xfa));
+    v.window_corner_radius = egui::CornerRadius::same(6);
+    v.menu_corner_radius = egui::CornerRadius::same(6);
+    v.widgets.noninteractive.corner_radius = egui::CornerRadius::same(5);
+    v.widgets.inactive.corner_radius = egui::CornerRadius::same(5);
+    v.widgets.hovered.corner_radius = egui::CornerRadius::same(5);
+    v.widgets.active.corner_radius = egui::CornerRadius::same(5);
+    v.widgets.open.corner_radius = egui::CornerRadius::same(5);
+    v.hyperlink_color = egui::Color32::from_rgb(0x89, 0xb4, 0xfa);
+    v.warn_fg_color = egui::Color32::from_rgb(0xf9, 0xe2, 0xaf);
+    v.error_fg_color = egui::Color32::from_rgb(0xf3, 0x8b, 0xa8);
+    v
+}
+
+/// Light visuals for egui widgets.
+pub fn catapult_light_visuals() -> egui::Visuals {
+    let mut v = egui::Visuals::light();
+    v.panel_fill = egui::Color32::from_rgb(250, 250, 252);
+    v.window_fill = egui::Color32::from_rgb(255, 255, 255);
+    v.extreme_bg_color = egui::Color32::from_rgb(255, 255, 255);
+    v.faint_bg_color = egui::Color32::from_rgb(245, 245, 248);
+    v.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(240, 240, 243);
+    v.widgets.noninteractive.fg_stroke =
+        egui::Stroke::new(1.0, egui::Color32::from_rgb(60, 60, 70));
+    v.widgets.noninteractive.bg_stroke =
+        egui::Stroke::new(1.0, egui::Color32::from_rgb(210, 210, 215));
+    v.widgets.inactive.bg_fill = egui::Color32::from_rgb(230, 230, 235);
+    v.widgets.hovered.bg_fill = egui::Color32::from_rgb(220, 220, 228);
+    v.widgets.active.bg_fill = egui::Color32::from_rgb(50, 110, 220);
+    v.widgets.active.fg_stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
+    v.selection.bg_fill = egui::Color32::from_rgba_unmultiplied(50, 110, 220, 50);
+    v.selection.stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(50, 110, 220));
+    v.window_corner_radius = egui::CornerRadius::same(6);
+    v.menu_corner_radius = egui::CornerRadius::same(6);
+    v.widgets.noninteractive.corner_radius = egui::CornerRadius::same(5);
+    v.widgets.inactive.corner_radius = egui::CornerRadius::same(5);
+    v.widgets.hovered.corner_radius = egui::CornerRadius::same(5);
+    v.widgets.active.corner_radius = egui::CornerRadius::same(5);
+    v.widgets.open.corner_radius = egui::CornerRadius::same(5);
+    v.hyperlink_color = egui::Color32::from_rgb(50, 110, 220);
+    v.warn_fg_color = egui::Color32::from_rgb(230, 170, 0);
+    v.error_fg_color = egui::Color32::from_rgb(211, 47, 47);
+    v
+}
+
+/// Apply the project's typography scale to egui styles.
+pub fn apply_catapult_typography(ctx: &egui::Context) {
+    let mut style = (*ctx.style()).clone();
+    style.text_styles.insert(
+        egui::TextStyle::Heading,
+        egui::FontId::proportional(FONT_TITLE),
+    );
+    style
+        .text_styles
+        .insert(egui::TextStyle::Body, egui::FontId::proportional(FONT_BODY));
+    style.text_styles.insert(
+        egui::TextStyle::Button,
+        egui::FontId::proportional(FONT_BODY),
+    );
+    style.text_styles.insert(
+        egui::TextStyle::Small,
+        egui::FontId::proportional(FONT_CAPTION),
+    );
+    style.text_styles.insert(
+        egui::TextStyle::Monospace,
+        egui::FontId::monospace(FONT_CAPTION),
+    );
+    style.spacing.item_spacing = egui::vec2(8.0, 6.0);
+    style.spacing.button_padding = egui::vec2(8.0, 4.0);
+    style.spacing.interact_size.y = 24.0;
+    style.spacing.icon_spacing = 6.0;
+    ctx.set_style(style);
+}
