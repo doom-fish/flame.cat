@@ -52,28 +52,52 @@ export interface SelectedSpanInfo {
 
 /** Methods exported by the flame-cat WASM module. */
 export interface WasmExports {
+  /** Initialize the egui viewer on a canvas element. Call once after WASM loads. */
   startOnCanvas(canvasId: string): void;
+  /** Load a profiling file (any supported format). Accepts raw file bytes. */
   loadProfile(data: Uint8Array): void;
+  /** Set the color theme. Accepts `"dark"` or `"light"`. */
   setTheme(mode: string): void;
+  /** Set the search query. Matching spans are highlighted; non-matches are dimmed. */
   setSearch(query: string): void;
+  /** Reset the viewport to show the full time range. */
   resetZoom(): void;
+  /** Set the visible viewport range (0–1 fractional). Values are clamped. */
   setViewport(start: number, end: number): void;
+  /** Toggle visibility of a lane by index. */
   setLaneVisibility(index: number, visible: boolean): void;
+  /** Set the pixel height of a lane (clamped to 16–600). */
   setLaneHeight(index: number, height: number): void;
+  /** Swap two lanes by index. Both indices must be valid. */
   reorderLanes(fromIndex: number, toIndex: number): void;
+  /** Select a span by frame ID, or pass `undefined` to clear selection. */
   selectSpan(frameId: number | undefined): void;
+  /** Set the visualization mode: `"time_order"`, `"left_heavy"`, `"icicle"`, `"sandwich"`, or `"ranked"`. */
   setViewType(viewType: string): void;
+  /** Navigate to the previous zoom level in history. */
   navigateBack(): void;
+  /** Navigate to the next zoom level in history. */
   navigateForward(): void;
+  /** Set the span coloring strategy: `"by_name"` or `"by_depth"`. */
   setColorMode(mode: string): void;
+  /** Select the parent of the currently selected span. */
   navigateToParent(): void;
+  /** Select the first child of the currently selected span. */
   navigateToChild(): void;
+  /** Select the next sibling of the currently selected span. */
   navigateToNextSibling(): void;
+  /** Select the previous sibling of the currently selected span. */
   navigateToPrevSibling(): void;
+  /** Jump to the next span matching the current search query. */
   nextSearchResult(): void;
+  /** Jump to the previous span matching the current search query. */
   prevSearchResult(): void;
+  /** Export the loaded profile as a JSON string, or `undefined` if no profile is loaded. */
   exportProfile(): string | undefined;
+  /** Render the current view as an SVG string at the given dimensions. */
   exportSVG(width: number, height: number): string | undefined;
+  /** Register a callback invoked whenever the viewer state changes. */
   onStateChange(callback: () => void): void;
+  /** Get the full viewer state as a JSON string (used by the store for snapshots). */
   getState(): string;
 }
