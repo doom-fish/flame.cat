@@ -218,18 +218,22 @@ pub fn start_on_canvas(canvas_id: &str) -> Result<(), JsValue> {
     let web_options = eframe::WebOptions::default();
     let id = canvas_id.to_string();
     wasm_bindgen_futures::spawn_local(async move {
-        // These expects are safe: WASM always runs in a browser with a document and window.
-        #[allow(clippy::expect_used)]
-        let document = web_sys::window()
-            .expect("no window")
-            .document()
-            .expect("no document");
-        #[allow(clippy::panic, clippy::expect_used)]
-        let canvas = document
-            .get_element_by_id(&id)
-            .unwrap_or_else(|| panic!("no canvas element with id '{id}'"))
-            .dyn_into::<web_sys::HtmlCanvasElement>()
-            .expect("element is not a canvas");
+        let Some(window) = web_sys::window() else {
+            web_sys::console::error_1(&"flame-cat: no window object".into());
+            return;
+        };
+        let Some(document) = window.document() else {
+            web_sys::console::error_1(&"flame-cat: no document object".into());
+            return;
+        };
+        let Some(element) = document.get_element_by_id(&id) else {
+            web_sys::console::error_1(&format!("flame-cat: no element with id '{id}'").into());
+            return;
+        };
+        let Ok(canvas) = element.dyn_into::<web_sys::HtmlCanvasElement>() else {
+            web_sys::console::error_1(&format!("flame-cat: element '{id}' is not a canvas").into());
+            return;
+        };
         let start_result = eframe::WebRunner::new()
             .start(
                 canvas,
